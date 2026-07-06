@@ -107,3 +107,14 @@ D-29 Skills are stored as plain reference docs in skills/ at repo root, not
      skill auto-loading; design skills are enforced by explicit read
      instructions in the M6 prompt instead of by tooling. AGENTS.md mirrors
      CLAUDE.md for Codex.
+
+D-30 M0 expands the unspecified RATE_LIMIT_* configuration names into
+     RATE_LIMIT_DEFAULT_PER_MINUTE, RATE_LIMIT_ATTEMPTS_PER_MINUTE, and
+     RATE_LIMIT_AUTH_PER_MINUTE. These map directly to the MVP limits in
+     docs/03 and docs/05. Cost: renaming later would need an env migration.
+D-31 M2 scopes the refresh cookie to `/v1/auth` instead of the contract
+     shorthand `/v1/auth/refresh`, because logout must revoke the presented
+     refresh token and browsers cannot scope one cookie to two exact endpoint
+     paths. Only `/v1/auth/refresh` and `/v1/auth/logout` read the cookie;
+     regular authenticated endpoints still require the access JWT. Cost: the
+     browser also sends the cookie to OAuth auth routes, where it is ignored.

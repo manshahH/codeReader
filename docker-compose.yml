@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: codereader
+      POSTGRES_PASSWORD: codereader
+      POSTGRES_DB: codereader
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U codereader -d codereader
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - codereader
+
+  redis:
+    image: redis:7
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - codereader
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql://codereader:codereader@postgres:5432/codereader
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: dev-jwt-secret-change-me
+      ACCESS_TOKEN_TTL: '900'
+      REFRESH_TOKEN_TTL_DAYS: '60'
+      GITHUB_CLIENT_ID: dev-github-client-id
+      GITHUB_CLIENT_SECRET: dev-github-client-secret-change-me
+      GITHUB_REDIRECT_URI: http://localhost:8000/auth/github/callback
+      TOKEN_ENC_KEY: dev-token-enc-key-32-byte-value!
+      APP_ORIGIN: http://localhost:5173
+      ANTHROPIC_API_KEY: dev-anthropic-key-change-me
+      GATE_MODEL: gate-model-placeholder
+      GENERATOR_MODEL: generator-model-placeholder
+      GRADER_TIMEOUT_S: '6'
+      SANDBOX_HOST: ''
+      S3_BUCKET: codereader-dev-events
+      S3_EVENTS_PREFIX: events/
+      SENTRY_DSN: ''
+      RATE_LIMIT_DEFAULT_PER_MINUTE: '60'
+      RATE_LIMIT_ATTEMPTS_PER_MINUTE: '10'
+      RATE_LIMIT_AUTH_PER_MINUTE: '10'
+    volumes:
+      - ./backend:/app
+      - ./.env.example:/app/.env.example:ro
+    ports:
+      - '8000:8000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - codereader
+
+networks:
+  codereader:
+    driver: bridge
+

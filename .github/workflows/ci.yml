@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e backend
+      - run: ruff check backend
+
+  pytest:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: codereader
+          POSTGRES_PASSWORD: codereader
+          POSTGRES_DB: codereader
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd 'pg_isready -U codereader -d codereader'
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd 'redis-cli ping'
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://codereader:codereader@localhost:5432/codereader
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: test-jwt-secret
+      GITHUB_CLIENT_SECRET: test-github-client-secret
+      TOKEN_ENC_KEY: test-token-encryption-key-32b
+      ANTHROPIC_API_KEY: test-anthropic-key
+      HEALTHZ_TEST_IN_PROCESS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e backend
+      - run: alembic upgrade head
+      - run: alembic downgrade base
+      - run: alembic upgrade head
+      - run: pytest backend/tests
+
+  schema:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: codereader
+          POSTGRES_PASSWORD: codereader
+          POSTGRES_DB: codereader
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd 'pg_isready -U codereader -d codereader'
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://codereader:codereader@localhost:5432/codereader
+      PGPASSWORD: codereader
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql
