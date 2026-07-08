@@ -118,3 +118,76 @@ D-31 M2 scopes the refresh cookie to `/v1/auth` instead of the contract
      paths. Only `/v1/auth/refresh` and `/v1/auth/logout` read the cookie;
      regular authenticated endpoints still require the access JWT. Cost: the
      browser also sends the cookie to OAuth auth routes, where it is ignored.
+
+D-32 M3 explain.py is a deterministic merge, not a new LLM call: no
+     explain_*.md template exists in prompts/, and gates never repair (D-10).
+     It takes the generator's draft_explanation and layers the now-verified
+     artifacts on top (sandbox-captured stdout for trace; sandbox-confirmed
+     bug_lines + the defect_audit gate's confirmed defect for spot_the_bug).
+     If the draft doesn't reference the verified facts, the verified facts
+     still win but the mismatch is flagged (mismatch_flagged/mismatch_detail)
+     for human review rather than silently smoothed over. Cost: an
+     inconsistent-but-plausible draft summary ships to review with a flag,
+     not a rewritten summary; a human resolves it, not a second LLM pass.
+
+D-33 M3 pipeline/config.py duplicates the env vars it needs (ANTHROPIC_API_KEY,
+     GATE_MODEL, GENERATOR_MODEL, SANDBOX_HOST, DATABASE_URL) instead of
+     importing app.config, so pipeline stays an independently deployable unit
+     per D-1; only pipeline/publish.py imports backend.app (models + the
+     existing exercises service), never app.config or any other domain.
+     Cost: the two settings modules must be kept in sync by hand.
+
+D-34 M3 dedup's content_hash and the spec sampler's avoid_patterns history are
+     stored inside the existing `source` JSONB column (`source.content_hash`,
+     `source.bug_mechanism`) rather than new schema.sql columns, since no
+     migration was needed to ship M3. Cost: querying by content_hash means a
+     JSONB `->>` filter, not an indexed column; revisit if the live pool grows
+     large enough for that scan to matter.
+
+D-35 M4 `difficulty_band` mapping (not specified elsewhere): `difficulty_authored`
+     1-3 -> `easy`, 4-6 -> `medium`, 7-10 -> `hard`; a slot with `is_boss=true`
+     always reports `boss` regardless of its authored difficulty. Cost: none;
+     purely a display-layer mapping, tune the thresholds freely later.
+
+D-36 M4 spaced repetition's "right again" interval (21d) is interpreted as
+     "this concept has been answered correctly at least once before this
+     attempt" (`user_concept_state.correct > 0` prior to the update), not
+     strictly consecutive-correct (Leitner-box semantics), because
+     `user_concept_state` has no "last result" column and the interval rule
+     is explicitly "tune later" in docs/06. Cost: a wrong-then-right-then-right
+     sequence reaches the 21d interval on the third attempt same as a
+     right-right sequence would; revisit with a dedicated column if the
+     product wants strict consecutive-correct streaks.
+
+D-37 M4's session sampler restricts the candidate pool to `spot_the_bug` and
+     `trace` only, excluding `summarize`, because POST /attempts only grades
+     deterministic types until M5 ships rubric grading. Mirrors the existing
+     "if the LLM grader is degraded, summarize slots are replaced at sampling
+     time" fallback in docs/05 section 4, just made unconditional until M5.
+     Cost: none; M5 removes the type filter as part of wiring grade_rubric().
+
+D-38 M5 "attempted" / session-progress queries (`_remaining_count` in
+     attempts/service.py, the `attempted` flag in sessions/service.py) now
+     count any submitted `attempts` row for (user, exercise, session_date),
+     not just `status='graded'`. Before M5 every attempt reached `graded`
+     synchronously so the distinction never mattered; a `summarize` submit
+     can now land `grading_pending` (or terminally `grading_failed`), and
+     D-19 says grading latency is the product's problem, not the user's --
+     that has to hold for session completion, not only the streak. Bumping
+     `total_correct`/`accuracy_by_type`/`user_concept_state` is still
+     deferred until `is_correct` is actually known (immediately for
+     deterministic types and successfully-graded-inline summarize, later via
+     jobs/grading_retry.py for one that first lands pending); only the
+     "was this exercise submitted" bookkeeping moved. Cost: none identified;
+     `exercise_stats`/percentile computation (jobs/percentiles.py) is
+     untouched and still filters strictly to `status='graded'`, since
+     `is_correct` is meaningless while pending.
+
+D-39 M5 adds `GRADER_MODEL` to config.py/.env.example. docs/06's
+     Configuration section listed `GRADER_TIMEOUT_S` but never named the
+     model env var itself, even though the M5 milestone scope always implied
+     the grader needs its own model (a different concern from `GATE_MODEL`/
+     `GENERATOR_MODEL`, which are pipeline-only per D-33 and not even
+     imported by the backend). Same pattern as D-30 (expanding an
+     underspecified `RATE_LIMIT_*` name into the concrete list actually
+     used). Cost: none; purely additive.

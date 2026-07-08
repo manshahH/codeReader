@@ -7,6 +7,7 @@ from app.auth.deps import CurrentUser, CurrentUserDep, DbSessionDep
 from app.auth.service import user_response
 from app.core.errors import ApiError
 from app.models import User
+from app.users.service import get_concepts, get_stats
 
 router = APIRouter(prefix="/v1", tags=["users"])
 
@@ -20,3 +21,19 @@ async def me(
     if user is None:
         raise ApiError(401, "invalid_token", "Access token is invalid.")
     return {"user": user_response(user)}
+
+
+@router.get("/me/stats")
+async def me_stats(
+    current_user: CurrentUser = CurrentUserDep,
+    session: AsyncSession = DbSessionDep,
+) -> dict[str, object]:
+    return await get_stats(session, current_user.id)
+
+
+@router.get("/me/concepts")
+async def me_concepts(
+    current_user: CurrentUser = CurrentUserDep,
+    session: AsyncSession = DbSessionDep,
+) -> list[dict[str, object]]:
+    return await get_concepts(session, current_user.id)

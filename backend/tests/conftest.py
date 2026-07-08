@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -11,6 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alembic import command
 from app.db import create_engine, create_session_factory
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    # Makes `import pipeline...` work from backend/tests regardless of the
+    # pytest invocation's rootdir/cwd; pipeline/ lives at the repo root,
+    # outside the `app` package this pyproject.toml installs.
+    sys.path.insert(0, str(_REPO_ROOT))
 
 
 @pytest.fixture(scope="session")

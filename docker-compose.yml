@@ -49,10 +49,12 @@ services:
       ANTHROPIC_API_KEY: dev-anthropic-key-change-me
       GATE_MODEL: gate-model-placeholder
       GENERATOR_MODEL: generator-model-placeholder
+      GRADER_MODEL: grader-model-placeholder
       GRADER_TIMEOUT_S: '6'
       SANDBOX_HOST: ''
       S3_BUCKET: codereader-dev-events
       S3_EVENTS_PREFIX: events/
+      EVENTS_LOCAL_DIR: data/events
       SENTRY_DSN: ''
       RATE_LIMIT_DEFAULT_PER_MINUTE: '60'
       RATE_LIMIT_ATTEMPTS_PER_MINUTE: '10'

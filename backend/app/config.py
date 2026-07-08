@@ -20,10 +20,12 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = Field(..., min_length=1)
     GATE_MODEL: str = "gate-model-placeholder"
     GENERATOR_MODEL: str = "generator-model-placeholder"
+    GRADER_MODEL: str = "grader-model-placeholder"
     GRADER_TIMEOUT_S: int = 6
     SANDBOX_HOST: str = ""
     S3_BUCKET: str = "codereader-dev-events"
     S3_EVENTS_PREFIX: str = "events/"
+    EVENTS_LOCAL_DIR: str = "data/events"
     SENTRY_DSN: str = ""
     RATE_LIMIT_DEFAULT_PER_MINUTE: int = 60
     RATE_LIMIT_ATTEMPTS_PER_MINUTE: int = 10

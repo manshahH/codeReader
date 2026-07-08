@@ -1,1 +1,57 @@
-"""User service placeholder for M2."""
+"""GET /me/stats, GET /me/concepts (docs/05 section 3).
+
+Straight reads of the precomputed user_stats / user_concept_state tables --
+never aggregates attempts at request time.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.accuracy import project as project_accuracy
+from app.models import UserConceptState, UserStats
+
+
+async def get_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
+    stats = await db.get(UserStats, user_id)
+    if stats is None:
+        return {
+            "current_streak": 0,
+            "longest_streak": 0,
+            "streak_freezes": 0,
+            "total_attempts": 0,
+            "total_correct": 0,
+            "accuracy_by_type": {},
+            "last_active_local_date": None,
+        }
+    return {
+        "current_streak": stats.current_streak,
+        "longest_streak": stats.longest_streak,
+        "streak_freezes": stats.streak_freezes,
+        "total_attempts": stats.total_attempts,
+        "total_correct": stats.total_correct,
+        "accuracy_by_type": project_accuracy(stats.accuracy_by_type),
+        "last_active_local_date": (
+            stats.last_active_local_date.isoformat() if stats.last_active_local_date else None
+        ),
+    }
+
+
+async def get_concepts(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    rows = await db.execute(
+        select(UserConceptState)
+        .where(UserConceptState.user_id == user_id)
+        .order_by(UserConceptState.mastery.asc()),
+    )
+    return [
+        {
+            "concept": row.concept,
+            "mastery": float(row.mastery),
+            "attempts": row.attempts,
+            "next_review_at": row.next_review_at.isoformat() if row.next_review_at else None,
+        }
+        for row in rows.scalars().all()
+    ]

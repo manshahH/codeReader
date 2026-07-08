@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import datetime as dt
+import json
 import logging
 import uuid
+from pathlib import Path
+from typing import Any
+
+from app.config import get_settings
 
 logger = logging.getLogger("app.alerts")
+events_logger = logging.getLogger("app.events")
 
 
 def alert_refresh_reuse(
@@ -23,3 +30,23 @@ def alert_refresh_reuse(
             "request_id": request_id,
         },
     )
+
+
+def append_attempt_event(event: dict[str, Any]) -> None:
+    """Best-effort JSONL append of an attempt event.
+
+    TODO(post-M4): upload to S3 (S3_BUCKET/S3_EVENTS_PREFIX) instead of the
+    local disk; local-path stub mirrors pipeline/publish.py's
+    validation_report_url stub from M3 (D-32 area). Called strictly AFTER the
+    attempt transaction commits; a failure here must never fail the request
+    or roll back the attempt -- it is an analytics gap, not a user error.
+    """
+    try:
+        directory = Path(get_settings().EVENTS_LOCAL_DIR)
+        directory.mkdir(parents=True, exist_ok=True)
+        today = dt.datetime.now(dt.UTC).date().isoformat()
+        line = json.dumps(event, default=str, separators=(",", ":"))
+        with (directory / f"{today}.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        events_logger.warning("attempt_event_append_failed", exc_info=True)

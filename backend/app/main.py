@@ -10,10 +10,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
+from app.attempts.router import router as attempts_router
 from app.auth.router import router as auth_router
 from app.config import Settings, get_settings
 from app.core.errors import ApiError, api_error_handler, error_body, request_id
 from app.db import create_engine, create_session_factory
+from app.sessions.router import router as sessions_router
 from app.users.router import router as users_router
 
 
@@ -104,6 +106,8 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(users_router)
+    app.include_router(sessions_router)
+    app.include_router(attempts_router)
     return app
 
 
