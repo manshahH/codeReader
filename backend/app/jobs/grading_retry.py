@@ -113,3 +113,26 @@ async def resolve_pending_summarize_grades(
 
     await db.commit()
     return {"resolved": resolved, "failed": failed, "still_pending": still_pending}
+
+
+async def _main() -> None:
+    from redis.asyncio import Redis
+
+    from app.config import get_settings
+    from app.db import create_engine, create_session_factory
+
+    engine = create_engine()
+    redis = Redis.from_url(get_settings().REDIS_URL, decode_responses=True)
+    try:
+        async with create_session_factory(engine)() as db:
+            summary = await resolve_pending_summarize_grades(db, redis)
+        print(f"grading_retry: {summary}")
+    finally:
+        await redis.aclose()
+        await engine.dispose()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(_main())

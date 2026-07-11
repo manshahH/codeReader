@@ -105,6 +105,65 @@ def test_solver_flags_when_problems_reported_even_if_correct() -> None:
     assert outcome.verdict == GateVerdict.FLAG
 
 
+def test_solver_passes_when_answer_names_any_verified_bug_line() -> None:
+    # D-52: a multi-line bug has several equally correct lines; naming the
+    # second verified line is a correct answer, not a mis-key.
+    client = _client(
+        {
+            "answer": {"line": 5, "reason_id": "a"},
+            "confidence": 0.9,
+            "problems_with_the_exercise": [],
+        },
+    )
+
+    outcome = solver(
+        {"code": "print(1)"},
+        correct_answer={"line": 2, "reason_id": "a"},
+        llm_client=client,
+        acceptable_lines=[2, 5],
+    )
+
+    assert outcome.verdict == GateVerdict.PASS
+
+
+def test_solver_still_rejects_confident_answer_naming_a_line_outside_the_verified_set() -> None:
+    client = _client(
+        {
+            "answer": {"line": 7, "reason_id": "a"},
+            "confidence": 0.9,
+            "problems_with_the_exercise": [],
+        },
+    )
+
+    outcome = solver(
+        {"code": "print(1)"},
+        correct_answer={"line": 2, "reason_id": "a"},
+        llm_client=client,
+        acceptable_lines=[2, 5],
+    )
+
+    assert outcome.verdict == GateVerdict.REJECT
+
+
+def test_solver_with_acceptable_lines_still_requires_the_reason_to_match() -> None:
+    client = _client(
+        {
+            "answer": {"line": 2, "reason_id": "b"},
+            "confidence": 0.9,
+            "problems_with_the_exercise": [],
+        },
+    )
+
+    outcome = solver(
+        {"code": "print(1)"},
+        correct_answer={"line": 2, "reason_id": "a"},
+        llm_client=client,
+        acceptable_lines=[2, 5],
+    )
+
+    assert outcome.verdict == GateVerdict.REJECT
+
+
 # --- reasons -------------------------------------------------------------------
 
 _REASON_OPTIONS = [

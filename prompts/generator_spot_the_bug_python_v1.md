@@ -50,33 +50,84 @@ Create one "spot the bug" exercise.
    Write the comments a normal engineer would write, which is: few.
 7. Realistic {{domain}} code: real-looking entity names, plausible logic. No
    foo/bar, no lottery-ticket toy examples.
+8. fixed_code must be a minimal, natural edit of buggy_code: change only what
+   the bug actually requires, the way a competent engineer would actually fix
+   it. Every line NOT listed in bug_lines MUST be byte-identical between
+   buggy_code and fixed_code, but the fix is free to INSERT new lines (a new
+   import, a new guard clause, wrapping existing code in a `with`/`try`
+   block) or DELETE lines outright -- the sandbox gate diffs buggy_code
+   against fixed_code and only charges bug_lines with lines the fix actually
+   REPLACES or DELETES; a line the fix purely INSERTS shifts nothing and
+   costs nothing. Do NOT contort buggy_code to pre-plant an unused or
+   misused import/field/lock "just so the fix avoids adding a line" --
+   dead scaffolding is itself a tell, and if the concept's natural fix needs
+   an import that's on the forbidden list (`threading`, `time`, etc.), the
+   fix cannot use that mechanism at all, planted or not. The one requirement
+   an insertion-heavy fix must still satisfy: at least one line that exists
+   in buggy_code must have its own text actually replaced by the fix. A fix
+   that is 100% new lines, with no existing line's text ever changing, gives
+   bug_lines == [] (indistinguishable from has_bug=false) and will fail
+   review even if the sandbox gate lets it through -- there must be a
+   specific line the exercise is pointing at.
+
+   Worked example (insertion alongside a real change is fine and common):
+     buggy_code:
+       1  def apply_late_fee(balance, days_late):
+       2      fee = balance * 0.02 * days_late
+       3      return balance + fee
+     fixed_code:
+       1  def apply_late_fee(balance, days_late):
+       2      max_fee = balance * 0.5
+       3      fee = min(balance * 0.02 * days_late, max_fee)
+       4      return balance + fee
+     Here line 1 and the old line 3 (now line 4) are untouched; a new line 2
+     was INSERTED and old line 2's text was REPLACED (now line 3). bug_lines
+     is [2] -- buggy_code's own line number for the line whose text changed.
+     The inserted line costs nothing; the replaced line is what bug_lines
+     names.
+9. bug_lines must be computed, not estimated, and must reflect a REAL diff,
+   not a naive position-by-position comparison. After writing buggy_code and
+   fixed_code, align them the way a text diff would (matching unchanged lines
+   by content, not by index) and record the buggy_code line numbers (1-indexed)
+   that the alignment marks as replaced or deleted. Lines the fix only inserts
+   are never in bug_lines. If a line shifted position because an earlier line
+   was inserted or deleted, that shift alone does not put it in bug_lines --
+   only lines whose own text actually changed do. If has_bug is false,
+   bug_lines must be [] and fixed_code must be byte-for-byte identical to
+   buggy_code -- never "improve" or "correct" anything in fixed_code when
+   has_bug is false, even something that looks fixable.
+10. buggy_code, fixed_code, and test_code must each end with exactly one
+    trailing newline character. These strings are concatenated directly
+    (buggy_code + test_code) with no separator inserted between them, so a
+    missing trailing newline glues your last code line to the test's first
+    line and breaks the syntax.
 
 ## Hard constraints on the test
-8. `test_code` is a standalone script: it defines nothing from the exercise itself,
-   it imports nothing third-party, it inlines its inputs, calls the code under test
-   (assume the exercise code is prepended to it in the same file), asserts, and
-   exits 0 on pass / raises AssertionError on fail.
-9. The test MUST fail against buggy_code and pass against fixed_code. It targets
-   the bug's observable behavior, not implementation details.
-10. If has_bug is false, the test simply passes against the code (it exists to
+11. `test_code` is a standalone script: it defines nothing from the exercise itself,
+    it imports nothing third-party, it inlines its inputs, calls the code under test
+    (assume the exercise code is prepended to it in the same file), asserts, and
+    exits 0 on pass / raises AssertionError on fail.
+12. The test MUST fail against buggy_code and pass against fixed_code. It targets
+    the bug's observable behavior, not implementation details.
+13. If has_bug is false, the test simply passes against the code (it exists to
     prove the code is correct on the tricky-looking path).
 
 ## Hard constraints on the answer options
-11. Provide exactly 4 reason options: 1 correct, 3 distractors, plus the pipeline
+14. Provide exactly 4 reason options: 1 correct, 3 distractors, plus the pipeline
     adds nothing. If has_bug is false, the correct option is the "no bug" one and
     the 3 distractors are the things a careless reviewer would wrongly flag.
-12. Every distractor must be FACTUALLY WRONG about this code in a way a careful
+15. Every distractor must be FACTUALLY WRONG about this code in a way a careful
     reader can verify, yet tempting: it should name a real Python pitfall that
     this code happens not to have. Never make a distractor that is arguably
     also correct.
-13. Randomize which option id (a-d) is correct. Do not always put it first.
+16. Randomize which option id (a-d) is correct. Do not always put it first.
 
 ## Output JSON (exactly this shape)
 {
   "buggy_code": "<the code as shown to the user; if has_bug is false this is just the code>",
   "fixed_code": "<identical to buggy_code except the minimal fix; if has_bug is false, identical to buggy_code>",
   "bug_lines": [<1-indexed line numbers in buggy_code that must change; [] if has_bug is false>],
-  "test_code": "<standalone test per constraints 8-10>",
+  "test_code": "<standalone test per constraints 11-13>",
   "context_note": "<one sentence of production context, e.g. 'Runs once per order in the checkout worker.'>",
   "reason_options": [
     {"id": "a", "text": "<reason>"},

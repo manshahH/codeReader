@@ -12,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +35,7 @@ _JUDGE_SYSTEM = (
 _TEMPERATURE = 0.0
 
 
-class GateVerdict(str, Enum):
+class GateVerdict(StrEnum):
     PASS = "pass"
     REJECT = "reject"
     FLAG = "flag"  # needs human review
@@ -155,7 +155,10 @@ def defect_audit(
     try:
         response = _DefectAuditResponse.model_validate(parsed)
     except ValidationError as exc:
-        return GateOutcome(GateVerdict.REJECT, f"defect_audit schema violation: {exc.error_count()} errors")
+        return GateOutcome(
+            GateVerdict.REJECT,
+            f"defect_audit schema violation: {exc.error_count()} errors",
+        )
 
     defects = response.defects
     report = response.model_dump()
@@ -168,7 +171,11 @@ def defect_audit(
                 report,
             )
         if len(defects) == 1 and set(defects[0].lines) & set(bug_lines):
-            return GateOutcome(GateVerdict.PASS, "exactly one defect, overlapping bug_lines", report)
+            return GateOutcome(
+                GateVerdict.PASS,
+                "exactly one defect, overlapping bug_lines",
+                report,
+            )
         return GateOutcome(
             GateVerdict.REJECT,
             f"defect_audit reported {len(defects)} defect(s) not matching the intended bug_lines",
@@ -193,12 +200,18 @@ def solver(
     correct_answer: dict[str, Any],
     llm_client: LLMClient,
     compare_keys: set[str] | None = None,
+    acceptable_lines: list[int] | None = None,
 ) -> GateOutcome:
     """`compare_keys` restricts equality to a subset of the answer's fields.
 
     Needed for spot_the_bug's has_bug=false case: the solver's answer schema
     always includes a "line", but there is no bug line to compare against, so
     the caller passes compare_keys={"reason_id"} to ignore it.
+
+    `acceptable_lines` (D-52): when set, the answer's "line" matches if it is
+    ANY member, with the remaining fields still compared exactly. A verified
+    multi-line bug has several equally correct lines; keying to one exact
+    line wrongly rejected a solver that named another of them as "mis-keyed".
     """
     prompt = _render(
         _load_gate_prompt("solver"),
@@ -212,7 +225,10 @@ def solver(
     try:
         response = _SolverResponse.model_validate(parsed)
     except ValidationError as exc:
-        return GateOutcome(GateVerdict.REJECT, f"solver schema violation: {exc.error_count()} errors")
+        return GateOutcome(
+            GateVerdict.REJECT,
+            f"solver schema violation: {exc.error_count()} errors",
+        )
 
     report = response.model_dump()
     answer = {k: v for k, v in response.answer.model_dump().items() if v is not None}
@@ -221,15 +237,28 @@ def solver(
         correct_answer = {k: v for k, v in correct_answer.items() if k in compare_keys}
 
     if response.problems_with_the_exercise:
-        return GateOutcome(GateVerdict.FLAG, "solver flagged the exercise as ambiguous/unfair", report)
+        return GateOutcome(
+            GateVerdict.FLAG,
+            "solver flagged the exercise as ambiguous/unfair",
+            report,
+        )
 
-    if answer == correct_answer:
+    if acceptable_lines is None:
+        matched = answer == correct_answer
+    else:
+        line_ok = answer.get("line") in acceptable_lines
+        rest = {k: v for k, v in answer.items() if k != "line"}
+        rest_key = {k: v for k, v in correct_answer.items() if k != "line"}
+        matched = line_ok and rest == rest_key
+
+    if matched:
         return GateOutcome(GateVerdict.PASS, "solver matched the answer key", report)
 
     if response.confidence >= 0.8:
         return GateOutcome(
             GateVerdict.REJECT,
-            f"solver confidently (p={response.confidence}) got a different answer: likely mis-keyed",
+            f"solver confidently (p={response.confidence}) got a different answer:"
+            " likely mis-keyed",
             report,
         )
     return GateOutcome(
@@ -267,7 +296,10 @@ def reasons(
     try:
         response = _ReasonsResponse.model_validate(parsed)
     except ValidationError as exc:
-        return GateOutcome(GateVerdict.REJECT, f"reasons schema violation: {exc.error_count()} errors")
+        return GateOutcome(
+            GateVerdict.REJECT,
+            f"reasons schema violation: {exc.error_count()} errors",
+        )
 
     report = response.model_dump()
     classifications = {v.id: v.classification for v in response.verdicts}
@@ -275,13 +307,21 @@ def reasons(
     if any(c == "partially_defensible" for c in classifications.values()):
         # D-13: a hard reject, never a flag -- arguably-correct distractors fail
         # the most careful users, the ones who write disputes.
-        return GateOutcome(GateVerdict.REJECT, "a distractor was classified partially_defensible", report)
+        return GateOutcome(
+            GateVerdict.REJECT,
+            "a distractor was classified partially_defensible",
+            report,
+        )
 
     correct_ids = [rid for rid, c in classifications.items() if c == "correct"]
     if len(correct_ids) == 1 and correct_ids[0] == correct_reason_id:
         return GateOutcome(GateVerdict.PASS, "exactly one correct option, matching the key", report)
     if len(correct_ids) >= 2:
-        return GateOutcome(GateVerdict.REJECT, f"{len(correct_ids)} options classified correct", report)
+        return GateOutcome(
+            GateVerdict.REJECT,
+            f"{len(correct_ids)} options classified correct",
+            report,
+        )
     return GateOutcome(
         GateVerdict.REJECT,
         f"correct classification(s) {correct_ids} do not match keyed reason {correct_reason_id!r}",

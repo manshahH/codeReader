@@ -12,7 +12,7 @@ import json
 import uuid
 
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +22,9 @@ from app.models import Attempt, DailySession, Exercise, User, UserConceptState
 from app.schemas.session import SessionExercise, SessionExercisePayload, SessionResponse
 from app.sessions.sampler import (
     ALL_CANDIDATE_TYPES,
+    DEFAULT_LEVEL_BAND,
     DETERMINISTIC_TYPES,
+    LEVEL_BANDS,
     LEVEL_DIFFICULTY,
     SessionSlot,
     build_session_slots,
@@ -108,7 +110,15 @@ async def _build_and_persist_session(
         concept_mastery=concept_mastery,
         recently_seen_ids=recently_seen_ids,
         level_difficulty=LEVEL_DIFFICULTY.get(user.level, 5),
+        level_band=LEVEL_BANDS.get(user.level, DEFAULT_LEVEL_BAND),
     )
+
+    if not slots:
+        # D-59: an empty live pool must stay transient. Persisting (or
+        # caching) [] would lock the user into an empty "completed" day for
+        # up to 36h even after content is restored; returning without
+        # persisting means the very next fetch retries the build.
+        return []
 
     daily_session = DailySession(
         user_id=user.id,
@@ -130,6 +140,43 @@ async def _build_and_persist_session(
     return slots
 
 
+async def purge_sessions_referencing(
+    db: AsyncSession,
+    redis: Redis,
+    exercise_id: uuid.UUID,
+) -> int:
+    """Remove every still-servable daily session that references an exercise
+    (D-58, the pull path). Deletes the daily_sessions rows, commits (together
+    with whatever the caller flushed, e.g. the status flip), THEN deletes the
+    Redis keys -- in that order, so a concurrent GET racing the purge cannot
+    re-cache a row that is about to disappear. Only rows from yesterday
+    onward are touched: older rows can no longer be served (the cache TTL is
+    36h and keys are per-date) and stay as the durable history they are.
+    """
+    servable_cutoff = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=1)
+    rows = (
+        await db.execute(
+            select(DailySession.user_id, DailySession.session_date).where(
+                DailySession.session_date >= servable_cutoff,
+                DailySession.exercise_list.contains([{"exercise_id": str(exercise_id)}]),
+            ),
+        )
+    ).all()
+
+    for user_id, session_date in rows:
+        await db.execute(
+            delete(DailySession).where(
+                DailySession.user_id == user_id,
+                DailySession.session_date == session_date,
+            ),
+        )
+    await db.commit()
+
+    for user_id, session_date in rows:
+        await redis.delete(_cache_key(user_id, session_date))
+    return len(rows)
+
+
 async def get_today_slots(
     db: AsyncSession,
     redis: Redis,
@@ -145,12 +192,20 @@ async def get_today_slots(
 
     existing = await db.get(DailySession, (user.id, today))
     if existing is not None:
-        slots = slots_from_dicts(existing.exercise_list)
-        await redis.set(cache_key, json.dumps(_slot_dicts(slots)), ex=CACHE_TTL_SECONDS)
-        return today, slots
+        if existing.exercise_list:
+            slots = slots_from_dicts(existing.exercise_list)
+            await redis.set(cache_key, json.dumps(_slot_dicts(slots)), ex=CACHE_TTL_SECONDS)
+            return today, slots
+        # Heal a pre-D-59 empty row: it should never have been persisted and
+        # would otherwise pin the user to an empty day. The delete commits
+        # together with the rebuilt session below (or rolls back harmlessly
+        # if the pool is still empty).
+        await db.delete(existing)
+        await db.flush()
 
     slots = await _build_and_persist_session(db, redis, user, today)
-    await redis.set(cache_key, json.dumps(_slot_dicts(slots)), ex=CACHE_TTL_SECONDS)
+    if slots:
+        await redis.set(cache_key, json.dumps(_slot_dicts(slots)), ex=CACHE_TTL_SECONDS)
     return today, slots
 
 
@@ -182,7 +237,9 @@ def _serialize_payload(exercise: Exercise) -> SessionExercisePayload:
 async def get_today_session(db: AsyncSession, redis: Redis, user: User) -> dict:
     today, slots = await get_today_slots(db, redis, user)
     if not slots:
-        empty = SessionResponse(session_date=today, completed=True, exercises=[])
+        # D-59: "no content yet", NOT a completed day -- completed=True here
+        # would tell the client the user is done and lock the day shut.
+        empty = SessionResponse(session_date=today, completed=False, exercises=[])
         return empty.model_dump(mode="json")
 
     exercise_ids = {s.exercise_id for s in slots}

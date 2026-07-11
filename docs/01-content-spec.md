@@ -102,9 +102,14 @@ DELETE lines for brevity, then both test legs re-run. Yield ~1 per 30
 candidate commits; feeds the weekly flagship, not daily volume.
 
 ## Cost model
-~$0.05-0.15 per candidate through all gates, ~50% survival, so $0.10-0.30 per
-shipped exercise. 200-exercise MVP corpus: under $60 plus review time.
-Validation is cheap enough to be ruthless: reject aggressively.
+~$0.05-0.15 per candidate through all gates, ~20-30% end-to-end survival
+(D-56; realistic for this execution-verified gate design once the per-stage
+pass rates are compounded -- trace claim-match and the semantic judges are
+strict on purpose), so roughly $0.20-0.75 per shipped exercise at those
+per-candidate prices, and well under that with a gpt-4.1-class generator.
+200-exercise MVP corpus: on the order of $50-150 plus review time.
+Validation is cheap enough to be ruthless: reject aggressively and generate
+more; never loosen a correct gate to chase yield.
 
 ## Concept taxonomy
 Controlled, versioned vocabulary, ~40 concepts for Python v1 (mutable state,

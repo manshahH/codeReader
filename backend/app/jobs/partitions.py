@@ -41,3 +41,23 @@ async def ensure_next_month_attempts_partition(
 async def count_attempts_default_rows(session: AsyncSession) -> int:
     result = await session.execute(text("SELECT count(*) FROM attempts_default"))
     return int(result.scalar_one())
+
+
+async def _main() -> None:
+    from app.db import create_engine, create_session_factory
+
+    engine = create_engine()
+    try:
+        async with create_session_factory(engine)() as session:
+            partition_name = await ensure_next_month_attempts_partition(session)
+            default_rows = await count_attempts_default_rows(session)
+            await session.commit()
+        print(f"partitions: ensured {partition_name}; attempts_default rows={default_rows}")
+    finally:
+        await engine.dispose()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(_main())

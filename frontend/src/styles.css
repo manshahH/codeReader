@@ -1,7 +1,42 @@
+@import './styles/fonts.css';
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+html {
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
+  background-color: var(--surface-reading);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  transition: background-color var(--motion-base) var(--motion-ease),
+    color var(--motion-base) var(--motion-ease);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-action);
+  outline-offset: 2px;
+  border-radius: var(--radius-tight);
+}
+
+button {
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+.measure {
+  max-width: 65ch;
 }

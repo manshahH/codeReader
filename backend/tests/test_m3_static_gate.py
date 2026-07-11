@@ -78,3 +78,110 @@ def test_static_gate_rejects_line_budget_violation() -> None:
 
     assert not result.accepted
     assert any("line_count" in v for v in result.violations)
+
+
+# --- D-51: line_budget=None skips ONLY the length check ---------------------
+
+
+def test_static_gate_budget_none_skips_the_length_check() -> None:
+    code = "x = 1\n" * 25
+
+    result = check(code, line_budget=None)
+
+    assert result.accepted, result.violations
+
+
+def test_static_gate_budget_none_still_rejects_forbidden_import() -> None:
+    code = "import random\n" + "x = 1\n" * 25
+
+    result = check(code, line_budget=None)
+
+    assert not result.accepted
+    assert any("forbidden import" in v for v in result.violations)
+
+
+# --- D-51: orchestrator applies the budget to buggy_code only ---------------
+
+
+def _stb_candidate_for_budget(buggy_code: str, fixed_code: str):
+    from pipeline.schemas import (
+        LineNote,
+        ReasonOption,
+        STBCandidate,
+        STBDraftExplanation,
+        STBSelfCheck,
+    )
+
+    return STBCandidate(
+        buggy_code=buggy_code,
+        fixed_code=fixed_code,
+        bug_lines=[1],
+        test_code="assert True\n",
+        context_note="note.",
+        reason_options=[
+            ReasonOption(id="a", text="w"),
+            ReasonOption(id="b", text="x"),
+            ReasonOption(id="c", text="y"),
+            ReasonOption(id="d", text="z"),
+        ],
+        correct_reason_id="a",
+        draft_explanation=STBDraftExplanation(
+            summary="s",
+            principle="p",
+            line_notes=[LineNote(line=1, note="n")],
+        ),
+        concepts=["off-by-one"],
+        self_difficulty=2,
+        self_check=STBSelfCheck(
+            single_bug_confirmed=True,
+            runs_without_error_on_happy_path=True,
+            no_hinting_names_or_comments=True,
+            distractors_verifiably_wrong=True,
+        ),
+    )
+
+
+def _spec_with_budget(lo: int, hi: int):
+    from pipeline.spec_sampler import ExerciseSpec
+
+    return ExerciseSpec(
+        type="spot_the_bug",
+        concept="off-by-one",
+        difficulty=2,
+        domain="checkout service",
+        line_budget_min=lo,
+        line_budget_max=hi,
+        has_bug=True,
+        avoid_patterns=(),
+    )
+
+
+def test_orchestrator_static_check_accepts_fixed_code_over_the_budget() -> None:
+    # buggy_code sits at the budget max; the fix inserts lines (invited by
+    # D-46) and overflows it. The budget constrains what the user READS, so
+    # this must pass (D-51).
+    from pipeline.orchestrator import _static_gate_check
+
+    buggy = "def f(items):\n    total = 0\n    return total\n"  # 3 lines, at max
+    fixed = (
+        "def f(items):\n    total = 0\n    total += len(items)\n"
+        "    total += 1\n    return total\n"
+    )
+    candidate = _stb_candidate_for_budget(buggy, fixed)
+
+    ok, violations = _static_gate_check(candidate, _spec_with_budget(1, 3))
+
+    assert ok, violations
+
+
+def test_orchestrator_static_check_still_rejects_forbidden_import_in_fixed_code() -> None:
+    from pipeline.orchestrator import _static_gate_check
+
+    buggy = "def f(items):\n    total = 0\n    return total\n"
+    fixed = "import random\ndef f(items):\n    total = 0\n    return total\n"
+    candidate = _stb_candidate_for_budget(buggy, fixed)
+
+    ok, violations = _static_gate_check(candidate, _spec_with_budget(1, 3))
+
+    assert not ok
+    assert any("forbidden import" in v for v in violations)

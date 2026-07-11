@@ -1,0 +1,121 @@
+/*
+ * Design tokens (docs/08, docs/08b). Every value a component needs lives
+ * here, under a semantic name. Components never invent a color, spacing, or
+ * radius value of their own.
+ *
+ * Values marked "derived" fill a gap docs/08b left open (it fixes the
+ * structure -- 9-level scale, 4px spacing, intentional radius variation,
+ * one muted syntax theme both modes -- but not every number). They are not
+ * a new design direction, just numbers chosen inside the approved system.
+ */
+
+:root {
+  /* ---- Surfaces & ink (docs/08b: exact; ink carried from docs/08's own proposal) ---- */
+  --surface-reading: #FAFAF7;
+  --surface-raised: #F2F1EA;
+  --color-ink: #1C1E21;
+  --color-ink-muted: #55595E;
+  --color-border: #DEDFE0;
+  --color-scrim: rgba(15, 17, 19, 0.45);
+
+  /* ---- Semantic law: red/green reserved for correctness/diff only ---- */
+  --color-correct: #059669;
+  --color-incorrect: #DC2626;
+  --color-correct-tint: rgba(5, 150, 105, 0.12);
+  --color-incorrect-tint: rgba(220, 38, 38, 0.12);
+
+  /* ---- Interaction (annotation-ink blue) ---- */
+  --color-action: #1E40AF;
+  --color-action-hover: #1A3690;
+  --color-action-tint: rgba(30, 64, 175, 0.1);
+
+  /* ---- Typefaces (self-hosted, styles/fonts.css) ---- */
+  --font-code: 'Iosevka', 'JetBrains Mono', ui-monospace, monospace;
+  --font-explanation: 'Source Serif 4', Georgia, serif;
+  --font-ui: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ---- Type scale: 9 steps, responsive (derived) ---- */
+  --text-2xs: clamp(0.6875rem, 0.66rem + 0.12vw, 0.75rem);
+  --text-xs: clamp(0.75rem, 0.72rem + 0.14vw, 0.8125rem);
+  --text-sm: clamp(0.875rem, 0.84rem + 0.16vw, 0.9375rem);
+  --text-base: clamp(1rem, 0.965rem + 0.16vw, 1.0625rem);
+  --text-lg: clamp(1.125rem, 1.07rem + 0.24vw, 1.25rem);
+  --text-xl: clamp(1.375rem, 1.29rem + 0.38vw, 1.625rem);
+  --text-2xl: clamp(1.75rem, 1.6rem + 0.7vw, 2.125rem);
+  --text-3xl: clamp(2.125rem, 1.9rem + 1.1vw, 2.75rem);
+  --text-4xl: clamp(2.5rem, 2.1rem + 1.8vw, 3.5rem);
+  --text-code: clamp(0.9375rem, 0.92rem + 0.08vw, 1rem);
+
+  /* ---- Spacing: 10 steps, 4px base (derived) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+  --space-10: 72px;
+
+  /* ---- Radius: intentional variation by role, never uniform (derived) ---- */
+  --radius-tight: 4px;
+  --radius-soft: 10px;
+  --radius-loose: 18px;
+  --radius-tick: 999px;
+
+  /* ---- The gutter: the layout spine ---- */
+  --gutter-width: 48px;
+  --gutter-width-desktop: 56px;
+
+  /* ---- Motion: <300ms ceiling, custom easing, transform/opacity only ---- */
+  --motion-fast: 150ms;
+  --motion-base: 220ms;
+  --motion-max: 280ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ---- Syntax theme, light: muted, cool ink family, no red/green hues ---- */
+  --syntax-plain: #1C1E21;
+  --syntax-comment: #767B83;
+  --syntax-keyword: #34517C;
+  --syntax-string: #8A6A3A;
+  --syntax-function: #4A5568;
+  --syntax-number: #8A5540;
+  --syntax-punctuation: #767B83;
+}
+
+[data-theme='dark'] {
+  --surface-reading: #0F1419;
+  --surface-raised: #171D24;
+  --color-ink: #E7E9EC;
+  --color-ink-muted: #9AA1AB;
+  --color-border: #262B33;
+  --color-scrim: rgba(0, 0, 0, 0.6);
+
+  --color-correct: #10B981;
+  --color-incorrect: #F0554A;
+  --color-correct-tint: rgba(16, 185, 129, 0.16);
+  --color-incorrect-tint: rgba(240, 85, 74, 0.16);
+
+  /* Raw --color-action (#1E40AF) fails AA as text on this surface (~2.2:1);
+     lightened for dark-mode text/links only, same hue, never purple. */
+  --color-action: #7FA6FF;
+  --color-action-hover: #9DBBFF;
+  --color-action-tint: rgba(127, 166, 255, 0.16);
+
+  --syntax-plain: #E7E9EC;
+  --syntax-comment: #7C8492;
+  --syntax-keyword: #7C9CDB;
+  --syntax-string: #C9A56C;
+  --syntax-function: #9AA4B8;
+  --syntax-number: #C08868;
+  --syntax-punctuation: #7C8492;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-max: 0ms;
+  }
+}

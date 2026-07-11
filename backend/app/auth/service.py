@@ -40,7 +40,7 @@ def user_response(user: User) -> dict[str, str | bool | None]:
         "avatar_url": user.avatar_url,
         "level": user.level,
         "timezone": user.timezone,
-        "onboarded": True,
+        "onboarded": user.onboarded,
     }
 
 

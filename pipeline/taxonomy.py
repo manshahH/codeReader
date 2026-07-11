@@ -23,6 +23,13 @@ class Concept:
     name: str
     category: str
     applies_to: frozenset[str]
+    # D-54: names the forbidden construct this concept cannot be written
+    # without (per static_gate + generator prompt constraint 2). A flagged
+    # concept is never sampled -- every one of its specs burned a full
+    # generate+gate round by construction. Flagged, not deleted: a future
+    # narrow allowance (e.g. permitting open() for the resource-leak concept
+    # specifically) re-enables it by clearing this field.
+    requires_forbidden: str | None = None
 
 
 CONCEPTS: tuple[Concept, ...] = (
@@ -66,6 +73,9 @@ CONCEPTS: tuple[Concept, ...] = (
         "Unclosed file handle / resource leak",
         "resources",
         _STB_ONLY,
+        requires_forbidden=(
+            "open()/file I/O (static_gate FORBIDDEN_CALL_NAMES + prompt constraint 2)"
+        ),
     ),
     Concept("context-manager-misuse", "Context manager used incorrectly", "resources", _BOTH),
     Concept(
@@ -83,7 +93,12 @@ CONCEPTS: tuple[Concept, ...] = (
     Concept("key-function-misuse", "sorted()/min()/max() key function misuse", "iteration", _BOTH),
     Concept("integer-division-truncation", "Integer division truncation", "numeric", _BOTH),
     Concept("float-precision", "Floating point precision surprise", "numeric", _BOTH),
-    Concept("string-formatting-mismatch", "String formatting / f-string mismatch", "strings", _BOTH),
+    Concept(
+        "string-formatting-mismatch",
+        "String formatting / f-string mismatch",
+        "strings",
+        _BOTH,
+    ),
     Concept("string-immutability-misuse", "Treating strings as mutable", "strings", _BOTH),
     Concept("string-vs-bytes-confusion", "str/bytes confusion", "strings", _BOTH),
     Concept(
@@ -147,6 +162,10 @@ CONCEPTS: tuple[Concept, ...] = (
         "Retry logic without backoff/limit (conceptual)",
         "reliability",
         _STB_ONLY,
+        requires_forbidden=(
+            "time/time.sleep for backoff (FORBIDDEN_IMPORTS); and an unbounded "
+            "retry can only fail by sandbox timeout, never AssertionError"
+        ),
     ),
     Concept(
         "idempotency-missing",
@@ -173,7 +192,13 @@ if len({c.slug for c in CONCEPTS}) != len(CONCEPTS):
 
 
 def concepts_for_type(exercise_type: str) -> tuple[Concept, ...]:
-    return tuple(c for c in CONCEPTS if exercise_type in c.applies_to)
+    """Samplable concepts only: a concept whose natural vehicle is a forbidden
+    construct (requires_forbidden, D-54) is excluded, so the spec sampler
+    never burns a generate+gate round on a spec that cannot yield.
+    """
+    return tuple(
+        c for c in CONCEPTS if exercise_type in c.applies_to and c.requires_forbidden is None
+    )
 
 
 def get_concept(slug: str) -> Concept:

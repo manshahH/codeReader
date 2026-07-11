@@ -33,6 +33,7 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text)
     timezone: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'UTC'"))
     level: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'mid'"))
+    onboarded: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
     reminder_local_time: Mapped[dt.time | None] = mapped_column()
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from pipeline.sandbox.runner import run_python
+import pytest
+from pipeline.sandbox import runner
+from pipeline.sandbox.runner import (
+    SandboxResult,
+    SandboxUnavailableError,
+    run_python,
+    verify_sandbox_available,
+)
 from pipeline.sandbox_gate import validate_spot_the_bug, validate_trace
 from pipeline.schemas import (
     Choice,
@@ -96,8 +103,11 @@ def test_sandbox_gate_accepts_the_dryrun_good_candidate() -> None:
         "fixed_passes_test",
         "buggy_runs_clean",
         "deterministic_double_run",
-        "bug_lines_match_diff",
+        "fix_diff_real_and_minimal",
     }
+    # D-49: the published key is diff-derived; here the claim happens to match.
+    assert result.verified_bug_lines == [2]
+    assert result.bug_lines_claim_mismatch is False
 
 
 def test_sandbox_gate_rejects_weak_test_that_passes_on_buggy_code() -> None:
@@ -125,6 +135,200 @@ def test_sandbox_gate_accepts_has_bug_false_variant() -> None:
     result = validate_spot_the_bug(candidate, has_bug=False)
 
     assert result.accepted, result.as_report()
+
+
+# --- fix_diff_real_and_minimal: diff-derived key (D-49), real diff (D-45) ---
+
+# The fix inserts a brand new line (`import copy`) *and* changes the declared
+# bug line (line 2 of buggy_code: aliasing -> a deep copy that needs the new
+# import). A positional zip diff would flag every line from the insertion
+# onward; the real diff must only flag line 2, since that's the only original
+# line actually replaced or removed.
+_FIXED_CODE_WITH_INSERTED_IMPORT = (
+    "import copy\n"
+    "\n"
+    "def apply_discount(prices, discount_pct):\n"
+    "    updated = copy.deepcopy(prices)\n"
+    "    for sku in updated:\n"
+    "        updated[sku] = round(updated[sku] * (1 - discount_pct / 100), 2)\n"
+    "    return updated\n"
+)
+
+# Same fix, but the fix also rewrites an UNDECLARED line (line 4: adds
+# redundant parens, functionally identical, textually different) that isn't
+# in the claimed bug_lines. Under D-49 this is ACCEPTED: the key is derived
+# from the diff ([2, 4]) and the claim/diff mismatch is logged for review,
+# not rejected -- rejecting on the claim was the transcription test D-49
+# removed.
+_FIXED_CODE_WITH_UNDECLARED_CHANGE = (
+    "def apply_discount(prices, discount_pct):\n"
+    "    updated = dict(prices)\n"
+    "    for sku in updated:\n"
+    "        updated[sku] = round(updated[sku] * (1 - (discount_pct / 100)), 2)\n"
+    "    return updated\n"
+)
+
+# The "fix" only inserts a blank line and never touches the declared bug line
+# (line 2 still aliases). Insertions alone must never satisfy bug_lines.
+_FIXED_CODE_INSERTION_ONLY = (
+    "def apply_discount(prices, discount_pct):\n"
+    "\n"
+    "    updated = prices\n"
+    "    for sku in updated:\n"
+    "        updated[sku] = round(updated[sku] * (1 - discount_pct / 100), 2)\n"
+    "    return updated\n"
+)
+
+
+def test_sandbox_gate_accepts_fix_that_inserts_a_line_alongside_the_declared_change() -> None:
+    candidate = _stb_candidate(
+        test_code=_STRONG_TEST,
+        bug_lines=[2],
+        fixed_code=_FIXED_CODE_WITH_INSERTED_IMPORT,
+    )
+
+    result = validate_spot_the_bug(candidate, has_bug=True)
+
+    assert result.accepted, result.as_report()
+    checks_by_name = {c.name: c for c in result.checks}
+    assert checks_by_name["fix_diff_real_and_minimal"].passed is True
+    assert result.verified_bug_lines == [2]
+    assert result.bug_lines_claim_mismatch is False
+
+
+def test_sandbox_gate_accepts_undeclared_extra_change_with_derived_key_and_mismatch() -> None:
+    # D-49 semantic change, recorded there explicitly: this scenario used to
+    # reject on claim != diff. The key is now the diff-derived [2, 4] and the
+    # mismatch is surfaced as a metric/flag for human review, not a reject.
+    candidate = _stb_candidate(
+        test_code=_STRONG_TEST,
+        bug_lines=[2],
+        fixed_code=_FIXED_CODE_WITH_UNDECLARED_CHANGE,
+    )
+
+    result = validate_spot_the_bug(candidate, has_bug=True)
+
+    assert result.accepted, result.as_report()
+    assert result.verified_bug_lines == [2, 4]
+    assert result.bug_lines_claim_mismatch is True
+
+
+def test_sandbox_gate_accepts_correct_fix_with_wrongly_transcribed_bug_line_claim() -> None:
+    # D-49: a perfect bug/test/fix whose declared bug_lines are off by one is
+    # not a worse exercise; the diff-derived key wins and the mismatch is
+    # logged. This was the single biggest false-reject class in the old
+    # exact-match check.
+    candidate = _stb_candidate(
+        test_code=_STRONG_TEST,
+        bug_lines=[3],  # wrong transcription; the fix actually changes line 2
+    )
+
+    result = validate_spot_the_bug(candidate, has_bug=True)
+
+    assert result.accepted, result.as_report()
+    assert result.verified_bug_lines == [2]
+    assert result.bug_lines_claim_mismatch is True
+
+
+def test_sandbox_gate_rejects_fix_that_only_inserts_and_never_touches_the_declared_line() -> None:
+    candidate = _stb_candidate(
+        test_code=_STRONG_TEST,
+        bug_lines=[2],
+        fixed_code=_FIXED_CODE_INSERTION_ONLY,
+    )
+
+    result = validate_spot_the_bug(candidate, has_bug=True)
+
+    assert not result.accepted
+    checks_by_name = {c.name: c for c in result.checks}
+    assert checks_by_name["fix_diff_real_and_minimal"].passed is False
+    assert "pure insertion" in checks_by_name["fix_diff_real_and_minimal"].detail
+    assert result.verified_bug_lines is None
+
+
+# A 10-line buggy function whose "fix" rewrites almost every line: over the
+# minimal-fix cap of max(5, 20% of 10) = 5 changed original lines. The diff
+# is so smeared that every changed line would count as a "correct" answer,
+# which is no answer key at all -- must reject (D-49's second negative).
+_BUGGY_CODE_TEN_LINES = (
+    "def shipping_rate(weight_kg, zone):\n"
+    "    base = 4.0\n"
+    "    per_kg = 1.5\n"
+    "    surcharge = 0.0\n"
+    "    if zone == 'remote':\n"
+    "        surcharge = 3.0\n"
+    "    total = base + per_kg * weight_kg + surcharge\n"
+    "    if total < 5.0:\n"
+    "        total = 5.0\n"
+    "    return total\n"
+)
+_FIXED_CODE_FULL_REWRITE = (
+    "def shipping_rate(weight_kg, zone):\n"
+    "    minimum = 5.0\n"
+    "    rate = 1.5 * weight_kg\n"
+    "    extra = 3.0 if zone == 'remote' else 0.0\n"
+    "    subtotal = 4.0 + rate + extra\n"
+    "    if subtotal < minimum:\n"
+    "        return minimum\n"
+    "    return subtotal\n"
+)
+
+
+def test_sandbox_gate_rejects_rewrite_sized_diff_as_not_a_minimal_fix() -> None:
+    candidate = _stb_candidate(
+        test_code="assert shipping_rate(2.0, 'local') >= 5.0\n",
+        bug_lines=[7],
+        fixed_code=_FIXED_CODE_FULL_REWRITE,
+    ).model_copy(update={"buggy_code": _BUGGY_CODE_TEN_LINES})
+
+    result = validate_spot_the_bug(candidate, has_bug=True)
+
+    assert not result.accepted
+    checks_by_name = {c.name: c for c in result.checks}
+    assert checks_by_name["fix_diff_real_and_minimal"].passed is False
+    assert "rewrite" in checks_by_name["fix_diff_real_and_minimal"].detail
+    assert result.verified_bug_lines is None
+
+
+def test_sandbox_gate_accepts_candidate_whose_code_lacks_trailing_newlines() -> None:
+    # D-50: the gate inserts the newline separator itself; a generator that
+    # dropped the trailing newline used to produce buggy_code+test_code glued
+    # into a SyntaxError and a false reject.
+    candidate = _stb_candidate(
+        test_code=_STRONG_TEST,
+        bug_lines=[2],
+    ).model_copy(
+        update={
+            "buggy_code": _BUGGY_CODE.rstrip("\n"),
+            "fixed_code": _FIXED_CODE.rstrip("\n"),
+        },
+    )
+
+    result = validate_spot_the_bug(candidate, has_bug=True)
+
+    assert result.accepted, result.as_report()
+    assert result.verified_bug_lines == [2]
+
+
+def test_sandbox_gate_rejects_has_bug_false_candidate_whose_fixed_code_differs_at_all() -> None:
+    # has_bug=False must mean byte-identical code, not merely "bug_lines is
+    # empty" -- a generator that quietly "improves" something it was told is
+    # already correct must still be rejected. Unchanged in strictness by D-49.
+    candidate = _stb_candidate(
+        test_code=_STRONG_TEST.replace(
+            "assert prices == {'A1': 100.0, 'B2': 50.0}, 'input dict was mutated'\n",
+            "",
+        ),
+        bug_lines=[],
+        fixed_code=_FIXED_CODE,  # differs from buggy_code (dict(prices) vs prices)
+    )
+
+    result = validate_spot_the_bug(candidate, has_bug=False)
+
+    assert not result.accepted
+    checks_by_name = {c.name: c for c in result.checks}
+    assert checks_by_name["fix_diff_real_and_minimal"].passed is False
+    assert result.verified_bug_lines is None
 
 
 def _trace_candidate(
@@ -230,3 +434,42 @@ def test_sandbox_network_socket_attempt_fails_closed() -> None:
     assert result.exit_code == 0
     assert "FAILED_CLOSED" in result.stdout
     assert "CONNECTED" not in result.stdout
+
+
+# --- D-57 regression: the sandbox must actually execute code, not silently
+# reject every candidate. Before the fix, a bind-mount delivery path made
+# every real run produce exit_code != 0 and captured_stdout == "" whenever
+# the caller's temp path was not host-visible to the Docker daemon -- a code
+# delivery failure indistinguishable, from the gate's point of view, from a
+# real candidate rejection. This is the trivial `print("ok")` proof the old
+# code path could never pass in that setup.
+
+
+def test_sandbox_run_python_actually_executes_and_returns_nonempty_stdout() -> None:
+    result = run_python('print("ok")\n')
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "ok"
+    assert result.stdout != ""
+
+
+def test_verify_sandbox_available_passes_against_the_real_docker_sandbox() -> None:
+    verify_sandbox_available(force=True)
+
+
+def test_verify_sandbox_available_raises_loud_when_delivery_is_broken(monkeypatch) -> None:
+    # Simulates exactly the bug this canary exists to catch: the delivery
+    # mechanism runs but never reaches the interpreter, so stdout comes back
+    # empty instead of the canary token. Must raise, never silently pass.
+    def _broken(code: str, timeout_s: float) -> SandboxResult:  # noqa: ARG001
+        return SandboxResult(
+            exit_code=1,
+            stdout="",
+            stderr="can't find '__main__' module",
+            timed_out=False,
+        )
+
+    monkeypatch.setattr(runner, "_run_container", _broken)
+
+    with pytest.raises(SandboxUnavailableError, match="canary check failed"):
+        verify_sandbox_available(force=True)

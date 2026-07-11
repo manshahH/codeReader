@@ -10,9 +10,13 @@ SPEC SAMPLER -> [generator_*.md] -> STATIC GATE -> SANDBOX GATE -> [gates.md] ->
 
 | File | Role | Model | Temp |
 |---|---|---|---|
-| `generator_spot_the_bug_python_v1.md` | produces STB candidates | strong model (Sonnet-class or better) | 0.8 |
+| `generator_spot_the_bug_python_v2.md` | produces STB candidates | strong model (Sonnet-class or better) | 0.8 |
 | `generator_trace_python_v1.md` | produces Trace candidates | strong model | 0.8 |
 | `gates_v1.md` | adversarial checks post-sandbox | DIFFERENT model/family than generator | 0.0 |
+
+(`generator_spot_the_bug_python_v1.md` is retired but kept for traceability of
+already-generated candidates; D-46 edited it in place, so v1 on disk reflects
+its final, not original, state -- noted in D-53.)
 
 Generator temperature is high for variety; gate temperature is 0 because gates are judges, not writers.
 
@@ -20,7 +24,7 @@ Generator temperature is high for variety; gate temperature is 0 because gates a
 
 1. **Output is a single JSON object.** No markdown fences, no prose before or after. Pipeline parses with a strict Pydantic schema; anything unparseable is rejected and retried once, then dropped.
 2. **The generator's claimed answers are NEVER trusted.** For trace, `expected_stdout` is discarded and recaptured by sandbox execution. For STB, the twin-snippet invariant (test fails on buggy, passes on fixed, both by execution) is the only ground truth. Generator claims exist only for sanity-diffing: if execution disagrees with the claim, that's a strong reject signal worth logging.
-3. **Line numbers are 1-indexed against the code exactly as emitted**, after the pipeline normalizes line endings to `\n` and strips trailing whitespace per line. The pipeline re-derives and verifies `bug_lines` still point at changed lines by diffing buggy vs fixed.
+3. **Line numbers are 1-indexed against the code exactly as emitted.** The sandbox gate joins code and test with a newline itself if the code's trailing newline is missing (D-50), and DERIVES the published `bug_lines` by diffing buggy vs fixed (D-49) -- the generator's declared `bug_lines` are compared against the diff and logged as a template quality metric, never trusted as the key and never a reject by themselves.
 4. **Determinism rules are absolute** (listed in each template). The sandbox runs everything twice and rejects on any output difference, but the generator must not rely on that safety net.
 5. **stdout comparison rule** (trace): captured stdout is compared after exactly one normalization, stripping the single trailing newline if present. Everything else is byte-exact. Templates instruct the generator to avoid outputs that are fragile under this rule (raw float repr, set iteration, dict ordering games).
 

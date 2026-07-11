@@ -3,6 +3,12 @@
 The ONLY place attempts are aggregated. GET /me/stats, /me/concepts, and the
 percentile field on POST /attempts all read the precomputed exercise_stats /
 user_stats / user_concept_state tables, never GROUP BY attempts live.
+
+D-61: also the only writer of exercises.difficulty_empirical -- a linear
+map of solve_rate onto the 1-10 difficulty scale (solve_rate 1.0 -> 1.0,
+solve_rate 0.0 -> 10.0), written once an exercise version has >=
+MIN_EMPIRICAL_N graded attempts. It is derived operational data, not
+content, so writing it does not touch D-5's content-immutability (D-58).
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ExerciseStat
+from app.sessions.sampler import MIN_EMPIRICAL_N
 
 
 async def compute_exercise_stats(session: AsyncSession) -> int:
@@ -55,5 +62,40 @@ async def compute_exercise_stats(session: AsyncSession) -> int:
         )
         await session.execute(stmt)
 
+    await session.execute(
+        text(
+            """
+            UPDATE exercises e
+            SET difficulty_empirical = least(
+                10, greatest(1, round((1 + 9 * (1 - s.solve_rate))::numeric, 2))
+            )
+            FROM exercise_stats s
+            WHERE s.exercise_id = e.id
+              AND s.exercise_version = e.version
+              AND s.attempts_count >= :min_n
+              AND s.solve_rate IS NOT NULL
+            """,
+        ),
+        {"min_n": MIN_EMPIRICAL_N},
+    )
+
     await session.commit()
     return len(rows)
+
+
+async def _main() -> None:
+    from app.db import create_engine, create_session_factory
+
+    engine = create_engine()
+    try:
+        async with create_session_factory(engine)() as session:
+            count = await compute_exercise_stats(session)
+        print(f"percentiles: computed stats for {count} (exercise, version) pairs")
+    finally:
+        await engine.dispose()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(_main())

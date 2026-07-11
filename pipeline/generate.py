@@ -28,7 +28,9 @@ PROMPTS_DIR = REPO_ROOT / "prompts"
 PYTHON_VERSION = "3.12"
 
 _TEMPLATE_FILES = {
-    "spot_the_bug": PROMPTS_DIR / "generator_spot_the_bug_python_v1.md",
+    # v2 (D-53): dropped the trailing-newline constraint (gate joins with a
+    # newline itself, D-50) and added the exception-to-assertion test example.
+    "spot_the_bug": PROMPTS_DIR / "generator_spot_the_bug_python_v2.md",
     "trace": PROMPTS_DIR / "generator_trace_python_v1.md",
 }
 _SCHEMA_BY_TYPE: dict[str, type[STBCandidate] | type[TraceCandidate]] = {

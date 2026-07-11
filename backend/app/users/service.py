@@ -1,18 +1,21 @@
-"""GET /me/stats, GET /me/concepts (docs/05 section 3).
+"""GET /me/stats, GET /me/concepts, PATCH /me (docs/05 section 3).
 
-Straight reads of the precomputed user_stats / user_concept_state tables --
-never aggregates attempts at request time.
+The stats/concepts reads are straight reads of the precomputed
+user_stats / user_concept_state tables -- never aggregates attempts at
+request time.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.accuracy import project as project_accuracy
-from app.models import UserConceptState, UserStats
+from app.core.errors import ApiError
+from app.models import User, UserConceptState, UserStats
 
 
 async def get_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
@@ -55,3 +58,29 @@ async def get_concepts(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
         }
         for row in rows.scalars().all()
     ]
+
+
+async def update_me(db: AsyncSession, user_id: uuid.UUID, updates: dict) -> User:
+    """Applies only the fields the client actually sent (docs/05: all optional).
+
+    Setting `level` is the onboarding action itself (docs/03: onboarding is
+    "level pick, one screen") -- there is no separate "mark onboarded" call.
+    """
+    user = await db.get(User, user_id)
+    if user is None:
+        raise ApiError(401, "invalid_token", "Access token is invalid.")
+
+    if "display_name" in updates:
+        user.display_name = updates["display_name"]
+    if "timezone" in updates:
+        user.timezone = updates["timezone"]
+    if "level" in updates:
+        user.level = updates["level"]
+        user.onboarded = True
+    if "reminder_local_time" in updates:
+        value = updates["reminder_local_time"]
+        user.reminder_local_time = dt.time.fromisoformat(value) if value else None
+
+    await db.flush()
+    await db.commit()
+    return user

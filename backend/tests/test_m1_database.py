@@ -259,11 +259,17 @@ async def test_next_month_partition_routing(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_exercise_update_guard_blocks_service_update(
+async def test_live_exercise_update_guard_blocks_content_but_permits_status_transitions(
     db_session: AsyncSession,
 ) -> None:
+    """D-58: D-5's immutability protects CONTENT under a live (id, version).
+    Status is operational state -- a live row must be able to leave
+    circulation (pulled/retired), or a bad exercise on the HN front page is
+    unfixable without hand-written SQL.
+    """
     exercise = await make_exercise(db_session, status="live")
 
+    # Content columns stay frozen ...
     with pytest.raises(ExerciseImmutableError):
         await update_exercise_fields(
             db_session,
@@ -271,9 +277,34 @@ async def test_live_exercise_update_guard_blocks_service_update(
             exercise.version,
             {"difficulty_authored": 7},
         )
+    # ... including when smuggled in next to a legitimate status change ...
+    with pytest.raises(ExerciseImmutableError):
+        await update_exercise_fields(
+            db_session,
+            exercise.id,
+            exercise.version,
+            {"status": "pulled", "payload": {"code": "tampered"}},
+        )
+    # ... and a live row can only move to pulled/retired, nowhere else.
+    with pytest.raises(ExerciseImmutableError):
+        await update_exercise_fields(
+            db_session,
+            exercise.id,
+            exercise.version,
+            {"status": "draft"},
+        )
 
     await db_session.refresh(exercise)
     assert exercise.difficulty_authored == 5
+    assert exercise.status == "live"
+
+    pulled = await update_exercise_fields(
+        db_session,
+        exercise.id,
+        exercise.version,
+        {"status": "pulled"},
+    )
+    assert pulled.status == "pulled"
 
 
 @pytest.mark.asyncio

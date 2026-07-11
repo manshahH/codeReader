@@ -13,6 +13,9 @@ mistakes these three for representative launch content.
 Idempotent: fixed UUIDs (uuid5, deterministic from a name), so re-running
 this script is a no-op past the first run (skips any (id, version) already
 present) rather than accumulating duplicates.
+
+Requires CODEREADER_ALLOW_SEED=1 (seed content bypasses the pipeline gates
+and must never reach a shared database; see scripts/seed_guard.py).
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ if str(_BACKEND_ROOT) not in sys.path:
 
 from app.db import create_engine, create_session_factory  # noqa: E402
 from app.models import Exercise  # noqa: E402
+from scripts.seed_guard import require_seed_flag, validate_concepts  # noqa: E402
 
 # Fixed, arbitrary namespace UUID (RFC 4122 uuid5) so re-running this script
 # always derives the same exercise ids -- that's what makes it idempotent.
@@ -245,6 +249,8 @@ EXERCISES = [
 
 
 async def main() -> None:
+    require_seed_flag()
+    validate_concepts(EXERCISES)
     engine = create_engine()
     session_factory = create_session_factory(engine)
     inserted = 0

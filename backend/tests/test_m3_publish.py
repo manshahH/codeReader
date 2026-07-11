@@ -158,11 +158,27 @@ async def test_fix_and_bump_of_a_live_exercise_leaves_the_live_row_untouched(
 async def test_approve_of_an_already_live_version_is_blocked_by_the_immutability_guard(
     db_session: AsyncSession,
 ) -> None:
+    """approve writes human_reviewed/validated_at/published_at, which are
+    content-adjacent columns -- still refused on a live row (D-58 permits
+    STATUS transitions only)."""
     exercise = await _insert(db_session)
     await approve(db_session, exercise.id, exercise.version)
 
     with pytest.raises(ExerciseImmutableError):
-        await kill(db_session, exercise.id, exercise.version)
+        await approve(db_session, exercise.id, exercise.version)
+
+
+@pytest.mark.asyncio
+async def test_kill_of_a_live_version_retires_it(db_session: AsyncSession) -> None:
+    """D-58: status is the one field a live row may change -- before, kill()
+    on a live exercise raised and there was NO code path to take a bad live
+    exercise out of circulation."""
+    exercise = await _insert(db_session)
+    await approve(db_session, exercise.id, exercise.version)
+
+    killed = await kill(db_session, exercise.id, exercise.version)
+
+    assert killed.status == "retired"
 
 
 @pytest.mark.asyncio

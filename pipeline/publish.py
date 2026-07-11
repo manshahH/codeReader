@@ -26,7 +26,12 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exercises.service import ExerciseImmutableError, ExerciseNotFoundError, update_exercise_fields
+from app.exercises.service import (
+    ExerciseImmutableError,
+    ExerciseNotFoundError,
+    pull_exercise,
+    update_exercise_fields,
+)
 from app.models import Exercise
 from pipeline import taxonomy
 from pipeline.config import get_pipeline_settings
@@ -41,7 +46,9 @@ __all__ = [
     "fix_and_bump",
     "insert_candidate",
     "kill",
+    "pull",
     "seed_recent_bug_mechanisms",
+    "write_reject_report",
     "write_validation_report",
 ]
 
@@ -50,6 +57,23 @@ def write_validation_report(report: dict[str, Any], exercise_id: uuid.UUID, vers
     directory = get_pipeline_settings().validation_reports_dir
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{exercise_id}_v{version}.json"
+    path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+    return str(path)
+
+
+def write_reject_report(report: dict[str, Any], *, stage: str, concept: str) -> str:
+    """Persist a REJECTED candidate's validation report (D-48).
+
+    Before this, only published candidates kept their receipts; a rejected
+    one surfaced as a bare counter increment, so diagnosing a bad batch
+    meant paying for another probe run. Rejects land under a `rejects/`
+    subdirectory of the same reports tree, named by the rejecting stage and
+    the spec's concept so a permanently dead concept is visible from a
+    directory listing alone.
+    """
+    directory = get_pipeline_settings().validation_reports_dir / "rejects"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{stage}_{concept}_{uuid.uuid4().hex[:12]}.json"
     path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     return str(path)
 
@@ -195,7 +219,22 @@ async def approve(session: AsyncSession, exercise_id: uuid.UUID, version: int) -
 
 
 async def kill(session: AsyncSession, exercise_id: uuid.UUID, version: int) -> Exercise:
+    """Retire a candidate (or, since D-58, a live row -- status is the one
+    field a live exercise may change). For a LIVE exercise prefer `pull`:
+    kill alone leaves the exercise in already-issued sessions and caches for
+    up to 36h; pull purges them."""
     return await update_exercise_fields(session, exercise_id, version, {"status": "retired"})
+
+
+async def pull(
+    session: AsyncSession,
+    redis,
+    exercise_id: uuid.UUID,
+    version: int,
+) -> tuple[Exercise, int]:
+    """Incident path (D-58): status='pulled' plus purge of every cached/
+    persisted daily session still referencing the exercise. Commits."""
+    return await pull_exercise(session, redis, exercise_id, version)
 
 
 async def fix_and_bump(

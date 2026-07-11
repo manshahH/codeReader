@@ -32,6 +32,30 @@ def alert_refresh_reuse(
     )
 
 
+def alert_dispute_opened(
+    *,
+    dispute_id: int,
+    exercise_id: uuid.UUID,
+    exercise_version: int,
+    user_id: uuid.UUID,
+    reason: str,
+) -> None:
+    """docs/03: dispute button -> disputes table + operator alert; pulling
+    the exercise stays a manual admin action at MVP.
+    """
+    logger.warning(
+        "dispute_opened",
+        extra={
+            "event": "dispute_opened",
+            "dispute_id": dispute_id,
+            "exercise_id": str(exercise_id),
+            "exercise_version": exercise_version,
+            "user_id": str(user_id),
+            "reason": reason,
+        },
+    )
+
+
 def append_attempt_event(event: dict[str, Any]) -> None:
     """Best-effort JSONL append of an attempt event.
 

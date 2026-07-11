@@ -32,6 +32,7 @@ CREATE TABLE users (
   timezone            text        NOT NULL DEFAULT 'UTC',   -- IANA name, validated in app
   level               text        NOT NULL DEFAULT 'mid'
                         CHECK (level IN ('junior','mid','senior')),
+  onboarded           boolean     NOT NULL DEFAULT false,     -- set true by PATCH /me's level pick
   reminder_local_time time,                                  -- NULL = reminders off
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),

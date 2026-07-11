@@ -42,6 +42,28 @@ def test_taxonomy_get_concept_round_trips() -> None:
     assert taxonomy.get_concept(concept.slug) is concept
 
 
+# --- D-54: structurally-impossible concepts are flagged, never sampled ------
+
+_FLAGGED_SLUGS = {"resource-leak-unclosed-file", "retry-without-backoff"}
+
+
+def test_taxonomy_flags_concepts_that_require_forbidden_constructs() -> None:
+    for slug in _FLAGGED_SLUGS:
+        assert taxonomy.get_concept(slug).requires_forbidden  # flagged, not deleted
+
+
+def test_concepts_for_type_excludes_flagged_concepts() -> None:
+    for exercise_type in ("spot_the_bug", "trace"):
+        slugs = {c.slug for c in taxonomy.concepts_for_type(exercise_type)}
+        assert not (slugs & _FLAGGED_SLUGS)
+
+
+def test_sample_spec_never_emits_a_flagged_concept() -> None:
+    rng = random.Random(11)
+    sampled = {sample_spec(rng, "spot_the_bug").concept for _ in range(500)}
+    assert not (sampled & _FLAGGED_SLUGS)
+
+
 # --- spec_sampler ---------------------------------------------------------
 
 
@@ -84,10 +106,15 @@ def test_sample_batch_alternates_type_mix() -> None:
 def test_load_template_parses_stb_template() -> None:
     template = load_template("spot_the_bug")
 
-    assert template.template_id == "stb_py_v1"
+    assert template.template_id == "stb_py_v2"  # D-53
     assert "senior Python engineer" in template.system
     assert "{{concept}}" in template.user
     assert "BEGIN USER" not in template.user
+    # D-53: the exception-to-assertion worked example is in; the v1
+    # trailing-newline constraint is out (the gate joins with a newline
+    # itself, D-50).
+    assert "except RuntimeError" in template.user
+    assert "trailing newline" not in template.user
 
 
 def test_load_template_parses_trace_template() -> None:

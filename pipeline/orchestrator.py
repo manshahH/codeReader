@@ -24,7 +24,13 @@ from pipeline import dedup, static_gate
 from pipeline.explain import finalize_stb_explanation, finalize_trace_explanation
 from pipeline.generate import generate_candidate
 from pipeline.llm_client import LLMClient
-from pipeline.publish import fetch_live_pool_hashes, insert_candidate, seed_recent_bug_mechanisms
+from pipeline.publish import (
+    fetch_live_pool_hashes,
+    insert_candidate,
+    seed_recent_bug_mechanisms,
+    write_reject_report,
+)
+from pipeline.sandbox.runner import verify_sandbox_available
 from pipeline.sandbox_gate import validate_spot_the_bug, validate_trace
 from pipeline.schemas import STBCandidate, TraceCandidate
 from pipeline.semantic_gates import GateVerdict, defect_audit, reasons, solver
@@ -56,14 +62,60 @@ class BatchReport:
         )
 
 
-def _static_gate_check(candidate: STBCandidate | TraceCandidate, spec: ExerciseSpec) -> tuple[bool, list[str]]:
+def _static_gate_check(
+    candidate: STBCandidate | TraceCandidate,
+    spec: ExerciseSpec,
+) -> tuple[bool, list[str]]:
     budget = (spec.line_budget_min, spec.line_budget_max)
     if isinstance(candidate, STBCandidate):
+        # The line budget is a UX constraint on what the user READS, which is
+        # buggy_code only. The fix may legitimately insert lines (D-46), so
+        # fixed_code near the top of the budget must not overflow into a
+        # reject (D-51); every non-length check still runs on both snippets.
         buggy = static_gate.check(candidate.buggy_code, line_budget=budget)
-        fixed = static_gate.check(candidate.fixed_code, line_budget=budget)
+        fixed = static_gate.check(candidate.fixed_code, line_budget=None)
         return (buggy.accepted and fixed.accepted), (buggy.violations + fixed.violations)
     trace_result = static_gate.check(candidate.code, line_budget=budget)
     return trace_result.accepted, trace_result.violations
+
+
+def _candidate_snapshot(candidate: STBCandidate | TraceCandidate) -> dict[str, Any]:
+    if isinstance(candidate, STBCandidate):
+        return {
+            "buggy_code": candidate.buggy_code,
+            "fixed_code": candidate.fixed_code,
+            "test_code": candidate.test_code,
+            "bug_lines": candidate.bug_lines,
+        }
+    return {"code": candidate.code, "expected_stdout": candidate.expected_stdout}
+
+
+def _record_reject(
+    report: BatchReport,
+    spec: ExerciseSpec,
+    stage: str,
+    validation_report: dict[str, Any],
+    candidate: STBCandidate | TraceCandidate,
+) -> None:
+    """Count a rejection and persist its receipts (D-48).
+
+    The per-check report used to be discarded on any reject, leaving only an
+    aggregate counter -- a funnel with no per-check telemetry. Every reject
+    now writes the full report (stage, spec, candidate code, and each gate's
+    check details including stderr) to validation_reports_dir/rejects.
+    """
+    report.counts[f"{stage}_rejected"] += 1
+    report.counts[f"concept:{spec.concept}:rejected"] += 1
+    write_reject_report(
+        {
+            "stage": stage,
+            "spec": dataclasses.asdict(spec),
+            "candidate": _candidate_snapshot(candidate),
+            **validation_report,
+        },
+        stage=stage,
+        concept=spec.concept,
+    )
 
 
 def _run_stb_semantic_gates(
@@ -71,14 +123,20 @@ def _run_stb_semantic_gates(
     spec: ExerciseSpec,
     gate_client: LLMClient,
     report: dict[str, Any],
+    verified_bug_lines: list[int],
 ) -> tuple[bool, Any]:
-    """Returns (survived, defect_audit_outcome) -- the outcome feeds explain.py."""
+    """Returns (survived, defect_audit_outcome) -- the outcome feeds explain.py.
+
+    `verified_bug_lines` is the sandbox gate's diff-derived answer key (D-49),
+    not the generator's claim; every downstream gate judges against the
+    execution-proven lines.
+    """
     has_bug = bool(spec.has_bug)
 
     defect_outcome = defect_audit(
         candidate.buggy_code,
         has_bug=has_bug,
-        bug_lines=candidate.bug_lines,
+        bug_lines=verified_bug_lines,
         llm_client=gate_client,
     )
     report["defect_audit"] = defect_outcome.as_report()
@@ -90,9 +148,9 @@ def _run_stb_semantic_gates(
         "context_note": candidate.context_note,
         "reason_options": [o.model_dump() for o in candidate.reason_options],
     }
-    has_a_bug_line = has_bug and bool(candidate.bug_lines)
+    has_a_bug_line = has_bug and bool(verified_bug_lines)
     correct_answer = (
-        {"line": candidate.bug_lines[0], "reason_id": candidate.correct_reason_id}
+        {"line": verified_bug_lines[0], "reason_id": candidate.correct_reason_id}
         if has_a_bug_line
         else {"reason_id": candidate.correct_reason_id}
     )
@@ -101,6 +159,10 @@ def _run_stb_semantic_gates(
         correct_answer=correct_answer,
         llm_client=gate_client,
         compare_keys=None if has_a_bug_line else {"reason_id"},
+        # D-52: every verified bug line is a correct answer for a multi-line
+        # bug; keying to one exact line wrongly rejected a solver that named
+        # another of them.
+        acceptable_lines=verified_bug_lines if has_a_bug_line else None,
     )
     report["solver"] = solver_outcome.as_report()
     if solver_outcome.verdict == GateVerdict.REJECT:
@@ -154,21 +216,21 @@ async def _attempt_one(
     report.counts["generated_total"] += 1
     if not outcome.survived:
         report.counts[f"generate_discarded:{outcome.discard_reason}"] += 1
+        report.counts[f"concept:{spec.concept}:rejected"] += 1
         return False
     report.counts["generate_passed"] += 1
     candidate = outcome.candidate
     assert candidate is not None  # survived implies not None
 
     static_ok, static_violations = _static_gate_check(candidate, spec)
-    if not static_ok:
-        report.counts["static_gate_rejected"] += 1
-        return False
-    report.counts["static_gate_passed"] += 1
-
     validation_report: dict[str, Any] = {
         "template_id": outcome.template_id,
         "static_gate": {"accepted": static_ok, "violations": static_violations},
     }
+    if not static_ok:
+        _record_reject(report, spec, "static_gate", validation_report, candidate)
+        return False
+    report.counts["static_gate_passed"] += 1
 
     captured_stdout: str | None = None
     verified_bug_lines: list[int] | None = None
@@ -179,19 +241,25 @@ async def _attempt_one(
         sandbox_result = validate_spot_the_bug(candidate, has_bug=has_bug)
         validation_report["sandbox_gate"] = sandbox_result.as_report()
         if not sandbox_result.accepted:
-            report.counts["sandbox_gate_rejected"] += 1
+            _record_reject(report, spec, "sandbox_gate", validation_report, candidate)
             return False
         report.counts["sandbox_gate_passed"] += 1
-        verified_bug_lines = candidate.bug_lines if has_bug else []
+        # D-49: the answer key is the diff-derived lines the sandbox verified,
+        # never the generator's claim. A claim/diff mismatch on a survivor is
+        # a template-quality metric (D-11 style), not a reject.
+        verified_bug_lines = sandbox_result.verified_bug_lines or []
+        if sandbox_result.bug_lines_claim_mismatch:
+            report.counts["stb_bug_lines_claim_mismatch"] += 1
 
         survived, defect_audit_outcome = _run_stb_semantic_gates(
             candidate,
             spec,
             gate_client,
             validation_report,
+            verified_bug_lines,
         )
         if not survived:
-            report.counts["semantic_gate_rejected"] += 1
+            _record_reject(report, spec, "semantic_gate", validation_report, candidate)
             return False
         report.counts["semantic_gate_passed"] += 1
 
@@ -200,14 +268,14 @@ async def _attempt_one(
         sandbox_result = validate_trace(candidate)
         validation_report["sandbox_gate"] = sandbox_result.as_report()
         if not sandbox_result.accepted:
-            report.counts["sandbox_gate_rejected"] += 1
+            _record_reject(report, spec, "sandbox_gate", validation_report, candidate)
             return False
         report.counts["sandbox_gate_passed"] += 1
         captured_stdout = sandbox_result.captured_stdout
 
         survived = _run_trace_semantic_gates(candidate, gate_client, validation_report)
         if not survived:
-            report.counts["semantic_gate_rejected"] += 1
+            _record_reject(report, spec, "semantic_gate", validation_report, candidate)
             return False
         report.counts["semantic_gate_passed"] += 1
 
@@ -215,7 +283,7 @@ async def _attempt_one(
 
     content_hash = dedup.content_hash(code_for_dedup)
     if dedup.is_duplicate(code_for_dedup, live_pool_hashes):
-        report.counts["dedup_rejected"] += 1
+        _record_reject(report, spec, "dedup", validation_report, candidate)
         return False
     report.counts["dedup_passed"] += 1
     live_pool_hashes.add(content_hash)  # this run's own candidates count too
@@ -246,6 +314,7 @@ async def _attempt_one(
         verified_bug_lines=verified_bug_lines,
     )
     report.counts["published_in_review"] += 1
+    report.counts[f"concept:{spec.concept}:published"] += 1
     report.published.append((str(exercise.id), exercise.version))
 
     if isinstance(candidate, STBCandidate) and spec.has_bug:
@@ -281,6 +350,10 @@ async def run_batch(
     rng = rng or random.Random()
     report = BatchReport()
 
+    # D-57: prove the sandbox actually executes code before trusting any of
+    # this batch's rejections -- see verify_sandbox_available's docstring.
+    verify_sandbox_available()
+
     recent_bug_mechanisms = (
         await seed_recent_bug_mechanisms(session) if seed_history_from_db else {}
     )
@@ -313,6 +386,7 @@ async def run_batch(
             if published:
                 break
         if not published:
+            report.counts[f"concept:{spec.concept}:exhausted"] += 1
             report.spec_exhausted.append(spec)
 
     report.log_summary()
@@ -322,8 +396,9 @@ async def run_batch(
 def _demo_mock_clients(n: int) -> tuple[LLMClient, LLMClient, list[ExerciseSpec]]:
     """A trivially-passing scripted pair for `--mock` CLI demo runs only.
 
-    Real batches sample specs from the taxonomy via the RNG and wire
-    AnthropicLLMClient for both models; tests build their own ScriptedLLMClient
+    Real batches sample specs from the taxonomy via the RNG and wire a real
+    client (per GENERATOR_PROVIDER/GATE_PROVIDER, via build_llm_client) for
+    both models; tests build their own ScriptedLLMClient
     sequences to exercise specific pass/reject paths. This demo path uses two
     FIXED specs (one per type) sized to match the two fixed demo candidates'
     actual line counts -- sampling real random specs here would size-mismatch
@@ -466,15 +541,29 @@ def _demo_mock_clients(n: int) -> tuple[LLMClient, LLMClient, list[ExerciseSpec]
 
     generator = _ContentAwareDemoClient(
         {
-            ('Create one "spot the bug" exercise.',): [_json.dumps(good_stb), _json.dumps(good_stb_2)],
-            ('Create one "trace the output" exercise.',): [_json.dumps(good_trace), _json.dumps(good_trace_2)],
+            ('Create one "spot the bug" exercise.',): [
+                _json.dumps(good_stb),
+                _json.dumps(good_stb_2),
+            ],
+            ('Create one "trace the output" exercise.',): [
+                _json.dumps(good_trace),
+                _json.dumps(good_trace_2),
+            ],
         },
     )
     gate = _ContentAwareDemoClient(
         {
             ("auditing a piece of Python",): [
                 _json.dumps(
-                    {"defects": [{"lines": [2], "description": "aliasing", "exposed_by": "mutation test"}]},
+                    {
+                        "defects": [
+                            {
+                                "lines": [2],
+                                "description": "aliasing",
+                                "exposed_by": "mutation test",
+                            },
+                        ],
+                    },
                 ),
             ],
             ("For EACH candidate, classify it",): [
@@ -491,12 +580,20 @@ def _demo_mock_clients(n: int) -> tuple[LLMClient, LLMClient, list[ExerciseSpec]
             ],
             ("taking a code-reading exercise", "reason_options"): [
                 _json.dumps(
-                    {"answer": {"line": 2, "reason_id": "a"}, "confidence": 0.95, "problems_with_the_exercise": []},
+                    {
+                        "answer": {"line": 2, "reason_id": "a"},
+                        "confidence": 0.95,
+                        "problems_with_the_exercise": [],
+                    },
                 ),
             ],
             ("taking a code-reading exercise", "choices"): [
                 _json.dumps(
-                    {"answer": {"choice_id": "a"}, "confidence": 0.95, "problems_with_the_exercise": []},
+                    {
+                        "answer": {"choice_id": "a"},
+                        "confidence": 0.95,
+                        "problems_with_the_exercise": [],
+                    },
                 ),
             ],
         },
@@ -510,7 +607,7 @@ def main(argv: list[str] | None = None) -> None:
 
     from app.db import create_engine, create_session_factory
     from pipeline.config import get_pipeline_settings
-    from pipeline.llm_client import AnthropicLLMClient
+    from pipeline.llm_client import build_llm_client
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -520,7 +617,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--mock",
         action="store_true",
-        help="use a trivially-passing scripted LLM pair instead of the real Anthropic API",
+        help="use a trivially-passing scripted LLM pair instead of the real LLM provider",
     )
     args = parser.parse_args(argv)
 
@@ -531,8 +628,10 @@ def main(argv: list[str] | None = None) -> None:
             generator_client, gate_client, specs = _demo_mock_clients(args.n)
             generator_model = "mock-generator"
         else:
-            generator_client = AnthropicLLMClient(settings.GENERATOR_MODEL)
-            gate_client = AnthropicLLMClient(settings.GATE_MODEL)
+            generator_client = build_llm_client(
+                settings.GENERATOR_PROVIDER, settings.GENERATOR_MODEL,
+            )
+            gate_client = build_llm_client(settings.GATE_PROVIDER, settings.GATE_MODEL)
             generator_model = settings.GENERATOR_MODEL
 
         engine = create_engine(settings.DATABASE_URL)

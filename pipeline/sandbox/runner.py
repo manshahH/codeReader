@@ -6,6 +6,18 @@ does not inherit the caller's environment unless -e/--env-file is passed, and
 this module never passes either). Runs as a sibling container over the local
 or remote (SANDBOX_HOST) Docker socket -- never in-process, per invariant #7
 (sandbox code is hostile).
+
+Code delivery is via stdin (D-57), not a bind mount: `docker run -i ... python
+-I -B -` reads the candidate straight from the subprocess pipe. A bind mount
+(`-v <tmp_path>:/sandbox/code.py`) only works when <tmp_path> is visible to
+the daemon actually running the container; when the caller itself runs inside
+a container (a sibling container setup over a mounted docker.sock -- the real
+pipeline deployment), the caller's temp path is not host-visible, so the host
+daemon silently creates an empty directory at the mount target instead of
+failing. Every candidate then "fails" with can't-find-__main__ and empty
+captured_stdout, indistinguishable from a real gate rejection. Piping via
+stdin has no path to resolve, so it is correct identically whether the caller
+is on the host or nested in a container.
 """
 
 from __future__ import annotations
@@ -13,7 +25,6 @@ from __future__ import annotations
 import dataclasses
 import os
 import subprocess
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -24,6 +35,11 @@ DOCKERFILE_DIR = Path(__file__).resolve().parent
 DEFAULT_TIMEOUT_S = 5.0
 HOST_TIMEOUT_BUFFER_S = 5.0
 TIMEOUT_EXIT_CODE = 124
+# D-57: proves the delivery mechanism actually reaches the interpreter before
+# a batch trusts any real rejection. Unlikely enough not to collide with a
+# candidate's own output.
+_CANARY_TOKEN = "codereader-sandbox-canary-3f9a21c6"
+_sandbox_verified = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -68,6 +84,69 @@ def ensure_image_built(*, force: bool = False) -> None:
         raise SandboxUnavailableError(f"failed to build sandbox image:\n{build.stderr}")
 
 
+def _docker_run_cmd(container_name: str, internal_timeout: int) -> list[str]:
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "-i",
+        f"--name={container_name}",
+        "--network=none",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,size=16m",
+        "--memory=128m",
+        "--memory-swap=128m",
+        "--cpus=0.5",
+        "--pids-limit=64",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        IMAGE_NAME,
+        "timeout",
+        "-k",
+        "1",
+        str(internal_timeout),
+        "python",
+        "-I",
+        "-B",
+        "-",
+    ]
+
+
+def _run_container(code: str, timeout_s: float) -> SandboxResult:
+    container_name = f"codereader-sbx-{uuid.uuid4().hex}"
+    internal_timeout = max(1, int(timeout_s))
+    cmd = _docker_run_cmd(container_name, internal_timeout)
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=code,
+            capture_output=True,
+            text=True,
+            env=_docker_env(),
+            timeout=timeout_s + HOST_TIMEOUT_BUFFER_S,
+            check=False,
+        )
+        return SandboxResult(
+            exit_code=proc.returncode,
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+            timed_out=proc.returncode == TIMEOUT_EXIT_CODE,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        return SandboxResult(exit_code=None, stdout=stdout, stderr=stderr, timed_out=True)
+    finally:
+        subprocess.run(
+            ["docker", "rm", "-f", container_name],
+            capture_output=True,
+            text=True,
+            env=_docker_env(),
+            check=False,
+        )
+
+
 def run_python(code: str, timeout_s: float = DEFAULT_TIMEOUT_S) -> SandboxResult:
     """Execute `code` as a standalone script inside the sandbox container.
 
@@ -76,64 +155,30 @@ def run_python(code: str, timeout_s: float = DEFAULT_TIMEOUT_S) -> SandboxResult
     reported in the result for the gate to interpret.
     """
     ensure_image_built()
-    container_name = f"codereader-sbx-{uuid.uuid4().hex}"
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        code_path = Path(tmp_dir) / "code.py"
-        code_path.write_text(code, encoding="utf-8", newline="\n")
-        code_path.chmod(0o644)
+    return _run_container(code, timeout_s)
 
-        internal_timeout = max(1, int(timeout_s))
-        cmd = [
-            "docker",
-            "run",
-            "--rm",
-            f"--name={container_name}",
-            "--network=none",
-            "--read-only",
-            "--tmpfs",
-            "/tmp:rw,size=16m",
-            "--memory=128m",
-            "--memory-swap=128m",
-            "--cpus=0.5",
-            "--pids-limit=64",
-            "--cap-drop=ALL",
-            "--security-opt=no-new-privileges",
-            "-v",
-            f"{code_path}:/sandbox/code.py:ro",
-            IMAGE_NAME,
-            "timeout",
-            "-k",
-            "1",
-            str(internal_timeout),
-            "python",
-            "-I",
-            "-B",
-            "/sandbox/code.py",
-        ]
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                env=_docker_env(),
-                timeout=timeout_s + HOST_TIMEOUT_BUFFER_S,
-                check=False,
-            )
-            return SandboxResult(
-                exit_code=proc.returncode,
-                stdout=proc.stdout,
-                stderr=proc.stderr,
-                timed_out=proc.returncode == TIMEOUT_EXIT_CODE,
-            )
-        except subprocess.TimeoutExpired as exc:
-            stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-            stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-            return SandboxResult(exit_code=None, stdout=stdout, stderr=stderr, timed_out=True)
-        finally:
-            subprocess.run(
-                ["docker", "rm", "-f", container_name],
-                capture_output=True,
-                text=True,
-                env=_docker_env(),
-                check=False,
-            )
+
+def verify_sandbox_available(*, force: bool = False) -> None:
+    """Prove the sandbox actually executes code before a batch trusts it.
+
+    D-57: a bind-mount delivery bug made every candidate "fail" with empty
+    captured_stdout whenever the caller ran inside a container -- silently,
+    with no error, indistinguishable from a real gate rejection. This canary
+    runs the exact same delivery path (`_run_container`) as every real
+    candidate and raises loud instead of letting a whole batch silently
+    reject everything. Cached per process after the first success (`force`
+    re-runs it); call at the top of a batch, not per-candidate.
+    """
+    global _sandbox_verified
+    if _sandbox_verified and not force:
+        return
+    ensure_image_built()
+    result = _run_container(f"print({_CANARY_TOKEN!r})", DEFAULT_TIMEOUT_S)
+    if result.stdout.strip() != _CANARY_TOKEN:
+        raise SandboxUnavailableError(
+            "sandbox canary check failed: the sandbox is not actually executing "
+            f"code (expected stdout {_CANARY_TOKEN!r}, got stdout={result.stdout!r} "
+            f"stderr={result.stderr!r} exit_code={result.exit_code}). Refusing to "
+            "run a batch that would silently reject every candidate."
+        )
+    _sandbox_verified = True

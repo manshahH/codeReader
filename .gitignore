@@ -12,7 +12,14 @@ build/
 *.egg-info/
 node_modules/
 frontend/dist/
+frontend/dev-dist/
 frontend/.vite/
+frontend/playwright-report/
+frontend/test-results/
+frontend/e2e/.auth/
+frontend/.e2e-token.env
+frontend/.lh-token.txt
+frontend/lighthouse-*.report.*
 *.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
@@ -27,3 +34,5 @@ pnpm-debug.log*
 docker-compose.override.yml
 pipeline/validation_reports/
 data/events/
+backend/data/
+frontend/.env.local

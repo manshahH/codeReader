@@ -11,7 +11,6 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +24,14 @@ class PipelineSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=True)
 
     DATABASE_URL: str = "postgresql://codereader:codereader@localhost:5432/codereader"
-    ANTHROPIC_API_KEY: str = Field(..., min_length=1)
+    # Optional by design (D-44): the pipeline is OpenAI-only by default and must
+    # import/run with no Anthropic key present. Whichever provider is actually
+    # selected has its key validated lazily, at client-construction time, in
+    # pipeline/llm_client.py -- not here.
+    ANTHROPIC_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    GENERATOR_PROVIDER: str = "openai"
+    GATE_PROVIDER: str = "openai"
     GATE_MODEL: str = "gate-model-placeholder"
     GENERATOR_MODEL: str = "generator-model-placeholder"
     SANDBOX_HOST: str = ""

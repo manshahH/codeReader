@@ -1,4 +1,4 @@
-"""Human review CLI: list / show / approve / kill / fix.
+"""Human review CLI: list / show / approve / kill / fix / pull.
 
 Budget 60-90s per exercise (docs/01): review means verifying the receipts in
 the validation report, not re-deriving the answer from scratch.
@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import create_engine, create_session_factory
 from app.models import Exercise
-from pipeline.publish import approve, fix_and_bump, kill
+from pipeline.publish import approve, fix_and_bump, kill, pull
 
 
 async def cmd_list(session: AsyncSession, *, limit: int = 50) -> list[Exercise]:
@@ -47,6 +47,15 @@ async def cmd_kill(session: AsyncSession, exercise_id: uuid.UUID, version: int) 
     return await kill(session, exercise_id, version)
 
 
+async def cmd_pull(
+    session: AsyncSession,
+    redis,
+    exercise_id: uuid.UUID,
+    version: int,
+) -> tuple[Exercise, int]:
+    return await pull(session, redis, exercise_id, version)
+
+
 async def cmd_fix(
     session: AsyncSession,
     exercise_id: uuid.UUID,
@@ -69,7 +78,10 @@ def print_show(exercise: Exercise | None) -> None:
     if exercise is None:
         print("not found")
         return
-    print(f"id={exercise.id} version={exercise.version} type={exercise.type} status={exercise.status}")
+    print(
+        f"id={exercise.id} version={exercise.version}"
+        f" type={exercise.type} status={exercise.status}",
+    )
     print(f"concepts={exercise.concepts} difficulty={exercise.difficulty_authored}")
     print("--- payload (what the client sees) ---")
     print(json.dumps(exercise.payload, indent=2))
@@ -113,6 +125,13 @@ def main(argv: list[str] | None = None) -> None:
     kill_parser.add_argument("exercise_id", type=uuid.UUID)
     kill_parser.add_argument("version", type=int)
 
+    pull_parser = sub.add_parser(
+        "pull",
+        help="incident: pull a LIVE exercise -> pulled, purging cached sessions",
+    )
+    pull_parser.add_argument("exercise_id", type=uuid.UUID)
+    pull_parser.add_argument("version", type=int)
+
     fix_parser = sub.add_parser("fix", help="fix-and-bump: create version+1 with overrides")
     fix_parser.add_argument("exercise_id", type=uuid.UUID)
     fix_parser.add_argument("version", type=int)
@@ -130,20 +149,49 @@ def main(argv: list[str] | None = None) -> None:
         exercises = asyncio.run(_run(lambda session: cmd_list(session, limit=args.limit)))
         print_list(exercises)
     elif args.command == "show":
-        exercise = asyncio.run(_run(lambda session: cmd_show(session, args.exercise_id, args.version)))
+        exercise = asyncio.run(
+            _run(lambda session: cmd_show(session, args.exercise_id, args.version)),
+        )
         print_show(exercise)
     elif args.command == "approve":
-        exercise = asyncio.run(_run(lambda session: cmd_approve(session, args.exercise_id, args.version)))
+        exercise = asyncio.run(
+            _run(lambda session: cmd_approve(session, args.exercise_id, args.version)),
+        )
         print(f"approved: {exercise.id} v{exercise.version} -> live")
     elif args.command == "kill":
-        exercise = asyncio.run(_run(lambda session: cmd_kill(session, args.exercise_id, args.version)))
+        exercise = asyncio.run(
+            _run(lambda session: cmd_kill(session, args.exercise_id, args.version)),
+        )
         print(f"killed: {exercise.id} v{exercise.version} -> retired")
+    elif args.command == "pull":
+
+        async def _pull_with_redis(session: AsyncSession) -> tuple[Exercise, int]:
+            from redis.asyncio import Redis
+
+            from app.config import get_settings
+
+            redis = Redis.from_url(get_settings().REDIS_URL, decode_responses=True)
+            try:
+                return await cmd_pull(session, redis, args.exercise_id, args.version)
+            finally:
+                await redis.aclose()
+
+        exercise, purged = asyncio.run(_run(_pull_with_redis))
+        print(
+            f"pulled: {exercise.id} v{exercise.version} -> pulled;"
+            f" purged {purged} cached session(s)",
+        )
     elif args.command == "fix":
-        overrides = {key: json.loads(value) for key, _, value in (f.partition("=") for f in args.field)}
+        overrides = {
+            key: json.loads(value) for key, _, value in (f.partition("=") for f in args.field)
+        }
         bumped = asyncio.run(
             _run(lambda session: cmd_fix(session, args.exercise_id, args.version, overrides)),
         )
-        print(f"bumped: {args.exercise_id} v{args.version} -> v{bumped.version} (status={bumped.status})")
+        print(
+            f"bumped: {args.exercise_id} v{args.version}"
+            f" -> v{bumped.version} (status={bumped.status})",
+        )
 
 
 if __name__ == "__main__":

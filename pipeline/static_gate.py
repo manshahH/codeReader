@@ -113,7 +113,12 @@ def _iter_identifiers(tree: ast.AST) -> list[str]:
     return names
 
 
-def check(code: str, *, line_budget: tuple[int, int]) -> StaticGateResult:
+def check(code: str, *, line_budget: tuple[int, int] | None) -> StaticGateResult:
+    """`line_budget=None` skips the length check only (D-51): the budget is a
+    UX constraint on the code the user reads (buggy_code / trace code), so a
+    fixed_code that legitimately grew past it via an inserted fix line is not
+    a violation. Every other check always runs.
+    """
     violations: list[str] = []
 
     try:
@@ -121,10 +126,11 @@ def check(code: str, *, line_budget: tuple[int, int]) -> StaticGateResult:
     except SyntaxError as exc:
         return StaticGateResult(accepted=False, violations=[f"syntax_error: {exc}"])
 
-    line_count = len(code.splitlines())
-    lo, hi = line_budget
-    if not (lo <= line_count <= hi):
-        violations.append(f"line_count {line_count} outside budget [{lo}, {hi}]")
+    if line_budget is not None:
+        line_count = len(code.splitlines())
+        lo, hi = line_budget
+        if not (lo <= line_count <= hi):
+            violations.append(f"line_count {line_count} outside budget [{lo}, {hi}]")
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -153,12 +159,16 @@ def check(code: str, *, line_budget: tuple[int, int]) -> StaticGateResult:
     for comment in _iter_comments(code):
         for word in HINT_WORDS:
             if re.search(rf"\b{re.escape(word)}\b", comment, re.IGNORECASE):
-                violations.append(f"hinting word {word!r} found in comment: {comment.strip()[:60]!r}")
+                violations.append(
+                    f"hinting word {word!r} found in comment: {comment.strip()[:60]!r}",
+                )
 
     for docstring in _iter_docstrings(tree):
         for word in HINT_WORDS:
             if re.search(rf"\b{re.escape(word)}\b", docstring, re.IGNORECASE):
-                violations.append(f"hinting word {word!r} found in docstring: {docstring.strip()[:60]!r}")
+                violations.append(
+                    f"hinting word {word!r} found in docstring: {docstring.strip()[:60]!r}",
+                )
 
     for pattern in _SECRET_PATTERNS:
         if pattern.search(code):

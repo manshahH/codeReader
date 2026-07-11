@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -19,6 +20,17 @@ if str(_REPO_ROOT) not in sys.path:
     # pytest invocation's rootdir/cwd; pipeline/ lives at the repo root,
     # outside the `app` package this pyproject.toml installs.
     sys.path.insert(0, str(_REPO_ROOT))
+
+# Module-level, not a fixture: pydantic-settings resolves Settings' env_file
+# (".env") relative to cwd, and pytest runs from the repo root, where the
+# untracked, gitignored root .env carries a real SENTRY_DSN for local compose
+# use. Several test modules import `app.main` (which calls init_sentry()) at
+# module scope, so pytest collection itself -- before any test or fixture
+# runs -- would otherwise initialize a real Sentry client and start sending
+# telemetry for a plain test run. An OS env var beats the .env file in
+# pydantic-settings' precedence, so this neutralizes it for the whole
+# session; any test that wants Sentry actually active sets SENTRY_DSN itself.
+os.environ.setdefault("SENTRY_DSN", "")
 
 
 @pytest.fixture(scope="session")

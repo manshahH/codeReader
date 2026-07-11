@@ -187,6 +187,49 @@ async def test_orchestrator_end_to_end_publishes_all_good_candidates_and_reports
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_persists_reject_reports_and_per_concept_counts(
+    db_session: AsyncSession,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # D-48: a rejected candidate's receipts (stage, spec, candidate code, gate
+    # details) land on disk; the concept's reject/exhausted counters make a
+    # dead concept visible instead of aggregate noise.
+    from pipeline.config import PipelineSettings
+
+    settings = PipelineSettings(VALIDATION_REPORTS_DIR=str(tmp_path))
+    monkeypatch.setattr("pipeline.publish.get_pipeline_settings", lambda: settings)
+
+    bad_stb = dict(_GOOD_STB_JSON)
+    bad_stb["buggy_code"] = "import random\n" + _GOOD_STB_JSON["buggy_code"]
+    generator_client = ScriptedLLMClient([json.dumps(bad_stb)] * 3)
+    gate_client = ScriptedLLMClient([])
+
+    report = await run_batch(
+        db_session,
+        1,
+        generator_client=generator_client,
+        gate_client=gate_client,
+        generator_model="generator-model-placeholder",
+        specs=[_STB_SPEC],
+        seed_history_from_db=False,
+    )
+
+    assert report.counts["static_gate_rejected"] == 3
+    assert report.counts["concept:aliasing-vs-copy:rejected"] == 3
+    assert report.counts["concept:aliasing-vs-copy:exhausted"] == 1
+    assert len(report.spec_exhausted) == 1
+
+    reject_files = sorted((tmp_path / "rejects").glob("static_gate_aliasing-vs-copy_*.json"))
+    assert len(reject_files) == 3
+    payload = json.loads(reject_files[0].read_text(encoding="utf-8"))
+    assert payload["stage"] == "static_gate"
+    assert payload["spec"]["concept"] == "aliasing-vs-copy"
+    assert payload["candidate"]["buggy_code"].startswith("import random\n")
+    assert any("forbidden import" in v for v in payload["static_gate"]["violations"])
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_exhausts_a_spec_and_records_reject_counts_when_every_attempt_fails(
     db_session: AsyncSession,
 ) -> None:

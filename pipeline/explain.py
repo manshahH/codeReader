@@ -72,10 +72,18 @@ def finalize_stb_explanation(
         "mismatch_flagged": mismatch,
         "mismatch_detail": detail,
     }
-    return FinalExplanation(explanation=explanation, mismatch_flagged=mismatch, mismatch_detail=detail)
+    return FinalExplanation(
+        explanation=explanation,
+        mismatch_flagged=mismatch,
+        mismatch_detail=detail,
+    )
 
 
-def finalize_trace_explanation(candidate: TraceCandidate, *, captured_stdout: str) -> FinalExplanation:
+def finalize_trace_explanation(
+    candidate: TraceCandidate,
+    *,
+    captured_stdout: str,
+) -> FinalExplanation:
     draft = candidate.draft_explanation
     mismatch = captured_stdout not in draft.summary
     detail = (
@@ -99,4 +107,8 @@ def finalize_trace_explanation(candidate: TraceCandidate, *, captured_stdout: st
         "mismatch_flagged": mismatch,
         "mismatch_detail": detail,
     }
-    return FinalExplanation(explanation=explanation, mismatch_flagged=mismatch, mismatch_detail=detail)
+    return FinalExplanation(
+        explanation=explanation,
+        mismatch_flagged=mismatch,
+        mismatch_detail=detail,
+    )
