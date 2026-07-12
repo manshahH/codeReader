@@ -60,7 +60,7 @@ Begins OAuth (Authorization Code + PKCE).
 - Sets `rt` cookie, then `302` to the SPA (`https://app.<domain>/welcome`). **No tokens ever appear in URLs.**
 - SPA immediately calls `POST /auth/refresh` to obtain its first access token.
 
-Failure modes: invalid/expired state -> `302` to SPA `/login?error=oauth_state`; GitHub error passthrough -> `/login?error=oauth_denied`.
+Failure modes: invalid/expired state -> `302` to SPA `/login?error=oauth_state`; GitHub error passthrough -> `/login?error=oauth_denied`; authenticated GitHub identity not on the beta allowlist (`users.beta_allowed=false`, M8 D-78) -> `302` to SPA `/login?error=beta_required`, no `rt` cookie set (the `users`/`auth_identities` upsert is still committed, so an admin can grant access by username without a second login).
 
 ### `POST /auth/refresh`
 Cookie-authenticated. Rotates the refresh token (old row gets `rotated_at`; same `family_id`), sets the new cookie.
@@ -105,6 +105,16 @@ Body (all optional): `display_name`, `timezone` (IANA, validated), `level`, `rem
 
 ### `GET /me/concepts`
 Skill graph. `[{ "concept": "mutable-default-arg", "mastery": 0.62, "attempts": 9, "next_review_at": "2026-07-09T00:00:00Z" }, ...]` sorted weakest-first.
+
+### `GET /me/activity?from=&to=`
+Contribution-grid data (D-94). Both params optional; default window is the 365 days ending "today" in the user's own timezone.
+```json
+[
+  { "session_date": "2026-07-05", "completed": true },
+  { "session_date": "2026-07-06", "completed": false }
+]
+```
+One entry per `daily_sessions` row in range -- a date with no entry means the user never opened the app that day. `completed: false` means opened but not finished.
 
 ---
 
@@ -151,6 +161,29 @@ Guarantees:
 
 There is **no** standalone `GET /exercises/{id}` at MVP. The session is the only content channel: fewer scraping surfaces, and the "not in your session" rule below stays enforceable.
 
+### `GET /session/today/review`
+"Review today's session" (D-97). Every exercise from today's session the user has already submitted an answer for -- their answer, the verdict, and the full reveal, reusing `build_reveal`/`build_summarize_reveal` verbatim (the same builders `POST /attempts`/`GET /attempts/{id}` call). Unattempted exercises are omitted.
+```json
+{
+  "session_date": "2026-07-06",
+  "exercises": [
+    {
+      "slot": 1,
+      "exercise_id": "9f3a7c...",
+      "version": 3,
+      "type": "spot_the_bug",
+      "concepts": ["mutable-default-arg"],
+      "code": "def add_item(item, bucket=[]):\n ...",
+      "context_note": "Part of a cart service.",
+      "answer": { "line": 1, "reason_id": "a" },
+      "verdict": "correct",
+      "reveal": { "correct_lines": [1], "correct_reason_id": "a", "explanation": { "...": "..." } }
+    }
+  ]
+}
+```
+`verdict` is one of `correct | incorrect | skipped | grading_pending | grading_failed`.
+
 ---
 
 ## 5. Attempts
@@ -170,7 +203,10 @@ Answer shapes by type (validated server-side, else `422`):
 |---|---|
 | `spot_the_bug` | `{ "line": int, "reason_id": string }` |
 | `trace` | `{ "choice_id": string }` |
+| `predict_the_fix` | `{ "choice_id": string }` |
 | `summarize` | `{ "text": string }` (<= 60 words) |
+
+**"I don't know" (D-93):** for `spot_the_bug`/`trace`/`predict_the_fix` only (not `summarize`), `{ "skipped": true }` is also accepted -- its own exact-key-set branch, not a relaxation of the shapes above. Returns `"status": "skipped"`, `"is_correct": null`, and the full `reveal` (it still teaches, per docs/08's copy voice: the app never scolds).
 
 Rules: exercise must be in today's uncompleted session for this user (else `403 exercise_not_in_session`); one graded attempt per exercise per session (else `409 already_attempted`).
 
@@ -191,9 +227,10 @@ Rules: exercise must be in today's uncompleted session for this user (else `403 
   },
   "percentile": { "solve_rate": 0.31, "n": 412 },        // null until n >= 30
   "streak": { "current": 13, "event": "extended" },       // null if already counted today
-  "session": { "completed": false, "remaining": 2 }
+  "session": { "completed": false, "remaining": 2, "first_completed_session": false }
 }
 ```
+`session.first_completed_session` (D-95) is `true` only on the single attempt response that both completes today's session AND is the user's first-ever completed daily session -- the client's cue to show the beta review prompt (section 6). It is computed once, at the moment `daily_sessions.completed_at` is set; a byte-identical idempotency replay of that same request still carries `true` (it's the cached body), but no other request ever recomputes it, so it is `false` everywhere else.
 
 **`summarize` -> synchronous inline grading (6s budget):** same `200` shape, plus:
 ```json
@@ -211,7 +248,21 @@ Own attempts only. Returns the same grade shape; `grading_pending` until resolve
 
 ---
 
-## 6. Disputes
+## 6. Reviews (beta feedback)
+
+### `POST /me/review`
+Upsert (D-96): one review per user, enforced by a DB-level UNIQUE on `user_id`. Safe to call more than once; each call replaces the previous review.
+```json
+{ "rating": 5, "body": "Wish I'd had this in my first year." }
+```
+`200` with the stored review (`rating`, `body`, `created_at`, `updated_at`).
+
+### `GET /me/review`
+`200 { "reviewed": true, "review": { "rating": 5, "body": "...", "created_at": "...", "updated_at": "..." } }` or `{ "reviewed": false, "review": null }`. The client's cue to never show the review prompt twice.
+
+---
+
+## 7. Disputes
 
 ### `POST /exercises/{exercise_id}/v/{version}/dispute`
 ```json
@@ -221,16 +272,16 @@ Own attempts only. Returns the same grade shape; `grading_pending` until resolve
 
 ---
 
-## 7. Ops
+## 8. Ops
 
 ### `GET /healthz` (public)
 `200 { "status": "ok" }` : checks DB and Redis connectivity. LLM provider health is reported in metrics, not here (its failure degrades, not downs, the app).
 
-Admin/review endpoints (`/admin/*`) are a separate internal app behind its own auth; deliberately out of this public contract.
+Admin/review endpoints (`/admin/*`) are a separate internal app behind its own auth; deliberately out of this public contract. `GET /admin/reviews` (D-96) lists every submitted review, gated by the same `X-Admin-Token` shared secret as the rest of `/admin/*`.
 
 ---
 
-## 8. Contract-level invariants (CI-enforced)
+## 9. Contract-level invariants (CI-enforced)
 
 1. No response serializes `grading` or `explanation` before a graded attempt exists (leak test greps serialized session bundles).
 2. Exercises are immutable per version; any reveal content is tied to `(exercise_id, version)`.

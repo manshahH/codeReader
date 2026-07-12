@@ -716,3 +716,1671 @@ D-63 Sentry wired ahead of the rest of M7 (docs/06's "Sentry; dashboard..."
      pydantic-settings' precedence; any test that wants Sentry actually
      active still can via its own `monkeypatch.setenv`. Cost: one
      ops-adjacent module-level line in conftest.py; no test logic changed.
+
+D-64 M7 rate limiting is now enforced on EVERY route via a global default
+     middleware (app/main.py::default_rate_limit, 60/min per docs/05, keyed
+     on the JWT sub when present else client IP), not just the routes that
+     happened to call check_token_bucket themselves (previously only auth
+     and POST /attempts; /session/today, /me*, disputes, GET
+     /attempts/{id}, and the new /admin/metrics had none at all). Auth
+     (10/min per IP) and POST /attempts (10/min per user) keep their own
+     stricter self-enforcement and are exempted from the default
+     middleware rather than double-limited. Same fix closes a real bypass:
+     auth/router.py::_client_ip read the LEFTMOST (client-suppliable)
+     X-Forwarded-For entry, so an attacker rotating that header got a
+     fresh rate-limit bucket key every request and the 10/min auth limit
+     never actually engaged. app/core/network.py::resolve_client_ip now
+     reads the RIGHTMOST TRUSTED_PROXY_COUNT entries instead (new setting,
+     default 1, matching docs/03's single-LB topology) -- the hop(s) a
+     real trusted proxy appends, never a value the client itself can set.
+     TRUSTED_PROXY_COUNT=0 disables XFF trust entirely and falls back to
+     the raw TCP peer; this must be set correctly for the actual proxy
+     count in front of any real deployment (documented in
+     docs/ops-runbook.md) or the limit is either bypassable (set too high)
+     or wrongly rejects real users behind a shared NAT/proxy (set too
+     low). Cost: one new required-to-tune setting; wrong in either
+     direction has a real security or availability effect, not just
+     cosmetic.
+
+D-65 POST /attempts' idempotency-replay path skipped the rate-limit check
+     entirely (only a fresh submit called check_token_bucket), so a replay
+     response shipped with no X-RateLimit-* headers at all -- violating
+     docs/05 section 1's "headers on every response." Fixed by moving the
+     rate-limit check to the top of submit_attempt, before the idempotency
+     cache lookup, so it runs (and its headers attach) unconditionally.
+     Cost: a pure replay now also consumes one token from the attempts
+     bucket; accepted as correct, not a regression -- it's still an API
+     call hitting the rate limiter, and docs/05 draws no replay exemption.
+
+D-66 M7 concurrency fix for POST /attempts (the audit's headline bug): two
+     concurrent submits for the same (user, exercise, session_date) -- two
+     tabs, or a network retry racing the still-in-flight original -- used
+     to both miss the idempotency cache, both pass the already-attempted
+     SELECT (no row lock, and the partitioned attempts table can't carry a
+     DB unique constraint, D-7), both INSERT, and both run the
+     stats/streak read-modify-write (lost update on total_attempts, a
+     possible duplicate streak_events row). Two layered fixes, covering
+     the two distinct races CLAUDE.md's audit named:
+     (a) app/core/idempotency.py gains a Redis SET NX reservation
+     (acquire_reservation/wait_for_cached/release_reservation) on the
+     Idempotency-Key itself: the loser of a same-key race waits for the
+     winner's stored result and replays it byte-identically instead of
+     racing it -- this is the "network retry racing the original" case,
+     where both requests share one key.
+     (b) A Postgres transaction-scoped advisory lock
+     (pg_advisory_xact_lock(hashtext(user_id), hashtext(exercise_id ||
+     session_date))) around the check-through-insert in the new
+     _build_and_store_attempt (the code that used to be the back half of
+     submit_attempt) -- this is the "two tabs" case, where each tab holds
+     its OWN Idempotency-Key and a same-key reservation alone cannot
+     serialize them. The lock is the real backstop regardless of which (or
+     how many) Idempotency-Keys are in play; the loser observes the
+     winner's committed row via the existing already-attempted SELECT and
+     correctly 409s. Verified with REAL concurrency (asyncio.gather, not
+     sequential awaits) in
+     backend/tests/test_m7_ratelimits_and_concurrency.py: same-key double
+     submit -> both responses 200 with the identical attempt_id, exactly
+     one attempts row, total_attempts incremented by exactly 1;
+     different-key double submit -> one 200 + one 409, same row/stats-count
+     guarantee. Cost: one extra Redis round-trip per attempt submit (the
+     reservation) and a lock held for the duration of the grading call for
+     summarize (up to GRADER_TIMEOUT_S) -- scoped to a single (user,
+     exercise, day) tuple, so it only ever serializes against a genuine
+     duplicate submit of the exact same exercise by the exact same user on
+     the exact same day, never unrelated traffic.
+
+D-67 D-8's claim that "the stats job dedupes" a Redis-idempotency-loss
+     replay duplicate was FALSE -- nothing deduped. jobs/percentiles.py
+     counted every status='graded' row with a bare count(*) ... GROUP BY
+     exercise_id, exercise_version, so a duplicate attempts row (the exact
+     scenario D-8 describes, now much rarer after D-66 but not
+     structurally impossible) permanently inflated a percentile's n and
+     skewed its solve rate; user_stats.total_attempts/total_correct are a
+     separate, non-aggregated path (incremented directly in the request
+     transaction) and are actually protected by D-66's advisory lock, not
+     by this fix. Fixed: the query now dedupes to one row per (user_id,
+     exercise_id, exercise_version, session_date) -- the earliest-created
+     graded attempt, via DISTINCT ON -- before counting.
+     backend/tests/test_m4_stats.py::test_compute_exercise_stats_job_aggregates_attempts_into_exercise_stats
+     used FOUR attempts from the SAME user on the SAME day as its
+     aggregation-math fixture, which is now exactly the "duplicate" shape
+     dedup collapses to one row; rewritten to use four DISTINCT users (a
+     realistic shape -- one graded attempt per user per exercise per day is
+     the actual invariant), with a new
+     test_compute_exercise_stats_dedupes_duplicate_attempt_rows covering
+     the dedup behavior itself directly. Same fixture bug existed in
+     test_m7_sampler_bands.py's difficulty_empirical threshold test (30
+     same-user-same-day attempts); fixed by spreading them across 30
+     distinct session_dates instead. This D-entry corrects D-8's false
+     claim rather than editing it in place, per docs/07's own append-only
+     rule. Cost: one extra CTE per percentiles run; negligible at MVP
+     write volume.
+
+D-68 M7 streak reconciliation on a timezone change (docs/05 section 3:
+     "changing timezone never retroactively breaks a streak (the
+     reconciliation job handles the boundary day)" -- previously an
+     unimplemented promise; jobs/streak_recon.py was a one-line placeholder
+     and users/service.py::update_me just wrote the new timezone with no
+     reconciliation at all). A user-local "today" is a function of both the
+     instant and the timezone; a WESTWARD change (e.g. Pacific/Kiritimati
+     UTC+14 -> Pacific/Midway UTC-11, a ~25h swing) can move the new local
+     "today" EARLIER than the already-recorded
+     user_stats.last_active_local_date. The next submit computes today
+     under the new timezone and finds last_active_local_date sitting in
+     what looks like the future -- satisfying neither the ==today (already
+     counted) nor ==today-1 (consecutive) branch in attempts/service.py's
+     streak transition -- so the streak silently RESET to 1 even though
+     the user did not miss a day. Fix:
+     jobs/streak_recon.py::reconcile_streak_for_timezone_change, called
+     from update_me BEFORE the timezone is reassigned, compares the new
+     timezone's "today" against the current stats row; if it would move
+     backward past an already-counted day, clamps last_active_local_date
+     down to the new "today" (the user genuinely was active "today" under
+     the new clock too) and writes a streak_events row with
+     event='repaired' -- the schema already reserved that value for
+     exactly this. current_streak itself is never touched by a repair,
+     only the date bookkeeping. An EASTWARD change is left alone: it only
+     ever advances the local date, which the existing extend/reset day-math
+     already handles correctly, and docs/05 only promises the boundary
+     never moves backward. All existing M4 streak tests held the timezone
+     fixed, which is exactly why this shipped unimplemented; new
+     backend/tests/test_m7_streak_recon.py covers the westward repair
+     (unit-level and end-to-end through PATCH /me + a real subsequent
+     submit proving the streak survives at 5, not reset to 1), the
+     eastward no-op, the no-prior-activity no-op, and the same-timezone
+     no-op. Cost: one extra user_stats read on every PATCH /me timezone
+     change only (not on every request); negligible.
+
+D-69 M7 partition-cron self-recovery. Two bugs from docs/04's own warning
+     ("move [attempts_default rows] out BEFORE creating the overlapping
+     monthly partition or the create fails"), both closed in
+     jobs/partitions.py: (a) the job only ever created NEXT month's
+     partition, so a gap of two+ missed months could never close -- every
+     run only ever tried the one month after "now", permanently skipping
+     the months in between; (b) count_attempts_default_rows existed but
+     nothing acted on it -- a CREATE TABLE ... PARTITION OF for a month
+     that already has rows sitting in attempts_default fails outright, so
+     once a gap opened, every subsequent run raised instead of recovering.
+     Fix: ensure_next_month_attempts_partition now walks every month from
+     the last existing partition (detected via pg_class name matching, not
+     pg_inherits bound-parsing) through next month, closing a gap of any
+     size in one run (capped at 72 months, a runaway-loop backstop, not a
+     real limit). For each target month it checks for overlapping
+     attempts_default rows first; if none, the original cheap direct
+     CREATE TABLE ... PARTITION OF path is unchanged. If rows exist, it
+     logs loudly (attempts_default_has_rows, ALERT-worthy per docs/04 --
+     steady state is zero rows) and drains them: CREATE TABLE ... (LIKE
+     attempts INCLUDING ALL), move the rows (DELETE ... RETURNING + INSERT
+     ... OVERRIDING SYSTEM VALUE, both real bind parameters), then ALTER
+     TABLE attempts ATTACH PARTITION (a plain string-interpolated DDL
+     bound, like the original code, since Postgres DDL does not accept
+     query parameters for partition-bound literals; both dates are always
+     _first_day_of_next_month's own arithmetic, never external input).
+     backend/tests/test_m7_partition_recovery.py seeds a row directly into
+     attempts_default for a month with no partition (simulating a missed
+     month via real Postgres partition routing, not a mock), runs the job,
+     and asserts full recovery: the gap month plus every month through
+     next month all get created, the stray row is drained out of
+     attempts_default and provably still present (not lost) via the parent
+     attempts table afterward. Cost: none identified -- the common case
+     (no gap) is exactly as cheap as before.
+
+D-70 backend/app/config.py's ANTHROPIC_API_KEY drops its Field(...,
+     min_length=1) requirement (mirrors PipelineSettings, D-44) -- this
+     project is OpenAI-only (D-43/D-44), and requiring a
+     nonexistent-in-practice Anthropic key blocked Settings() from even
+     constructing on a deploy with none set. The provider actually
+     selected validates its own key lazily at first use in
+     attempts/grader_client.py, as already documented for the pipeline
+     side. Separately, GRADER_PROVIDER's default flips from "anthropic" to
+     "openai" in both config.py and the tracked docker-compose.yml -- the
+     previous default meant an un-overridden deploy would silently try
+     Anthropic with an empty key and strand every summarize attempt in
+     grading_pending forever (exactly the D-43 incident, just moved from
+     "wrong placeholder key" to "wrong provider entirely" as the proximate
+     cause). docker-compose.override.yml (gitignored, carries the real
+     OPENAI_API_KEY) is unaffected; this only changes the TRACKED defaults
+     so they're coherent without the override present. Cost: none
+     identified -- purely a default-value fix; D-43's
+     GRADER_PROVIDER=openai override becomes redundant but harmless (an
+     override matching the new default is a no-op).
+
+D-71 M7's grader-harshness investigation (CLAUDE.md M7 scope item 8: "the
+     summarize grader scored 0% on a plausible answer against a seed
+     rubric... only change the grader prompt if the grader is genuinely at
+     fault"). Probed the real deployed path (GRADER_PROVIDER=openai,
+     GRADER_MODEL=gpt-4o-mini, the real local dev key) directly against
+     grade_rubric() with 8 distinct plausible-to-adversarial answers across
+     all three hand-authored seed exercises (retry-with-backoff, TTL
+     cache, circuit breaker) from scripts/seed_summarize_exercises.py,
+     including answers deliberately worded to sound close to each
+     rubric's must_not_claim phrases without actually asserting them (the
+     "retries forever"/"LRU eviction" adjacent phrasings), to specifically
+     stress-test the all-or-nothing scoring rule in
+     rubric.py::_score_from_response (any detected must_not_claim
+     violation zeros the WHOLE score regardless of must_mention hits).
+     RESULT: no case scored 0%. Well-formed answers scored 1.0 across all
+     three exercises; genuinely vague/terse answers (missing specific
+     mechanics like "exponential" or the exact reset-timing behavior)
+     scored partial credit (0.3) proportional to what they actually left
+     out, correctly landing below the 0.6 pass threshold -- not zeroed. No
+     adversarially-phrased-but-correct answer ever false-triggered a
+     must_not_claim violation. CONCLUSION: the grader prompt is not
+     systematically harsh and the seed rubrics are reasonably scoped; no
+     evidence of a genuine fault on either side was found, so per the
+     explicit instruction neither was changed. The originally-observed "0%"
+     was most likely either an actually-deficient manual test answer, or a
+     pre-D-43-era artifact (a placeholder ANTHROPIC_API_KEY making every
+     real grading call error out into grading_pending/grading_failed,
+     which is a different status than a scored 0.0 and could easily be
+     misremembered as "scored 0%" in the moment). Cost: none -- no code
+     changed; the probe scripts were throwaway and are not part of the
+     tracked codebase.
+
+D-72 M7 frontend polish, both skills/anti-slop-frontend and
+     skills/ui-ux-promax consulted per docs/08's mandatory workflow even
+     though this is polish, not new UI. (a) "1 days" pluralization:
+     frontend/src/lib/format.ts::pluralizeDays (new, shared) fixes
+     Profile.tsx's "{n} days" / "Longest: {n} days" and Reveal.tsx's
+     "Streak extended/reset to {n} days" -- the hyphenated "{n}-day streak"
+     phrasing elsewhere (SessionComplete, Reveal) was already correct
+     English as a compound adjective and untouched. (b) Streak gutter
+     ticks: docs/08/08b are explicit -- "Streak history = a column of
+     gutter tick marks, not a flame emoji" -- but SessionComplete.tsx and
+     Reveal.tsx's StreakLine both rendered exactly one hardcoded
+     <GutterTick filled />, a single dot regardless of streak length; only
+     Profile.tsx already rendered a real (if row-wrapping, not strictly
+     vertical) set of ticks. New StreakTicks component in
+     components/gutter/Gutter.tsx (the canonical primitive-holder file per
+     its own header comment) renders a true vertical column (flex-col) of
+     one filled tick per streak day, capped at 30 visible (+N earlier
+     label) so an arbitrarily long streak can't render an unbounded column
+     of DOM nodes -- a real latent scalability gap in the pre-existing
+     Profile.tsx implementation, fixed as part of touching the same logic,
+     not scope creep. All three call sites (Profile, SessionComplete,
+     Reveal's StreakLine) now share this one component. Cost: none
+     identified; node ./node_modules/typescript/bin/tsc --noEmit clean.
+
+D-73 M7 adds GET /admin/metrics (app/admin/router.py, app/admin/service.py)
+     mounted OUTSIDE /v1 -- not under the public API contract -- reporting
+     the four golden signals from docs/02 in minimal form: session-fetch
+     p95 and attempt-insert error rate (Redis counters recorded in
+     sessions/router.py and attempts/router.py via the new
+     app/core/metrics.py), plus the two non-negotiable ones CLAUDE.md's M7
+     scope names explicitly, pending_grade_count and
+     dispute_rate_by_exercise (both direct DB queries -- ops-only, low-QPS,
+     not the user-facing "never aggregate attempts at request time" path
+     docs/04 protects). This diverges from docs/05 section 7, which
+     reserves /admin/* for "a separate internal app behind its own auth,
+     deliberately out of this public contract": building that separate
+     app/auth system is out of M7's scope, and CLAUDE.md's M7 prompt
+     explicitly offers "a /admin/metrics JSON endpoint behind auth" as an
+     acceptable minimal implementation. Gated by a shared-secret header
+     (X-Admin-Token, compared with hmac.compare_digest against the new
+     ADMIN_METRICS_TOKEN setting) rather than a real auth system; an unset
+     token disables the endpoint entirely (404, not 403 -- doesn't confirm
+     the route exists) rather than defaulting open. Still passes through
+     the new default rate-limit middleware (D-64) like every other route.
+     Swappable for a real internal admin app later without moving the
+     public /v1 contract at all. Cost: one more shared secret to provision
+     and rotate (no rotation procedure needed beyond "change the env var
+     and deploy" -- it's stateless, unlike TOKEN_ENC_KEY).
+
+D-74 M8 makes a real content batch (`python -m pipeline.orchestrator --n N`)
+     survive a rate limit and a crash instead of losing the whole run.
+     `pipeline/llm_client.py`'s `OpenAILLMClient` now wraps every
+     `chat.completions.create` call in `_create_with_rate_limit_retry`:
+     `openai.RateLimitError` with `insufficient_quota` raises a new
+     `OpenAIQuotaExceededError` immediately (a billing/plan problem, not a
+     transient limit -- retrying can never succeed, so it must fail loud
+     and distinctly, not eat the retry budget); any other `RateLimitError`
+     (`rate_limit_exceeded`, an RPM/TPM cap) backs off exponentially
+     (2s/4s/8s/16s/32s, capped 60s) up to 5 retries before finally raising.
+     Layered underneath the existing D-47 max_tokens/temperature 400
+     fallback, not replacing it. Separately, `pipeline/orchestrator.py`'s
+     `run_batch` gained `commit_after_each_spec` (off by default, so the
+     `db_session` test fixture's rollback-only isolation is unchanged; the
+     real CLI entry point in `main()` turns it on): it commits after every
+     spec is resolved (published or exhausted), so a crash later in the
+     batch -- an unhandled `insufficient_quota`, a killed process -- only
+     loses the one spec in flight, never the candidates already published
+     before it. `pipeline/publish.py`'s `fetch_live_pool_hashes` (renamed
+     `fetch_dedup_pool_hashes`) now dedupes against `status IN ('live',
+     'in_review')`, not `live` only: a crashed-and-resumed batch, or simply
+     running the same command again, would otherwise burn generation+gate
+     cost regenerating a near-identical candidate already sitting in the
+     review queue -- CLAUDE.md's "make repeated runs additive and
+     idempotent" is satisfied by these three changes together rather than a
+     separate `--resume` flag/checkpoint file. The exact command to run a
+     batch is unchanged: `python -m pipeline.orchestrator --n 35` (repeat
+     per batch of ~30-40; `--seed` optional). Cost: one extra `source`
+     status in the dedup query (negligible); a killed-mid-spec run's
+     in-flight candidate's LLM calls are spent and not published, same as
+     before.
+
+D-75 M8 spec sampling is coverage-driven by default (`coverage_driven_
+     sampling=True` on `run_batch`), not uniform, so a 200-exercise corpus
+     actually covers the taxonomy instead of clustering on whatever concept
+     samples easiest. `pipeline/publish.py::concept_type_coverage` counts
+     LIVE exercises per (type, concept); `pipeline/spec_sampler.py::
+     sample_spec` gained an optional `concept_coverage` param -- when given,
+     concept choice is `rng.choices(..., weights=[1/(1+count) for each
+     concept])` instead of `rng.choice`, so a zero-coverage concept is
+     weighted equally against any other zero-coverage concept and always
+     outweighs anything with existing coverage, but is never sampled with
+     certainty (a concept that's merely under-covered still gets picked
+     sometimes, which matters once every concept has at least one). The
+     orchestrator fetches coverage once per batch, then updates its
+     in-memory copy after every publish (`coverage[(type, concept)] += 1`)
+     so a long batch's own progress is reflected in later samples within
+     the same run, not just what was live before it started.
+     `BatchReport.log_summary()` logs the zero-coverage concept list (via
+     `pipeline.taxonomy.concepts_for_type`, so `requires_forbidden`
+     concepts per D-54 are correctly never counted as a gap) both before
+     and after the batch, so "coverage before and after" is answerable from
+     the batch's own log output. Cost: one extra DB query per batch (not
+     per candidate); in-memory coverage tracking is a plain dict, no new
+     schema.
+
+D-76 M8 adds per-run token/cost visibility to the batch report (CLAUDE.md:
+     "so I can see spend per run and per accepted exercise"). Real LLM
+     clients (`OpenAILLMClient`, `AnthropicLLMClient`) now carry a
+     `TokenUsage` accumulator (`prompt_tokens`/`completion_tokens`/`calls`)
+     updated from each response's real `usage` field;
+     `pipeline.llm_client.estimate_cost_usd(model, usage)` looks the model
+     up in a small `PRICING_USD_PER_1M_TOKENS` table (currently gpt-4.1,
+     gpt-4.1-mini, gpt-4o, gpt-4o-mini -- the models this project actually
+     pins, D-14) and returns `None` for an unrecognized model rather than
+     guessing. `run_batch` reads `generator_client.usage`/`gate_client.
+     usage` after the loop (via `getattr(..., "usage", TokenUsage())`, so
+     `ScriptedLLMClient` -- which also grew a zero `usage` attribute for
+     interface parity -- never breaks tests that don't care about cost) and
+     `BatchReport.log_summary()` logs prompt/completion tokens and
+     estimated USD per role plus a total and a per-published-exercise
+     figure. Cost: none identified -- purely additive; unknown-model
+     batches still report token counts, just no dollar figure.
+
+D-77 M8 makes `pipeline/review_cli.py` usable at 200-exercise review scale
+     (CLAUDE.md M8 part 2). `list` now prints a `quality_summary` line per
+     row (semantic gate verdicts, solver confidence, and a flags list) read
+     from the exercise's on-disk validation report (D-48), computed by the
+     new `quality_flags()` -- surfaces a sandbox-derived-vs-claimed bug_line
+     mismatch (D-49/D-11), an explanation whose draft never referenced the
+     verified facts (D-32's `mismatch_flagged`), and any gate that landed on
+     `flag` instead of a clean `pass` -- so a reviewer can triage before
+     opening anything. `show` (and the new `format_exercise_markdown`,
+     shared with `packet`) now renders a curated view instead of raw JSON
+     dumps: the code, the answer options with the correct one marked, the
+     SANDBOX-VERIFIED answer key (never the generator's claim, per D-49),
+     the failing-test proof for spot_the_bug / captured stdout for trace,
+     the explanation, the sandbox check-by-check pass/fail list, and every
+     semantic gate's verdict+detail. A new `packet` command
+     (`python -m pipeline.review_cli packet [--out PATH] [--limit N]`,
+     default `pipeline/review_packet.md`, limit 500) exports every pending
+     exercise into ONE markdown file with a table-of-contents (each entry
+     showing its quality summary) followed by every exercise's full
+     section -- the only realistic way to review a 200-exercise batch in
+     one sitting, per CLAUDE.md's explicit ask. `load_validation_report`
+     degrades to `None` (not a crash) on a missing/unreadable report file,
+     surfaced as its own `no_validation_report` flag. Nothing about
+     approve/kill/fix-and-bump/pull changed; still nothing auto-publishes.
+     Cost: none identified; `list`/`packet` now read one file per exercise
+     off local disk, negligible at review-CLI qps.
+
+D-78 M8 beta allowlist. Migration `0002_beta_allowlist` (`db/schema.sql`
+     updated to match, per M1's own precedent) adds `users.beta_allowed
+     boolean NOT NULL DEFAULT false` and a new `beta_invites (github_login
+     citext PRIMARY KEY, note, created_at)` table -- a citext PK so an
+     admin can invite a GitHub handle BEFORE that person has ever logged in
+     (no user row exists yet to flip a column on). `auth/service.py::
+     upsert_github_user` now calls `_apply_beta_invite` in both its
+     existing-identity and new-user branches (refactored to one exit path):
+     if the login matches a `beta_invites` row, `beta_allowed` flips to
+     true; it is never flipped false by login itself, only by the explicit
+     `revoke_beta_access` admin action. `auth/router.py::github_callback`
+     checks `user.beta_allowed` right after `upsert_github_user` returns:
+     if false, the user row is still committed (so a not-yet-invited signup
+     attempt leaves a row an admin can grant access to by username, with no
+     second login required) but no refresh token is issued and the redirect
+     carries `error=beta_required` instead of landing in the app.
+     `auth/service.py::rotate_refresh_token` also checks `user.beta_allowed`
+     (right after loading `user`, before rotating) and 401s exactly like an
+     invalid token if it is false -- this is what makes a MID-beta revoke
+     actually take effect: a revoked user's existing access token still
+     works for its remaining `ACCESS_TOKEN_TTL` (15 min), but their next
+     refresh is rejected and they are effectively logged out. Two new
+     service functions, `invite_to_beta`/`revoke_beta_access`
+     (`auth/service.py`), are the admin path: idempotent
+     (`ON CONFLICT DO NOTHING` via `already_invited`/re-checking before
+     insert), each committing its own transaction (same pattern as
+     `pull_exercise`, D-58 -- a standalone admin action, not a step in a
+     larger one), and each immediately flipping an already-existing user's
+     `beta_allowed` if a matching username exists rather than waiting for
+     their next login. Exposed as `POST /admin/beta/invite` and
+     `POST /admin/beta/revoke` (`{"github_login": "..."}`,
+     `app/schemas/admin.py::BetaInviteRequest`), gated by the same
+     `X-Admin-Token` shared secret as `/admin/metrics` (D-73) -- no new
+     secret introduced. Cost: one migration; one extra `beta_invites`
+     lookup per login (new-user or returning); a revoked user is not force-
+     logged-out instantly, only within one `ACCESS_TOKEN_TTL` window (15
+     min) -- acceptable for a beta-scale incident response, documented here
+     rather than adding per-request DB checks to every authenticated route.
+
+D-79 M8 beta-week observability, all folded into the existing `GET
+     /admin/metrics` (D-73) rather than new standalone endpoints, except
+     retention which gets its own (a query, not a point-in-time gauge).
+     (a) `empty_session_rate`: `sessions/service.py::
+     _build_and_persist_session` now calls `core.metrics.record_outcome`
+     with `is_error=True` when `build_session_slots` returns empty (the
+     D-59 transient-empty-day path) and `is_error=False` otherwise -- the
+     only place a session build is actually attempted -- surfaced via the
+     existing `error_rate()` helper, so "empty-session occurrences" (one of
+     the things CLAUDE.md's M8 prompt asks to watch) is a real number, not
+     a TODO. (b) `jobs`: `app/jobs/runner.py::JobScheduler` gained
+     `last_run_at`/`last_error_at` (ISO timestamps, alongside the existing
+     `run_counts`/`error_counts`) because a cumulative count alone can't
+     answer "is grading_retry still ticking right now" between two polls;
+     `admin/service.py::job_health()` shapes this per job name, and is
+     `None` (not `{}`) when `JOBS_ENABLED=false`, so a disabled scheduler
+     reads distinctly from a healthy one with nothing to report yet.
+     (c) `GET /admin/retention?cohort_start=YYYY-MM-DD&offset_days=1|7`
+     (`admin/service.py::compute_retention`) answers D1/D7 directly: of the
+     users with a `daily_sessions` row on `cohort_start` (a session was
+     fetched/built that day -- build-on-request, D-23, so this row existing
+     IS "they opened the app"), what fraction have one on
+     `cohort_start + offset_days` too. Same `X-Admin-Token` gate as every
+     other admin route; no new secret. Combined with the already-existing
+     `pending_grade_count`/`dispute_rate_by_exercise` (D-73) and
+     `attempt_insert_error_rate`, the full beta-week watch list from
+     CLAUDE.md's M8 part 3 question 8 is now: pending_grade_count (grader
+     health), dispute_rate_by_exercise (bad answer keys), attempt_insert_
+     error_rate (submit path health), empty_session_rate (content pool
+     health), jobs.*.last_run_at/last_error_at (background job health), and
+     GET /admin/retention (did people come back) -- every one of them a
+     real, queried number, none a manual eyeball check. Cost: one extra
+     Redis counter pair (session_build) recorded on every session-build
+     attempt, negligible; two extra dict writes per job tick.
+
+D-80 STB corpus fixes (from the spot_the_bug reject diagnosis) plus a new
+     predict_the_fix exercise type. Five coordinated changes; none weakens
+     D-49, the twin-snippet invariant, or any gate.
+     (a) TAXONOMY -- omission / no-divergence concepts flagged unsamplable FOR
+     spot_the_bug (taxonomy.Concept.stb_unsamplable, per-type, distinct from
+     D-54's global requires_forbidden). The dominant structural STB reject is
+     a concept whose canonical bug cannot yield a discriminating twin-snippet
+     with a diff-derived key: either an OMISSION bug whose fix is a pure
+     INSERTION (D-49 correctly rejects the empty diff -- nothing to point at),
+     or a NO-DIVERGENCE bug where buggy and fixed produce identical output so
+     no test can fail on one and pass on the other. Same class as D-54 (the
+     gate is right, the concept/type pairing is wrong). Audited the whole
+     taxonomy; flagged five: decorator-losing-metadata (INSERTS @wraps, 3/3
+     deterministic reject), idempotency-missing (INSERTS a guard, 3/3),
+     concurrency-conceptual (no real threads -> the race never triggers
+     deterministically, and the fix is an inserted lock), exception-type-too-
+     broad (narrowing an over-broad except ADDS a handler/re-raise; confirmed
+     reject), and n-plus-one-pattern (batching changes only a query COUNT, not
+     the returned value -- no output divergence, and the fix is a whole-loop
+     restructure). Per-type, not global, precisely because most stay valid for
+     trace: exception-type-too-broad (the only _BOTH member of the five) keeps
+     its trace samplability; the other four are _STB_ONLY, so flagging removes
+     them entirely. concepts_for_type excludes stb_unsamplable only for
+     exercise_type == 'spot_the_bug'; predict_the_fix inherits the exclusion
+     transitively (it is derived from verified STB candidates, never sampled).
+     get_concept still resolves flagged slugs, so already-published exercises
+     keep resolving; clearing the field re-enables a concept if a dodging
+     realization is ever found. Each doomed spec previously burned up to
+     MAX_ATTEMPTS_PER_SPEC = 3 full generate+gate rounds.
+     (b) LINE BUDGET now MAX-ONLY for buggy_code and trace code (static_gate.
+     check accepts line_budget=(None, hi); orchestrator._static_gate_check
+     passes (None, line_budget_max)). Evidence, not analogy: every budget
+     reject in the persisted reject reports (D-48) was code UNDER the min --
+     a minimal clear bug is naturally 5-8 lines at difficulty 1-2, and neither
+     the STB nor the trace model can pad to 40-60 at difficulty 9-10 -- except
+     TWO STB cases over the max, which keeping the max still catches. Trace was
+     100% under-min, zero over-max, so the same max-only rule applies to it on
+     its own evidence. The min was a readability nicety, not a correctness
+     rule; the max protects against an unreadably long snippet and stays. The
+     stb_py_v3 length line is softened to match (max hard, min a soft aim).
+     (c) stb_py_v3 (prompt_template_id stb_py_v3; generate.py points at it,
+     replacing v2 per the README versioning contract, v2 kept on disk). The
+     dominant CONTENT reject (13 of 55) was a test that does not discriminate:
+     a real bug is planted, then test inputs are chosen where buggy and fixed
+     produce IDENTICAL output, so the assertion never fires and buggy+test
+     exits 0 (which fails the sandbox gate's buggy_fails_test check). v2 taught
+     insertion+replace and exception-to-assertion by worked example but nothing
+     about input selection; abstract rules do not land with this model, worked
+     examples do (the standing finding behind D-46/D-53). v3's constraint 11
+     adds a complete buggy/fixed/test/bug_lines triple demonstrating choosing
+     the divergence-boundary input (an off-by-one threshold tested at exactly
+     the boundary, with the explicit rule "if your buggy and fixed code agree
+     on your chosen input, the test is worthless and the exercise is invalid").
+     A new optional self_check field (test_input_is_on_the_divergence_boundary)
+     nudges compliance; STBSelfCheck made it optional so v2 output and every
+     existing fixture still validate. The gate is NOT relaxed -- buggy_fails_
+     test already rejects a non-discriminating test; the prompt now teaches the
+     property the gate enforces.
+     (d) PER-TYPE GENERATOR MODEL ROUTING built but OFF by default
+     (GENERATOR_MODEL_STB, empty = use GENERATOR_MODEL for STB too). When set
+     (and different from GENERATOR_MODEL), run_batch routes ONLY spot_the_bug
+     generation to it via stb_generator_client; trace and the predict_the_fix
+     distractor step stay on the base generator. STB is the flagship and the
+     only type worth a premium model. assert_gate_and_generator_models_differ
+     also guards GENERATOR_MODEL_STB != GATE_MODEL (D-14). One env var flips it
+     on; the diagnosis quantified STB-only routing to gpt-5.5 at ~$18-53 to
+     seed all 35 STB concepts. Measure the free fixes (a/b/c) first.
+     (e) predict_the_fix -- a new deterministic (choice-graded) exercise type
+     derived from a sandbox-verified spot_the_bug, nearly free because it
+     reuses artifacts already proven by execution. Every verified STB candidate
+     has a (buggy, fixed, test) triple proven to fail-on-buggy/pass-on-fixed;
+     that IS a predict_the_fix: payload = buggy code + the failing test and its
+     captured output, question "which change makes the test pass?", correct
+     choice = the execution-proven fixed_code (never an LLM claim). The
+     generator (ptf_py_v1) is asked ONLY for 3 wrong-fix distractors; the NEW
+     GATE INVARIANT (sandbox_gate.validate_predict_the_fix) executes each
+     distractor against the same test and REQUIRES it to STILL FAIL with
+     AssertionError -- a distractor that passes is not wrong (a second correct
+     answer) and rejects the candidate; one that fails with a non-AssertionError
+     is broken code, not a plausible fix, and also rejects; distractors must be
+     textually distinct from buggy_code, fixed_code, and each other; double-run
+     determinism throughout. Grading is deterministic (choice_id), same as
+     trace, so ZERO per-answer LLM cost. Wiring: pipeline gets PredictFixCandidate
+     (schemas), predict_the_fix.py (generate + assemble), validate_predict_the_
+     fix (gate), orchestrator._derive_and_publish_ptf (fires after a published
+     has_bug STB survivor; derive_predict_the_fix flag, ON for real batches via
+     main(), OFF in run_batch's default so existing tests -- whose scripted
+     clients queue only primary-path responses -- are untouched), and
+     publish.insert_predict_the_fix (source.derived_from records the parent
+     STB). A PTF failure never unpublishes its STB. Backend: migration
+     0003_predict_the_fix_type widens the exercises.type CHECK (+ db/schema.sql
+     and the SQLAlchemy CheckConstraint); grading.py, schemas/attempts.py
+     (PredictTheFixReveal), schemas/session.py (+ failing_test/test_output
+     payload fields), sessions/service.py serialization, and the session
+     sampler's DETERMINISTIC_TYPES all gain the type. Frontend: lib/types.ts,
+     PredictTheFixAnswer.tsx (choice list of code diffs), Session.tsx dispatch,
+     Reveal.tsx view. predict_the_fix is not run through the AST-dedup gate --
+     it derives from an already-deduped STB, so it is unique by construction;
+     its source.content_hash is a plain sha256 over buggy+wrong-fix codes,
+     distinct from the parent STB's buggy-only hash so the two never collide.
+     Cost: one extra generator call + a sandbox pass per STB survivor (both
+     reusing verified artifacts), and one migration; the answer key is
+     execution-proven, never an LLM judgment, so invariant 1 holds. The
+     measuring batch: python -m pipeline.orchestrator --n 35 (--seed optional)
+     produces both STB (via v3, free fixes a/b/c) and the derived
+     predict_the_fix, and logs survival per stage.
+
+D-81 Pipeline defect #5: `defect_audit` was a broken judge. The spot_the_bug
+     reject diagnosis of the latest run found the semantic gate was the SECOND
+     largest STB killer (14 of 48 rejects) and that ~11 of those 14 were FALSE
+     rejects of execution-verified, single-bug content. Root cause was the gate
+     model (gpt-4o-mini): given un-numbered code, it identified the ONE real bug
+     correctly and then reported it at the WRONG line number (verified line 25
+     reported as 20, line 45 as 30 -- the undercount grows with depth, the
+     signature of a model counting lines it cannot count), which the orchestrator
+     then killed with an exact `set(defects[0].lines) & set(bug_lines)`
+     intersection; and it listed the exact "hypothetical improvements" its own
+     prompt forbids (normal slicing behavior, "allows duplicates", a
+     `metadata or {}` nit), inflating the count past the exactly-one rule. This
+     is the inverse of the twin-snippet trap: a WEAK gate wearing a model-ceiling
+     costume. Four fixes, none weakening a gate:
+     (A1) `semantic_gates._number_lines` prefixes every line fed to defect_audit,
+     solver, and reasons with its 1-indexed number (via splitlines(), so line N
+     matches the sandbox's diff-derived verified_bug_lines); the prompts tell the
+     model to report the number it READS, not one it counts. This removes the
+     counting step that caused the mis-numbering.
+     (A2) defect_audit's decision rule matches the single reported defect against
+     the verified bug region with a +/-2-line window (`_defect_lines_match_bug_
+     region`) instead of a brittle exact intersection -- defense in depth for a
+     construct-spanning bug attributed to the def line or one line off. The
+     "exactly one defect" count is UNCHANGED (still the trust product, D-13); the
+     window is tight (2) so a genuine second bug in another function -- always
+     many lines away -- still rejects.
+     (A4) the defect_audit prompt's anti-nit instruction is rewritten from a
+     one-line "do not list ... hypothetical improvements" (which gpt-4o-mini
+     ignored) into a hard rule with concrete NON-defects (correct-but-surprising
+     behavior, a missing feature/validation never asked for, a style preference,
+     the same bug re-described per method) plus "prefer fewer, higher-confidence
+     defects".
+     (A3) GATE_MODEL moves off gpt-4o-mini. Recommended default gpt-4o (.env.
+     example, backend/.env.example): stronger at instruction-following AND a
+     gpt-4* family, so it still honors the gates' designed temperature=0 (a
+     deterministic judge). A gpt-5* model is smarter still but CANNOT honor a
+     non-default temperature (D-55 already resolves that up front and warns), so
+     it is documented as an alternative, not the default -- a non-deterministic
+     judge is the wrong trade for a fairness gate. Pricing table gains gpt-5-mini/
+     gpt-5 so cost still reports if chosen. The gate model was already fully
+     wired for gpt-5* via D-47/D-55; no client change was needed.
+     Proof (offline, no batch): new test_m3_semantic_gates fixtures built from
+     this run's real false rejects -- a defect reported ON the numbered key line
+     PASSES, a defect reported within the +/-2 window PASSES (the old exact match
+     rejected it), a defect far from the region still REJECTS, and a genuine
+     two-bug candidate still REJECTS. gpt-5* temperature handling is covered by
+     the existing test_m3_llm_client suite.
+
+D-82 STB generator redesign, stb_py_v4 (new file; v1-v3 retired but kept per the
+     README versioning contract; generate.py points at v4). The dominant STB
+     SANDBOX reject is buggy_fails_test -- a real bug is planted but the test does
+     not discriminate (buggy+test exits 0). v3's single divergence-boundary
+     worked example (D-80) did NOT move it: buggy_fails_test as a share of STB
+     sandbox rejects went 59% -> 64% -> 71% across the last three runs. Published
+     rationale (SymPrompt arXiv 2402.00097 improved correct test generation ~5x
+     by deconstructing generation into stages aligned with the method's execution
+     paths; CoSPlay arXiv 2605.23491: one-shot test prompting yields tests "not
+     grounded in the way code candidates may fail") says the fix is decomposition
+     forced as machine-checkable output, not another abstract rule. v4:
+     (B1) write the CORRECT code FIRST, then plant exactly one bug -> buggy_code
+     (v3 wrote buggy-first and back-filled a fix; 4 of this run's sandbox rejects
+     were fixed_passes_test failures from that).
+     (B2) DERIVE the divergence as five new REQUIRED fields (bug_trigger_
+     condition, divergence_input, buggy_result_on_divergence_input, fixed_result_
+     on_divergence_input, divergence_justification). The test must assert on
+     divergence_input.
+     (B3) a FREE static check (schemas.STBCandidate model_validator): if the
+     model's own buggy_result == fixed_result on its chosen input, it has ADMITTED
+     the test cannot discriminate -> rejected at SCHEMA VALIDATION, zero tokens,
+     zero sandbox, before the 6-container pass. Fields are all-or-none; has_bug=
+     false omits all five. Optional on the schema so v2/v3 output and every
+     existing fixture still validate.
+     (B4) the D-11 claim-check pattern, now for STB (the key structural addition;
+     trace has always had it, STB never did). The v4 test PRINTS repr(result)
+     before asserting, so the buggy+test and fixed+test runs the sandbox already
+     makes capture the ACTUAL results on stdout -- ZERO extra runs. sandbox_gate
+     check `stb_claim_matches_execution` compares them to the model's claimed
+     buggy/fixed results and REJECTS on mismatch: a model that mis-predicts its
+     own code wrote an unreliable exercise, exactly as trace's captured_output_
+     matches_claim rejects. Skipped for v2/v3 candidates and has_bug=false (no
+     divergence fields), so it can never false-reject older content.
+     (B5) three worked examples of STRUCTURALLY different divergence patterns
+     (boundary value; empty/degenerate collection; cross-call state leakage --
+     the mutable-default family a single-call test can never catch), each showing
+     the full chain correct-code -> planted bug -> trigger -> input -> both
+     results -> the printing/asserting test. v3's lone numeric-threshold example
+     invited over-fitting to that one shape.
+     (B6) a self-review self_check field (test_asserts_on_divergence_input),
+     untrusted like the rest of self_check; the B4 claim-check is the real
+     enforcement.
+     No gate or invariant is weakened: B3/B4 ADD checks; invariant 1 holds (the
+     answer key stays execution-derived, D-49). Proof (offline, no batch):
+     test_m3_sandbox gains B3 schema tests (identical results reject for free;
+     partial fields reject; no-divergence candidates still validate) and B4
+     sandbox tests (a correct prediction accepts; a mispredicted result rejects
+     on stb_claim_matches_execution). test_m3_pipeline pins template_id stb_py_v4
+     and the print(repr(result)) contract. The measuring batch is unchanged:
+     python -m pipeline.orchestrator --n 35 (--seed optional).
+
+D-83 Feedback-driven REPAIR replaces blind regeneration for the repairable
+     subset of rejections, grounded in the generation-verification pattern
+     (ReVeal, arXiv 2506.11442): on rejection the candidate is fed BACK to the
+     generator with the specific failed check and its concrete evidence (the
+     reject report D-48 already captured and used to throw away) and asked for a
+     TARGETED fix, instead of rolling three independent dice on the same spec.
+     This SUPERSEDES D-10 ("gates never repair") for repairable rejections only;
+     D-10's reasoning (repaired candidates inherit inconsistencies) is answered
+     structurally -- a repaired candidate is NOT trusted: it goes through the
+     FULL gate chain again with zero exemptions, so invariant 1 is untouched and
+     nothing publishes without execution proof. The classification taxonomy is
+     the heart of the change and is encoded in pipeline/repair.py:
+       REPAIRABLE (the bug and the code are fine; one artifact is wrong):
+         - static_gate: a forbidden import/call, a hint word, over budget --
+           mechanical; the exercise idea survives.
+         - buggy_fails_test (sandbox): the test passed on the buggy code. The
+           planted bug is real; the input just isn't on the divergence boundary.
+           Repair asks for a new divergence_input + test, buggy/fixed UNCHANGED.
+         - fixed_passes_test (sandbox): the fix isn't self-consistent with the test.
+         - stb_claim_matches_execution (sandbox B4): the model mispredicted its
+           own results; repair is handed the ACTUAL captured outputs.
+         - captured_output_matches_claim (trace sandbox): the model mis-traced
+           its own code; repair is handed the REAL captured stdout.
+       FUNDAMENTAL (the exercise IDEA is bad; regenerate fresh, NEVER repair):
+         - defect_audit found a genuine SECOND defect (the code does too much).
+         - solver couldn't solve it / flagged it ambiguous (a semantic REJECT).
+         - reasons flagged a distractor partially_defensible, or the reason
+           options are mis-keyed (D-13).
+         - dedup: a duplicate -- a repair cannot make it non-duplicate.
+       A sandbox rejection is REPAIRABLE only if EVERY failing check is on the
+       repairable list; a single fundamental failure alongside (e.g.
+       deterministic_double_run, fix_diff_real_and_minimal, buggy_runs_clean)
+       makes the whole candidate fundamental. Repairing a fundamental failure is
+       asking the model to rescue a bad idea; the attempt is spent on a fresh
+       candidate instead.
+     HARD BOUNDS (this is what stops it becoming a money pit):
+       - at most MAX_REPAIR_ROUNDS = 2 repairs per candidate lineage;
+       - if the SAME check fails again after a repair, that lineage stops
+         repairing (it can't get there);
+       - repairs draw from the SAME MAX_ATTEMPTS_PER_SPEC budget as fresh
+         generations (raised to 4 for the real batch), so total LLM generation
+         calls per spec are capped regardless of how repair/best-of-N interleave;
+       - a repair prompt is repair_stb_v1 / repair_trace_v1: change ONLY what the
+         named failure requires, preserve the bug/concept/code, re-emit the same
+         schema; a JSON-parse failure gets the same single retry as generation.
+     INSTRUMENTATION (so we can tell if it pays for itself, not discover later):
+       repair_attempted/succeeded/failed broken down by triggering check;
+       published_via_repair vs published_first_try; repair_stopped_{same_check,
+       max_rounds,budget}; and the MARGINAL repair token cost (the extra
+       generation calls + the extra gate passes re-validating repaired
+       candidates, attributed by snapshotting client usage deltas), priced with
+       the right model each and reported as per_rescued_usd. OFF by default in
+       run_batch (LoopPolicy defaults) so every existing test whose scripted
+       client queues exactly the primary-path responses is unchanged; the real
+       batch CLI turns it on from PipelineSettings.REPAIR_ENABLED. Proof
+       (offline, mocked LLM, real Docker sandbox): test_m8_pipeline_upgrades --
+       a non-discriminating STB triggers a buggy_fails_test repair whose evidence
+       and original candidate ride in the prompt and whose discriminating fix
+       publishes; a second-defect reject never repairs; a same-check-twice
+       lineage stops; the budget caps total calls (cannot loop forever); and the
+       repaired candidate provably runs the full sandbox + 3 semantic gate calls.
+       Cost: the orchestrator's per-spec loop is decomposed
+       (evaluate -> lineage -> best-of-N -> publish); the dedup-pool add moved to
+       publish time (a candidate's hash is added only when it actually ships, so
+       best-of-N siblings don't dedup against each other).
+
+D-84 BEST-OF-N selection: a spec no longer publishes the FIRST candidate that
+     clears the gates (arrival order is not a quality metric); where budget
+     allows it produces multiple SURVIVORS and publishes the highest-scoring.
+     The quality score (pipeline/scoring.py) is computed from signals the gate
+     chain ALREADY collects for free -- no extra LLM call:
+       - solver confidence vs authored difficulty (the strongest free signal):
+         a hard-authored exercise the gate model solved instantly at high
+         confidence is boring or mislabeled (penalty); genuine struggle (lower
+         confidence, still correct) on a high-difficulty spec is a QUALITY
+         MARKER (bonus);
+       - penalties: a bug visible in the first two lines, trivially short code at
+         high difficulty, a bug_lines/B4 claim mismatch, or surviving only with a
+         human-review FLAG.
+     Two uses (2b): select the best survivor when there is more than one; and
+     CALIBRATE difficulty at generation time -- a hard-authored exercise the
+     solver breezed is flagged difficulty_miscalibrated for downgrade/review,
+     closing the gap D-61 leaves before launch (difficulty_empirical needs 30
+     graded attempts we don't have yet). Cost control (2c): extra survivors are
+     pursued ONLY when the best so far scores below BEST_OF_N_SCORE_THRESHOLD
+     (0.70) OR the concept is under-covered (< BEST_OF_N_COVERAGE_THRESHOLD live
+     exercises), capped at BEST_OF_N_MAX_SURVIVORS = 2 -- never a blanket triple.
+     Every threshold is an explicit, tunable setting. OFF by default in run_batch;
+     the real batch turns it on (PipelineSettings.BEST_OF_N_ENABLED). Proof
+     (offline): two survivors clear every gate, one with its bug on line 2 (a
+     scoring penalty) and one on line 4; best-of-N publishes the higher-scoring
+     line-4 one, and the pure scorer tests pin the breezed-hard penalty, the
+     struggle bonus, and the early-bug penalty. Cost: a spec that scores its
+     first survivor poorly (or hits an under-covered concept) spends up to one
+     extra lineage; bounded by the same MAX_ATTEMPTS_PER_SPEC budget as repair.
+
+D-85 PROMPT-CACHING plumbing (the measurement + pricing half of the caching
+     upgrade; the prompt restructure that makes it engage is D-86). OpenAI prompt
+     caching is automatic on the message-array prefix; to realize and MEASURE it:
+     (a) OpenAILLMClient captures usage.prompt_tokens_details.cached_tokens into a
+     new TokenUsage.cached_prompt_tokens (a SUBSET of prompt_tokens, never
+     additive); (b) it sends a stable prompt_cache_key derived from the (spec-
+     independent) system prompt so cache routing is consistent under concurrency,
+     with a defensive drop-and-retry if an older SDK/model rejects the kwarg
+     (caching just doesn't engage, never an error); (c) estimate_cost_usd splits
+     prompt tokens into fresh vs cache-hit and prices the cached portion at a new
+     CACHED_INPUT_USD_PER_1M_TOKENS table (gpt-4.1 $0.50 vs $2.00 input, i.e. 75%
+     off; gpt-4o $1.25 vs $2.50, 50% off; an unlisted model conservatively pays
+     full price); (d) BatchReport logs cached_fraction and estimated_saved_usd per
+     generator role. TokenUsage.delta_since powers the D-83 marginal-repair
+     accounting too. Proof (offline): estimate_cost prices a 90%-cached prompt
+     below the same prompt uncached; the delta isolates marginal spend. Cost:
+     the cost table now also decays on cached-price moves; corrected in place.
+
+D-86 The v4 spot_the_bug template (213k prompt tokens resent verbatim last batch)
+     is restructured into v5 (stb_py_v5), and trace v1 into v2 (trace_py_v2), so
+     the large static content becomes a spec-INDEPENDENT prefix OpenAI's prompt
+     cache (D-85) serves on every call, billing only the varying spec fresh. The
+     ONLY changes: the "## Specification" block (the sole varying part) is moved
+     from the top of the user message to the very END, and the three (v5) / two
+     (v2) inline references to the per-spec domain/concept in the body are
+     genericized to point at the Specification below; {{python_version}} is a
+     pinned constant (3.12) so it stays inline without breaking the prefix. All
+     instructional content -- the difficulty scale, the disciplined order, the
+     three worked examples, every constraint, the output schema, the distractor
+     rule -- is byte-identical to v4/v1; this is a caching change, not a
+     generation-logic change (v4's decomposition, the free B3 schema check, and
+     the B4 execution claim-check are unchanged). Any template edit bumps the
+     version per prompts/README, so v4/v1 stay on disk for traceability and
+     generate.py points at v5/v2. Proof (offline): test_m8_pipeline_upgrades
+     renders two very different specs and asserts the pre-Specification prefix is
+     byte-identical, carries the worked examples, and exceeds 2k chars, with the
+     spec at the end; test_m3_pipeline pins template_id stb_py_v5 / trace_py_v2.
+     The measured cache HIT RATE and before/after prompt-token cost cannot be
+     produced offline (they need a real OpenAI call), so the measuring batch
+     (below) is the confirmation; the expected saving is bounded by the cached
+     fraction (~the static prefix / total prompt, i.e. the large majority of the
+     213k) times the model's cached discount. The one thing the batch must also
+     confirm is that relocating the spec did not move generation quality -- the
+     tokens are identical, so this is expected, but it is the reason the change
+     is version-bumped and batch-verified rather than assumed.
+
+     Measuring batch for D-83..D-86 (spends real tokens; run when ready):
+       python -m pipeline.orchestrator --n 40 --seed 7
+     It turns repair + best-of-N on from settings, derives predict_the_fix, and
+     commits per spec. Read the summary lines: "orchestrator repair ..."
+     (published_via_repair vs first_try, per_rescued_usd), "orchestrator cache
+     ..." (cached_fraction, estimated_saved_usd), and "orchestrator cost ..."
+     (per_published_usd). Repair is NOT paying for itself if per_rescued_usd
+     exceeds the fresh cost-per-published, or if repair_failed dwarfs
+     repair_succeeded on a given check (that check should move back to
+     FUNDAMENTAL). Expected after this change, on this gate design (D-56's
+     ~20-30% first-try survival): publish-rate per spec up (repair rescues the
+     buggy_fails_test / static rejects that were the biggest wasted spend, and
+     best-of-N spends only where quality is low), and cost-per-published DOWN
+     (caching removes the dominant prompt-token cost; repair is cheaper than a
+     fresh candidate in expectation because it reuses a mostly-correct one).
+
+D-87 File-provider content ingestion (`pipeline/ingest.py`, `python -m
+     pipeline.ingest --file <path>`): a way to run HAND-AUTHORED candidates
+     through the exact same, unmodified gate chain as LLM-generated ones,
+     because invariant 1 (no LLM claim is ever ground truth) does not carve
+     out an exception for candidates a human typed -- a hand-authored
+     `buggy_fails_test` claim is exactly as untrusted as a generated one until
+     the sandbox proves it. Reuses orchestrator internals verbatim
+     (`_evaluate_candidate`, `_publish_survivor`, `_record_reject`,
+     `BatchReport`) rather than re-implementing any gate logic, so the two
+     paths cannot silently diverge. Three deliberate differences from a
+     sampled batch, all because there is no generator in this path -- a human
+     already committed to exactly one candidate per spec:
+       (a) NO REPAIR, NO REGENERATION. D-83's repair loop and D-84's best-of-N
+       both assume a generator that can be asked to try again; ingest calls
+       `_evaluate_candidate` directly (bucket="first_try"), never
+       `_run_lineage`. A gate rejection is terminal and gets the same D-48
+       reject report as any other -- "if one fails a gate, it fails."
+       (b) `spec_sampler.line_budget_for_difficulty` (renamed from
+       `_line_budget_for_difficulty`; the one call site in `sample_spec` moved
+       with it, behavior unchanged) derives `line_budget_min/max` from the
+       JSON spec's `difficulty`, since a hand-authored spec has no sampler run
+       to produce them. `domain` defaults to a fixed placeholder string
+       (only used as flavor text in the predict_the_fix distractor prompt,
+       never gate logic). `concept` is validated against
+       `taxonomy.concepts_for_type("spot_the_bug")` at load time -- the same
+       set the sampler itself draws from, so a flagged (`requires_forbidden`/
+       `stb_unsamplable`, D-54/D-80) or misspelled concept is rejected before
+       any gate runs, not discovered as a mystery reject three stages later.
+       (c) B3 (D-82, the free buggy_result==fixed_result static check) is a
+       `model_validator` on `schemas.STBCandidate` itself -- unconditional,
+       cannot be bypassed by any caller -- so `STBCandidate.model_validate()`
+       on the raw `candidate` dict is both the load step and the first gate.
+       A schema/B3 failure, an unsupported `spec.type` (only spot_the_bug is
+       wired; trace has no hand-authored batch yet), or a `prompt_template_id`
+       other than the required tag (below) is a stage="load" rejection with
+       its own D-48-style report, before static_gate is ever reached.
+     PROVENANCE (three permanently distinguishable origins, per M8 content
+     counts / coverage reporting): `publish.insert_candidate` gains an
+     `origin: str = "llm"` parameter (default preserves every existing
+     caller's behavior byte-for-byte); `orchestrator._publish_survivor` gains
+     the same, threaded through. `pipeline/ingest.py` passes
+     `origin="handauthored_claude"` and `template_id="handauthored_stb_v1"`
+     (the latter flows into `source.prompt_template_id` via the existing
+     `validation_report["template_id"]` plumbing, no publish.py change
+     needed) -- distinct from orchestrator content (`source.origin="llm"`)
+     and from the older hand-typed seed content (`source.origin=
+     "seed_handauthored"`, D-62, which also never touched a gate). The input
+     file's own `prompt_template_id` field is validated to equal
+     `"handauthored_stb_v1"` exactly at load time (a provenance tag is not
+     free-form input from the batch file) rather than trusted through.
+     `source.model` for a hand-authored row is the literal string `"claude"`
+     (`AUTHOR_LABEL`), never an LLM_client model string -- no generator call
+     produced the candidate, so nothing resembling GENERATOR_MODEL applies.
+     D-14 IS BINDING: `pipeline.ingest.main()` hard-fails (`RuntimeError`,
+     not a log warning) if `GATE_PROVIDER != "openai"` OR
+     `GENERATOR_PROVIDER != "openai"` before touching the batch file at all --
+     content authored by Claude must be judged by a genuinely different model
+     family, and the predict_the_fix distractor-generation step (still an LLM
+     call, D-80) must not route to Anthropic either. This is stricter than
+     the general-purpose `assert_gate_and_generator_models_differ()` (which
+     only compares GATE_MODEL against GENERATOR_MODEL, not providers) because
+     a same-provider-different-model pair is an insufficient guarantee here:
+     the generator identity that actually matters for D-14 is "Claude", which
+     no GENERATOR_MODEL/GATE_MODEL string comparison can see.
+     PTF DERIVATION is unmodified: `_publish_survivor`'s existing
+     `derive_predict_the_fix` branch runs exactly as it does for an
+     orchestrator batch (D-80) -- wrong-fix distractors generated on the base
+     OpenAI generator, each re-executed in the sandbox and required to still
+     fail. `insert_predict_the_fix`'s `source.origin` stays `"llm"`
+     unchanged (its differentiating content, the distractors, genuinely is
+     LLM-generated); traceability to a hand-authored parent is via the
+     existing `source.derived_from` pointer, not a second origin tag.
+     NO EXEMPTION on the sandbox or the gate chain: `ingest_batch` calls
+     `verify_sandbox_available()` (D-57) before processing anything, uses the
+     same `fetch_dedup_pool_hashes` pool (a hand-authored candidate can
+     dedup-collide with existing content same as any other), and commits
+     per-item (`commit_after_each=True`) so a crash mid-batch only loses the
+     one item in flight, mirroring `commit_after_each_spec` (D-74).
+     Cost: none identified -- `origin`/`_publish_survivor` defaults keep
+     every existing orchestrator call site byte-identical;
+     `line_budget_for_difficulty`'s rename is a pure rename with its one call
+     site updated in the same change.
+
+D-88 Data-loss defect: `pytest` was destroying the shared dev/prod database.
+     `backend/tests/conftest.py`'s `migrated_db` fixture (session-scoped,
+     `autouse=True`) ran `DROP SCHEMA public CASCADE` + recreate + `alembic
+     upgrade head` unconditionally against whatever `DATABASE_URL` resolved
+     to -- and root `.env` / `backend/.env` both point `DATABASE_URL` at the
+     SAME Postgres the API and pipeline use for real content, with no
+     separate test database. CONFIRMED BY DIRECT REPRODUCTION during the D-87
+     work session, not inferred: a plain `pytest` invocation destroyed ~37
+     real generated exercises at some earlier, unwitnessed point (the
+     originally-reported incident), and then a further 24 (18 `trace` + 5
+     `spot_the_bug` + 1 `predict_the_fix`, all `source.origin="llm"`, sitting
+     in `in_review` from a prior orchestrator batch) were destroyed a second
+     time, live, while running this project's own test suite as part of
+     "ruff clean, tests green." `0003_predict_the_fix_type` and
+     `0000_schema_sql.py`'s own `downgrade()` were both investigated and
+     ruled out as the actual mechanism (0003 only widens a CHECK constraint;
+     0000's `DROP TABLE`s only run on an explicit `alembic downgrade`, which
+     nothing in the normal dev/CI flow issues) -- `pytest` itself, every
+     single run, was the mechanism.
+     FIX mirrors D-62's `CODEREADER_ALLOW_SEED=1` pattern: a destructive
+     operation must be a conscious, structurally-guarded opt-in, never
+     pytest's default side effect. New `backend/tests/_db_guard.py` (pure
+     URL/string logic, zero DB I/O except the one function documented below)
+     plus a module-level block at the top of `conftest.py`, executed before
+     pytest imports any test module or fixture:
+       (a) `resolve_test_database_url()`: `TEST_DATABASE_URL` if explicitly
+       set, else `derive_test_database_url()` appends `_test` to
+       `app.config.get_settings().DATABASE_URL`'s database name (e.g.
+       `codereader` -> `codereader_test`, idempotent if already suffixed).
+       The base is read via `get_settings()`, NOT raw `os.environ` -- this
+       project supplies `DATABASE_URL` through the `.env` FILE, which
+       pydantic-settings parses internally and never writes back into
+       `os.environ`, so an `os.environ`-only read silently fell back to a
+       guessed default during development of this fix (a hardcoded
+       `.../5432/...` guess, wrong port for this environment's actual
+       `5433` mapping) and surfaced only as a confusing
+       `InvalidPasswordError` several layers down -- exactly the kind of
+       silent-wrong-default failure mode D-88 itself is about. Caught and
+       fixed before landing; `test_resolve_test_database_url_never_reads_
+       database_url_from_env_directly` pins the corrected contract.
+       (b) `assert_disposable_test_database()`: FAIL LOUDLY
+       (`DatabaseGuardError`) -- before any DB I/O -- unless the resolved
+       database's name ends in `_test`, OR `CODEREADER_TEST_DB=1` is
+       explicitly set (an escape hatch for a disposable DB with an unusual
+       name). Pure function: cannot itself destroy anything, which is what
+       lets a unit test prove "the guard fires" without a second real wipe.
+       Called twice: once at module load, and again inside `migrated_db`
+       itself immediately before its DROP SCHEMA, reading whatever
+       `DATABASE_URL` actually resolves to at that moment -- belt and
+       suspenders, independent of step (a).
+       (c) `ensure_database_exists()`: `CREATE DATABASE` the resolved target
+       if it does not exist yet ("created on demand," D-88 point 2) --
+       connects to the `postgres` maintenance database, never drops or
+       alters anything, and independently re-validates the identifier
+       against a safe-charset regex before interpolating it into `CREATE
+       DATABASE "..."` (identifiers cannot be bind-parameterized), so a
+       malformed name fails loudly instead of reaching raw SQL verbatim.
+       (d) The module-level block then overrides the `DATABASE_URL` env var
+       itself (clearing `get_settings`'s `@lru_cache` immediately before and
+       after), rather than threading a URL through every call site:
+       `alembic/env.py`, `app/db.py`'s `create_engine()` default, and
+       `app/main.py`'s lifespan all independently read
+       `get_settings().DATABASE_URL`, and three test files construct a bare
+       `create_engine()` of their own -- an env override makes every one of
+       those transparently target the isolated database with zero
+       per-call-site changes, so no path is left that can silently keep
+       pointing at the real one.
+     VERIFIED, not just reviewed: `backend/tests/test_m7_db_isolation_guard.py`
+     unit-tests the guard (rejects a real-looking name with no flag, accepts
+     a `_test`-suffixed name, accepts the flag override, rejects a
+     not-exactly-`"1"` flag value), the derivation (idempotent, preserves
+     host/user/password/port), the env-precedence contract (explicit
+     override wins; a stale/wrong `DATABASE_URL` key in `env` is ignored in
+     favor of the caller-supplied base), `ensure_database_exists` (creates,
+     is idempotent on a second call, rejects an unsafe identifier via a
+     SQL-injection-shaped probe string), and the REAL running session
+     (`get_settings().DATABASE_URL` is asserted disposable from inside an
+     actual test). Separately, end to end: a live-database row count was
+     captured before and after both a single-file run and the full 342-test
+     suite run and found byte-identical (unchanged) in both cases -- proof
+     by direct measurement, not by trusting the code review, matching the
+     rigor D-45/D-57 set for a trust-relevant fix.
+     CI (`.github/workflows/ci.yml`, `pytest` job): the `pytest backend/tests`
+     step now sets `TEST_DATABASE_URL` explicitly rather than relying on
+     implicit derivation, so the CI config itself states which database the
+     suite runs against; the preceding `alembic upgrade head` / `downgrade
+     base` / `upgrade head` steps are untouched (they validate migration-
+     chain reversibility against the job's own ephemeral `codereader`, a
+     different concern from application test isolation, and should not share
+     a database with it by coincidence even though both are thrown away when
+     the job ends).
+     `docs/ops-runbook.md` gains section 7 (the hazard, the fix, how to point
+     pytest elsewhere, an explicit "do not bypass the guard" warning) and a
+     new alert-catalog row (`DatabaseGuardError` firing is the guard working,
+     not an incident); section 1 gains a "back up before any batch" callout
+     naming this incident directly.
+     RECOVERY: `backend/scripts/backup_db.sh` had been run BEFORE the second
+     (24-row) wipe, on unrelated instruction to back up before the D-87
+     ingestion work -- pure luck of timing, not a designed safeguard, which
+     is itself part of why section 1's "always back up before a batch"
+     callout exists now. The dump was restored into a scratch database
+     (`backend/scripts/restore_db.sh`, never directly into the live DB),
+     the 24 `exercises` rows were confirmed to have zero `(id, version)`
+     overlap with the 6 rows already live from the D-87 ingestion, extracted
+     as portable `INSERT` statements (`pg_dump --data-only --table=exercises
+     --column-inserts`), and applied to the live database. Live count
+     verified 6 + 24 = 30 before/after, origins verified as exactly four
+     groups (`handauthored_claude`/`spot_the_bug`: 5, `llm`/`predict_the_fix`:
+     2, `llm`/`spot_the_bug`: 5, `llm`/`trace`: 18) -- matching the pre-loss
+     backup exactly plus the D-87 batch's own contribution. The ~37
+     originally-reported exercises remain unrecovered: no backup exists from
+     before that first, earlier loss, which is a second argument (independent
+     of the wipe mechanism now fixed) for the section 1 backup-before-batch
+     discipline going forward.
+     Cost: none identified against the fix itself -- every existing test
+     still passes unmodified (342/342), and the override is transparent to
+     every code path by construction (point d). The recovered content
+     inherits whatever quality/review state it already had (`in_review`,
+     `human_reviewed=false`) -- this restore did not re-run any gate, it
+     reinstated exactly the rows a prior, already-gated orchestrator batch
+     had produced.
+
+D-89 Reject-report blind spot on the predict_the_fix derivation path
+     (`pipeline/orchestrator.py`'s `_derive_and_publish_ptf`): a rejected
+     `derive_artifacts` call only did
+     `report.counts[f"{ptf.reject_stage}_rejected"] += 1` and returned --
+     `ptf.validation_report`, built in `predict_the_fix.py`'s
+     `derive_artifacts` and carrying the full per-check sandbox detail (which
+     distractor failed to still-fail, its captured stderr), was discarded.
+     The STB candidate path has carried the equivalent receipt to disk since
+     D-48 (`_record_reject` -> `publish.write_reject_report`); the PTF path
+     never got the same wiring when D-80 added it. Consequence: across
+     batches 2-4, all 14 `ptf_sandbox_gate` rejections left zero forensic
+     trace -- exactly the "aggregate counter, no per-check telemetry" failure
+     D-48 already fixed once, recurring on a path D-48 predates.
+     Fix: new `_record_ptf_reject` (mirrors `_record_reject` exactly, per
+     D-87's "never build a parallel machinery" rule -- it calls the SAME
+     `publish.write_reject_report`) plus `_ptf_candidate_snapshot` (the STB
+     triple -- buggy/fixed/test code -- plus the rejected wrong-fix variants'
+     code and notes, since a PTF candidate's shape does not fit
+     `_record_reject`'s existing `_candidate_snapshot`). `stage` is
+     `ptf_sandbox_gate` or `ptf_static_gate`, matching `PTFDerivationOutcome.
+     reject_stage` verbatim; a new `concept:{concept}:ptf_rejected` counter
+     keeps PTF rejections countable without conflating them with the STB
+     spec's own `concept:{concept}:rejected` tally. Per the house rule that a
+     reporting path never observed to fire is not a reporting path,
+     `test_run_batch_writes_a_reject_report_when_ptf_derivation_is_rejected`
+     (`backend/tests/test_m8_predict_the_fix.py`) drives a real rejection (one
+     scripted wrong fix IS the verified `fixed_code`, so the sandbox's
+     `distractor_1_still_fails_test` check fails it) through `run_batch` end
+     to end and asserts the reject JSON lands under `rejects/` with the
+     correct stage, spec concept, candidate snapshot, and failing check.
+     Cost: none identified -- purely additive telemetry; no gate threshold
+     changed.
+
+D-90 Data-loss defect: `spot_the_bug`'s execution-verified `fixed_code` was
+     never persisted. `pipeline/publish.py`'s `_stb_grading` stored only
+     `grading.artifacts.fixed_code_hash` (a sha256 digest) -- `fixed_code`
+     itself existed nowhere in the database, only in-memory during the batch
+     that generated it, even though `grading.artifacts.failing_test` (the
+     `test_code`) was already the precedent for retaining solution material.
+     A digest cannot be inverted, so the 5 `origin="llm"` spot_the_bug
+     survivors' fixed_code is gone permanently -- accepted as unrecoverable
+     (5 exercises). The 27 `origin="handauthored_claude"` rows only survived
+     by coincidence: their fix text still happened to live in
+     `pipeline/handauthored_stb_batch{1,2,3,4}.json`, files outside the
+     database that nothing guarantees will stay around, and PTF derivation /
+     difficulty rebalancing / any future migration was hostage to them. The
+     product's trust promise is "the answer was proven by execution"; the
+     database was keeping the hash of the proof, not the proof.
+     FIX: `_stb_grading` now also writes `grading.artifacts.fixed_code`
+     alongside the unchanged `fixed_code_hash` (`pipeline/publish.py`) --
+     every spot_the_bug published from here on carries its own verified fix.
+     One-time backfill for the 27 already-published handauthored rows:
+     `backend/scripts/backfill_stb_fixed_code.py`, joining each DB row to its
+     origin batch-file entry on `pipeline.dedup.content_hash(buggy_code)` --
+     the SAME AST-normalized hash `orchestrator._evaluate_candidate` already
+     computes and stores as `source.content_hash` for every published row
+     (LLM and hand-authored both run through that one function), not a fuzzy
+     text match. `update_exercise_fields` (unchanged, D-58) permits the
+     `grading` update because all 32 spot_the_bug rows are still
+     `status='in_review'` -- the live-row immutability guard never engages.
+     Backed up first (`backend/scripts/backup_db.sh`, D-88 discipline) before
+     any write. RESULT, run against the real dev database: all 27
+     handauthored_claude rows matched and backfilled, 0 unmatched, 0 hash
+     collisions across the 33 batch-file entries scanned, 0 rows already
+     carrying `fixed_code` (script is idempotent past this point). Verified
+     independently of the script's own success message: for all 27 rows,
+     `sha256(recovered fixed_code) == grading.artifacts.fixed_code_hash`
+     already stored in the row -- proof the recovered text is the SAME text
+     that was actually executed, not merely a plausible match, matching the
+     rigor D-45/D-57/D-88 set for a trust-relevant fix. Cost: none identified
+     against the fix; the backfill script becomes dead weight once every row
+     has fixed_code, which is the point.
+
+D-91 New entrypoint: `pipeline/ptf_ingest.py` derives a predict_the_fix from
+     an ALREADY-PUBLISHED spot_the_bug using HAND-AUTHORED distractors,
+     closing the other half of the gap D-80/D-89 left (22 published STB
+     survivors with no derived PTF, per the earlier audit). Peer to
+     `pipeline/ingest.py` (D-87), same reuse law: static_gate +
+     `sandbox_gate.validate_predict_the_fix` run through
+     `predict_the_fix.derive_artifacts` completely UNCHANGED -- it already
+     takes no LLM client, so a hand-authored batch simply never calls
+     `generate_wrong_fixes` (there is no generation step; the distractors are
+     already written). `orchestrator._evaluate_candidate` gains no PTF branch
+     (its static+sandbox+semantic STB/trace chains do not describe PTF's
+     static-gate-on-distractors-only, no-semantic-gates chain -- see the
+     earlier audit's section E); the reject path reuses
+     `orchestrator._record_ptf_reject`/`BatchReport` verbatim, the exact D-89
+     machinery, not a reimplementation.
+     Made possible by D-90: `buggy_code` (payload.code), `test_code`
+     (grading.artifacts.failing_test), `fixed_code` (grading.artifacts.
+     fixed_code, D-90), `context_note` (payload.context_note), and
+     explanation summary/principle are all now recoverable from an
+     already-published row, so the module reconstructs a minimal duck-typed
+     `_STBView` (exactly the attributes `derive_artifacts` reads) from the
+     DATABASE, never from a batch file -- the database is the source of
+     truth, unlike D-90's one-time backfill which had no choice but to read
+     disk. `_STBView` is deliberately NOT a full `STBCandidate`:
+     `reason_options`/`correct_reason_id`/`bug_lines`/`self_check`/
+     `self_difficulty` are either unpersisted or unread by `derive_artifacts`,
+     and fabricating them would manufacture fake provenance for fields
+     nothing downstream uses.
+     `publish.insert_predict_the_fix` gains an `origin` parameter (default
+     "llm", so every existing orchestrator caller is unchanged); the new
+     entrypoint passes `origin="handauthored_claude"` -- mislabeling a
+     hand-authored derivation as "llm" would corrupt the exact field used to
+     trace a quality problem back to its source. Two new `publish.py` helpers
+     keep the module boundary law intact (pipeline touches backend only
+     through publish.py): `fetch_stb_for_ptf_derivation` (loads the source
+     row, refusing anything not `type=spot_the_bug` or no longer
+     `in_review`/`live` -- deriving from a pulled/retired row would launder
+     whatever made it unfit into new content) and `derived_ptf_exists`
+     (skips a spec that already has a derived PTF, so a repeat run over the
+     same batch never double-derives).
+     VERIFIED (`backend/tests/test_m8_ptf_ingest.py`, both against a real
+     published database row, not a mock): (1)
+     `test_ptf_ingest_rejects_a_distractor_identical_to_fixed_code_and_writes_
+     a_reject_report` -- a hand-authored distractor identical to the verified
+     fixed_code (not a distractor at all, a second correct answer) is
+     rejected by `ptf_sandbox_gate`, publishes nothing, and writes the D-89
+     reject report with the correct stage/concept/candidate snapshot; per the
+     house rule that a reporting path never observed to fire is not a
+     reporting path. (2)
+     `test_ptf_ingest_publishes_a_ptf_from_hand_authored_distractors` -- three
+     genuinely wrong, hand-authored distractors derive and publish a PTF
+     correctly keyed to the verified fix, with `source.origin=
+     "handauthored_claude"`. The sandbox gate itself (`distractor_i_still_
+     fails_test`, `distractors_distinct`, determinism) was NOT touched or
+     loosened in any way -- both tests exercise the existing, unmodified
+     checks from section B of the earlier audit. Cost: none identified; the
+     gate's strictness is unchanged, this only adds a second way to reach it.
+
+D-92 M8's private-beta gate becomes a switch, not a wall: new
+     `BETA_GATE_ENABLED` setting (`backend/app/config.py`, default `false`)
+     going public with open signup, since the roadmap now calls for it and
+     the allowlist is a safety control worth keeping in reserve (abuse, cost,
+     a bad content incident), not deleting. `beta_allowed`, `beta_invites`,
+     and `_apply_beta_invite` are untouched and still populate on every
+     login; only the two points that actually ENFORCE the allowlist are
+     gated on the new flag: `auth/router.py::github_callback`'s
+     `if not user.beta_allowed` (denies the login, no session issued) and
+     `auth/service.py::rotate_refresh_token`'s `if not user.beta_allowed`
+     (401s an existing refresh cookie). Both had to move together --
+     gating only the callback would let a gate-off login mint a cookie in
+     `github_callback` and then immediately 401 on the very next
+     `/auth/refresh`, reproducing the exact symptom this was built to fix,
+     since `rotate_refresh_token` enforces `beta_allowed` independently of
+     where the cookie came from. Flipping `BETA_GATE_ENABLED=true` restores
+     current (pre-D-92) behavior exactly, with no other code path changed.
+     VERIFIED (`backend/tests/test_m8_beta.py`):
+     `test_login_succeeds_when_beta_gate_disabled_for_uninvited_user` -- an
+     uninvited GitHub user gets a session with the gate off, proven through
+     a real `/auth/refresh` call, not just the callback's cookie-set;
+     `test_login_still_denied_when_beta_gate_enabled_for_uninvited_user` --
+     the same shape of uninvited user is still refused with the gate on.
+     The two pre-existing tests that implicitly assumed the gate was always
+     on (`test_login_denied_when_not_beta_allowed_no_session_issued`,
+     `test_refresh_401s_after_beta_access_is_revoked_mid_session`) now set
+     `BETA_GATE_ENABLED=true` explicitly rather than relying on a default
+     that just flipped. Frontend: `frontend/src/routes/Login.tsx`'s
+     `ERROR_COPY` gains a `beta_required` entry -- found while diagnosing a
+     real failed sign-in that every failure mode rendered as an identical
+     generic "Sign-in failed. Try again.", making a beta refusal
+     indistinguishable from an OAuth/token failure to the user and to
+     whoever was debugging it. Cost: one new boolean setting to carry
+     through deploys; a deploy that forgets to ever set it back to `true`
+     stays permanently open, which is the intended default now, not a
+     regression.
+
+D-93 "I don't know" contract: skip is a new terminal `attempts.status` value
+     ('skipped'), not a third meaning crammed into `is_correct: bool | None`.
+     is_correct already carries two distinct "no verdict" reasons (grading_
+     pending, grading_failed) disambiguated by status, not by is_correct
+     itself -- adding skipped is the same pattern's natural third case, not
+     an overload of it. validate_answer_shape gets a `{"skipped": true}`
+     branch per deterministic type (spot_the_bug/trace/predict_the_fix),
+     checked as its own exact-key-set branch before the real-answer check,
+     never a relaxation of it (docs/05's exact-key-set discipline is
+     unchanged for a real answer). summarize is out of scope -- it is
+     already dropped from the soft launch (HANDOFF.md) and rubric grading
+     has no concept of "no evidence" to short-circuit against.
+     grade_deterministic short-circuits on `is_skip_answer()` before ever
+     indexing answer["line"]/answer["choice_id"], returning None -- the
+     caller (attempts/service.py) uses a separate `is_skip` boolean, not
+     `is_correct is None`, to route to status="skipped" vs "graded", so the
+     None itself never has to carry which case it is.
+     update_concept_state gains a third outcome branch ("skipped", alongside
+     "correct"/"incorrect") instead of overloading a bool. A skip:
+     increments `declined` (new column, migration 0004), NOT `attempts` --
+     it must never inflate the accuracy denominator attempts/correct drive;
+     schedules CONCEPT_INTERVAL_SKIPPED_DAYS=1 (sooner than WRONG's 2 days),
+     because an honest "I don't know" is a CLEANER signal than a wrong guess
+     (no misconception was planted, just an absence of evidence) and is
+     worth re-testing sooner; decays mastery by a gentler multiplier (0.85
+     vs WRONG's 0.7), with no directional target term at all -- a skip
+     doesn't assert the user believes something incorrect, so it shouldn't
+     be pulled toward 0 the way a wrong guess's target=0 term does, only
+     reflect a mild forgetting-curve lapse. Cost: one migration, one new
+     status value threaded through AttemptResponse.status/SessionProgress
+     and both update_concept_state call sites (attempts/service.py,
+     jobs/grading_retry.py).
+     VERIFIED (backend/tests/test_m9_skip_contract.py): a skipped
+     spot_the_bug/trace/predict_the_fix attempt is accepted, returns
+     status="skipped" with a full reveal and is_correct=None; a skip
+     schedules next_review_at one day out vs. two for an equivalent wrong
+     answer on a fresh concept; user_concept_state.attempts and
+     accuracy_by_type's denominator are unchanged by a skip (only declined
+     moves); the old exact-shape rejection for a real (non-skip) malformed
+     answer is untouched (a negative test: {} and {"skipped": false} still
+     422).
+
+D-94 GET /v1/me/activity: the contribution-grid data source is
+     daily_sessions, not a new table -- it is already one row per
+     user-active-day, PK'd on (user_id, session_date), and `completed_at`
+     already distinguishes finished vs. opened-but-not-finished (the same
+     table admin/service.py::compute_retention already reads as the
+     canonical "was the user active" signal). Default window: 365 days
+     ending "today" in the user's own local timezone (local_date_for), the
+     same date semantics sessions/streaks already use -- not naive UTC
+     `date.today()`, which would show the wrong grid boundary near midnight
+     for a user outside UTC. Cost: none identified; no new table, no new
+     precomputed aggregate to keep in sync.
+
+D-95 POST /attempts response gains `session.first_completed_session: bool`.
+     Computed inline at the exact moment `daily_session_row.completed_at`
+     flips from NULL (the same code path that already does the flip), by
+     counting `daily_sessions` rows with `completed_at IS NOT NULL` for the
+     user INSIDE the same transaction -- the just-flipped row is already
+     visible to that count, so 1 unambiguously means "this is the user's
+     first-ever completed day." No new column: `users`/`user_stats` gained
+     no `first_session_at`/`sessions_completed` field, since the count is
+     cheap (one indexed-PK aggregate) and only ever runs on the one request
+     per user per day that actually completes a session, not on every
+     attempt. Cost: one extra COUNT query, only on session-completing
+     requests.
+
+D-96 reviews: new table, shaped like disputes (text+CHECK not a Postgres
+     enum, timestamptz everywhere) but upserted instead of append-only --
+     one review per user, enforced by a DB-level UNIQUE on user_id, not
+     just upsert-shaped application logic, so a concurrent double-submit
+     for the same user still can't produce two rows. GET /admin/reviews
+     reuses the existing `_require_admin_token` shared-secret gate verbatim
+     (the same placeholder HANDOFF.md already flags as "fine for a 20-30
+     person beta, acknowledged weakness") rather than inventing new admin
+     auth -- consistent with the instruction to inherit it, not fix it
+     here. Cost: one migration, one new module (app/reviews/), inherits
+     the admin auth weakness rather than deferring/fixing it (already
+     tracked).
+
+D-97 GET /session/today/review reuses build_reveal()/build_summarize_reveal()
+     (attempts/grading.py, attempts/rubric.py) verbatim -- the exact
+     functions POST /attempts and GET /attempts/{id} already call -- rather
+     than re-deriving a "review" shape from exercise.grading/explanation a
+     second time. Only exercises the user actually attempted today appear;
+     an unattempted exercise has no answer/verdict/reveal to show yet.
+     Lives in sessions/service.py (not a new domain module) since it is a
+     read over the same today's-session data get_today_session already
+     builds -- module law respected by importing attempts/grading.py and
+     attempts/rubric.py's pure builder functions (no import of
+     attempts/service.py, no cycle: attempts/service.py already imports
+     sessions/service.py the other direction). Cost: none identified; no
+     grading/explanation JSONB is ever dumped wholesale, same allowlist
+     discipline as every other reveal-returning endpoint.
+
+D-98 UX upgrade, deliberate override of docs/08b: DARK-ONLY, not
+     dark-offered-default-light. docs/08b is explicit that "dark-by-default
+     is the single most common slop tell" and specifies an explicit toggle
+     defaulting to light. The product owner overrode this for the M9 UX
+     upgrade: a developer-tool reading surface is judged against a
+     different reference class than the landing-page corpus that
+     calibration was defending against, and a considered, singular dark
+     surface is a legitimate identity choice for this audience, not a
+     default nobody chose. The toggle, the light token set, and theme.ts's
+     switching logic are deleted entirely, not merely defaulted -- keeping
+     a dead toggle around would invite exactly the "how do I get light
+     mode" support burden a real single-surface product doesn't have.
+     WCAG AA contrast on the one dark surface remains a hard requirement
+     (docs/08's quality floor is unchanged by this override). Cost:
+     docs/08b's "never the default" line is now wrong for this app; this
+     entry is the record of the divergence, not a rewrite of docs/08b
+     itself.
+
+D-99 UX upgrade, deliberate override of docs/08b: a contribution grid
+     (GitHub-style, D-94's GET /v1/me/activity), not "streak history = a
+     column of gutter ticks." Same signature world (a developer's own
+     contribution graph, not a borrowed dashboard widget), richer
+     information density for the same idea -- gutter ticks show only a
+     capped recent run, the grid shows the full year. The non-negotiable
+     color law is unchanged and re-affirmed here explicitly because this is
+     the highest-risk place to violate it by habit: green/red stay reserved
+     for correctness only, so the grid is built from --color-action (the
+     annotation-ink blue) at varying intensities, never green -- a green
+     grid would both break the semantic law and make the app a literal
+     GitHub-contributions clone, the opposite of docs/08's "not from
+     startup-landing vernacular" brief. Cost: none identified against the
+     color law (blue-intensity scale costs nothing docs/08b didn't already
+     have -- --color-action exists); docs/08b's literal gutter-ticks-only
+     line is superseded for streak history specifically, gutter ticks may
+     still appear elsewhere (e.g. session progress) where docs/08b already
+     specifies them.
+
+D-100 review_history: new append-only table alongside D-96's reviews, not a
+     replacement. reviews.user_id stays UNIQUE and upserted (the "current
+     opinion" a dashboard would show); review_history gains a row on every
+     POST /v1/me/review with no UNIQUE constraint and no UPDATE path, ever
+     -- the record of how the current opinion got there. Reason: a rating
+     that moves from 3 to 5 over a beta is signal the upsert-only shape
+     was silently destroying. GET /admin/reviews now nests each user's
+     full history (oldest-first) under their current review rather than a
+     second endpoint, since every caller of the review list wants both
+     together. Cost: one migration, one model, one extra INSERT per
+     review submission (same transaction, so no new failure mode); the
+     reviews table's shape and POST /v1/me/review's response contract are
+     unchanged.
+
+D-101 Content-integrity defect (red-team C1): every published `trace` exercise
+     keyed its correct answer to choice id "a". The generator prompt
+     (`prompts/generator_trace_python_v1.md`) pins the correct choice to "a",
+     and `publish._trace_payload` copied the generator's choices verbatim with
+     NO shuffle -- unlike `predict_the_fix.derive_artifacts`, which has always
+     `rng.shuffle`d its choices. Confirmed against the live DB: all 39 trace
+     rows (8 live + 31 in_review) had `correct_choice_id='a'` with "a" first in
+     `payload.choices`. A client submitting `{"choice_id":"a"}` scored 100% on
+     the entire trace corpus without reading the code -- and poisoned every
+     trace exercise's solve-rate/percentile, trace-concept mastery, and
+     spaced-repetition, since "correct" no longer meant the user could trace.
+     This is NOT an invariant-2 serializer leak: the session allowlist
+     (`sessions/service.py` `_serialize_payload`, `schemas/session.py`, both
+     `extra="forbid"`, dropping `misconception`) holds; the bias was upstream
+     in content generation. The prompt is left alone (D-46/D-53 lesson: a prompt
+     fighting a downstream mechanic is the wrong layer) -- the shuffle belongs
+     at publish, exactly where PTF already does it.
+     FIX 1a (code, new rows): `publish.insert_candidate` now shuffles trace
+     choices at publish time via `reassign_shuffled_choice_ids` -- a new
+     module-level helper extracted so the publish path AND the one-time
+     migration (below) share ONE shuffling approach, never a second. It mirrors
+     PTF's shuffle-then-zip-onto-ids pattern (over the candidate's own id set,
+     sorted, so a/b/c/d stay a/b/c/d) and is fed the SAME batch `rng` the
+     orchestrator already threads to PTF derivation. `payload.choices` (id +
+     order), `grading.correct_choice_id`, and `explanation.why_wrong`'s
+     choice_id references all move together off the single shuffle
+     (`_remap_trace_why_wrong`), so the answer key can never drift apart from
+     the shown options. No gate touched; the correct choice's text stays the
+     sandbox-captured stdout (the belt-and-braces substitution moved into the
+     shuffle helper unchanged). Negative test
+     (`test_m3_publish.py::test_published_trace_correct_choice_is_distributed_
+     not_always_a`): 40 published traces off one shared rng must spread
+     correct_choice_id across >=3 ids and never be constant -- it fails on the
+     pre-fix code (all "a") and passes now; per-row it also asserts the key is
+     in the shown choices, the correct text is preserved, and why_wrong never
+     names the correct id. The existing fixture assertion that pinned the
+     correct choice to index [0] was rewritten to key by correct_choice_id
+     wherever the shuffle placed it.
+     FIX 1b (data, existing rows): `backend/scripts/reshuffle_trace_choices.py`
+     re-shuffles already-published trace rows IN PLACE, reusing
+     `reassign_shuffled_choice_ids`/`_remap_trace_why_wrong` verbatim (same
+     shuffle as 1a). Seeded per-row from the immutable exercise id
+     (reproducible). The load-bearing safety is a text-invariant assertion PER
+     ROW: the choice whose id == correct_choice_id AFTER must carry the SAME
+     TEXT the correct choice had BEFORE, the full set of choice texts must be
+     unchanged, and every text->misconception mapping preserved -- a violation
+     aborts rather than writing a mis-keyed exercise. Writes go through the
+     D-58 `update_exercise_fields` immutability guard, NOT around it. Run
+     against the real dev DB (backed up first, D-88 discipline): dry-run proved
+     0 text-invariant errors across all 39 and a spread of {a:14,b:9,c:7,d:9};
+     `--apply --status in_review` re-shuffled the 31 in_review rows
+     ({a:11,b:9,c:5,d:6}); a migrated row verified coherent end to end
+     (correct_id=d, choice_ids=a-d, why_wrong=a,b,c, correct text == captured
+     stdout). Existing `attempts` rows were never touched.
+     THE 8 LIVE ROWS ARE DELIBERATELY NOT YET FIXED. `update_exercise_fields`
+     correctly REFUSES an in-place content update to a live row (invariant 3:
+     exercises immutable per (id,version), fixes bump version). Re-keying them
+     in place would also require bypassing that guard AND would desync the 22
+     existing attempts on them (a stored `answer.choice_id` chosen under the old
+     layout would point at different option text after a relabel; is_correct is
+     frozen but the review display would mislabel). Per the engagement's
+     inviolable rule ("if a fix appears to require loosening an invariant, STOP
+     and report"), the live rows are held for a deliberate decision (pull vs.
+     version-bump-and-re-review vs. an explicit logged override) rather than a
+     silent guard bypass.
+     LIVE-ROW RESOLUTION (chosen: version-bump + re-review; the immutability
+     guard is NOT overridden): `reshuffle_trace_choices.py --bump-live` calls
+     `publish.fix_and_bump` on each of the 8 live rows, creating a shuffled
+     in_review v2 (same shared shuffle) while leaving v1 live and untouched --
+     v1 keeps its 22 attempts honest against the exact version those users
+     answered. The re-key is proven twice: `_reshuffled` asserts v2's correct
+     text == v1's correct text before the write, and the script re-reads v2
+     after the write and re-asserts the text survived the round trip. Verified
+     against the real DB (backed up first): 8 v2 rows created; e.g. 16065f30
+     v1 correct='a'/text='2' -> v2 correct='d'/text='2' (id moved, text
+     preserved, why_wrong remapped to a,b,c). Distribution across the 39
+     fixed-and-shippable in_review rows (31 originals + 8 v2): {a:14,b:9,c:7,d:9}
+     -- within normal variance of a provably-uniform 4-way shuffle at n=39, not
+     constant. The operator approves each v2 (`review_cli approve`) and only
+     then is the matching v1 pulled (`review_cli pull` / `publish.pull`), so
+     `exercises_current` (DISTINCT ON (id) WHERE status='live' ORDER BY version
+     DESC) serves v2 the moment it goes live and never serves a pulled v1 nor
+     an unapproved in_review v2. The 8 v1 rows remain live+gameable until that
+     deliberate approve->pull, which is the one manual step this fix leaves open
+     by design (status changes stay deliberate, HANDOFF/CLAUDE.md).
+
+D-102 History-loss defect in the pull path, found during the C1/D-101 work
+     (pulling the 8 re-keyed trace v1s destroyed a user's COMPLETED session).
+     `sessions/service.purge_sessions_referencing` (D-58) deleted EVERY
+     daily_sessions row referencing a pulled exercise from yesterday onward,
+     including rows with `completed_at IS NOT NULL`. Pulling one bad exercise
+     therefore erased a finished day from every user who had already COMPLETED
+     a session containing it: `total_sessions` dropped, the activity heatmap
+     square reverted from completed to opened, and the streak evidence for that
+     day vanished -- silently rewriting the retention mechanic. Correct-as-
+     written (D-58 said "still-servable") but wrong-as-designed: a completed
+     session is never served for ANSWERING again, so swapping content out of it
+     protects the user from nothing; the only effect is deleting history they
+     earned. Confirmed by real reproduction: the D-101 pull purged 21 cached
+     sessions, at least one a completed same-day session, which surfaced this.
+     FIX: `purge_sessions_referencing` gains a `completed_at IS NULL` predicate
+     alongside the existing `session_date >= yesterday`, so ONLY in-flight
+     sessions are purged. D-58's real purpose is untouched -- an unfinished
+     session must still never serve pulled content, and it doesn't: the
+     in-progress purge (delete row + Redis key, forcing a fresh resample) is
+     unchanged. A kept completed session still renders because pull flips
+     status to 'pulled' but never DELETES the exercise row, so the already-
+     answered exercise still resolves on the review screen.
+     NEGATIVE TEST (`test_m7_pull_exercise.py::test_pull_keeps_completed_
+     sessions_but_purges_in_progress_ones`): two users reference the same
+     exercise, one via a completed daily_session and one via an in-progress
+     one; a pull leaves the completed row + cache intact and purges only the
+     in-progress row + cache (`purged == 1`). Fails on the pre-fix code (purged
+     both). The two existing pull tests still pass -- the built, not-yet-
+     completed session they exercise is in-flight, so it is still purged.
+     RECOVERY: the completed daily_sessions rows the D-101 pull destroyed are
+     restored from the pre-pull backup (`codereader_2026-07-12T2125Z.dump`,
+     taken minutes before the approve/pull batch), re-inserting only the
+     completed rows now missing from the live DB; the exercise rows they
+     reference still exist (pulled, not deleted), so the restored rows resolve.
+     Exact rows restored are in the report accompanying this entry.
+
+D-103 Frontend robustness (red-team C2): a malformed/partial grade `reveal`
+     threw during render and, with NO React error boundary anywhere in the
+     tree, white-screened the entire SPA mid-session (reload re-hit the same
+     data -> persistent blank page). `AttemptResponse.reveal` is typed
+     `Reveal | null`, so `null` is a contract-legal value on a graded/skipped
+     attempt, and the per-type reveal views dereferenced `reveal.correct_lines`
+     / `reveal.explanation.*` unguarded. Two-layer fix, no behavior change to
+     the happy path:
+     (a) `components/ErrorBoundary.tsx` -- a class boundary (getDerivedState
+     FromError + componentDidCatch -> Sentry.captureException, a no-op without a
+     DSN, so turning a white-screen into a fallback never hides the bug).
+     Placed at the app root (`main.tsx`, `FullPageErrorFallback` with a reload)
+     AND around the per-exercise session content (`Session.tsx`, keyed by
+     `currentIndex` so it remounts fresh each exercise), whose fallback is a
+     "Skip this exercise" button wired to `handleNext` -- losing one broken
+     exercise beats losing the whole session.
+     (b) Defense-in-depth guards in `revealViews.tsx` / `Reveal.tsx`: each
+     per-type view early-returns a readable "explanation isn't available" note
+     when its required reveal fields are missing, so a partial reveal degrades
+     to a note rather than relying on the boundary at all.
+     VERIFIED by a real Playwright test (`e2e/reveal-error-boundary.spec.ts`):
+     it intercepts POST /v1/attempts to return a graded response with a
+     non-object `reveal` (1), which throws `'explanation' in 1` in Reveal's
+     render; the test asserts the boundary's "Skip this exercise" state renders
+     (the browser console confirms the throw was caught, not a white screen)
+     and that skipping advances the session (next exercise or completion). Ran
+     green against the real dev stack. NOTE for future e2e runs: seed_e2e.py's
+     refresh token ROTATES on first use, so every Playwright run needs a FRESH
+     seeded token -- reusing one lands on /login and looks like a test failure.
+     Two pre-existing, out-of-scope items surfaced and are NOT fixed here (only
+     noted): the M6 `session.spec.ts` is stale against the M9 dashboard-at-"/"
+     (D-98/D-99) so it fails its first `toHaveURL(/session)` assertion; and the
+     dashboard's all-or-nothing `Promise.all` (red-team M6) intermittently
+     blanks the landing page on a transient fetch failure.
+
+D-104 Concurrency defect (red-team H1): the POST /attempts advisory lock was
+     keyed per-EXERCISE, but the data it protects is per-USER. `submit_attempt`
+     took `pg_advisory_xact_lock(hashtext(user_id), hashtext(exercise_id ||
+     ':' || date))` (D-66), which serializes only two submits of the SAME
+     exercise. But `_update_streak_and_attempt_count` mutates per-user
+     `user_stats` and writes at most one `streak_events` row per user per local
+     day. Two concurrent first-of-day submits of DIFFERENT exercises (two tabs,
+     a retry storm) took different lock keys, so they never serialized: both
+     read `last_active_local_date != today`, both took the "extended" branch,
+     and wrote TWO `streak_events` rows (invariant 5: one transition must write
+     exactly one row) plus a lost-update on `total_attempts` (both read N, both
+     wrote N+1). Streak is the retention mechanic; this silently corrupted its
+     audit trail and undercounted attempts.
+     FIX (two layers, per the "prefer a DB constraint, it cannot be raced"
+     steer):
+     (1) The advisory lock is re-keyed to `(user_id, session_date)` -- lock_b
+     is the date only, not exercise||date. This serializes EVERY same-day
+     submit by a user, so the second observes the first's committed stats
+     (last_active == today -> no second transition) and, for the same-exercise
+     case, its committed attempt (correct 409). The same-exercise protection
+     D-66 added is preserved (same-exercise submits still share the lock),
+     just widened to also cover the cross-exercise per-user race.
+     (2) Migration 0007 (`db/schema.sql` updated to match) adds a PARTIAL
+     UNIQUE INDEX `uq_streak_events_one_transition_per_day` ON streak_events
+     (user_id, local_date) WHERE event IN ('extended','reset') -- the
+     un-raceable DB backstop: the database itself refuses a second transition
+     row for a (user, day), independent of any application race. Scoped to
+     extended/reset on purpose: 'repaired' (D-68 tz reconciliation),
+     'freeze_used', 'adjusted' are separate event kinds that can legitimately
+     co-occur with a transition on the same day and stay unconstrained. No
+     existing live rows violated it (checked: zero duplicate transition rows
+     before adding the index). Neither the streak transition logic nor invariant
+     5 is weakened -- the fix ENFORCES invariant 5, it does not relax it.
+     TESTS (real concurrency, not sequential awaits):
+     `test_concurrent_first_of_day_submits_of_different_exercises_write_one_
+     streak_event` fires two `asyncio.gather`ed submits of two DIFFERENT
+     exercises as the user's first activity of the day and asserts exactly ONE
+     streak_events row, `total_attempts == 2`, `current_streak == 1` (fails on
+     the pre-fix per-exercise lock: two rows + total_attempts 1);
+     `test_streak_events_unique_index_rejects_a_second_daily_transition` proves
+     the DB backstop directly (a second extended/reset row for the same (user,
+     day) raises IntegrityError; a 'repaired' row on the same day does not).
+     ONE existing test was corrected, NOT weakened: `test_m4_streaks.py::test_
+     streak_audit_invariant_every_transition_writes_a_streak_event_row`
+     simulated "the next day" by rewinding `last_active_local_date` while
+     leaving the real `today` fixed, so BOTH of its transition rows got
+     `local_date = today` -- an impossible production state (a transition row's
+     local_date is always the real transition day, and there is at most one per
+     day). The test now also rewinds the first row's `local_date` to yesterday,
+     faithfully modeling two transitions on two different local days; its
+     invariant-5 assertions (two rows, both 'extended', (0,1) then (1,2)) are
+     unchanged. Cost: the lock now serializes a user's genuinely-concurrent
+     same-day submits of different exercises (for summarize, the loser waits up
+     to GRADER_TIMEOUT_S) -- scoped to one user's own same-day traffic, never
+     unrelated users.
+
+D-105 Frontend flow defect (red-team H2): onboarding was enforced only on the
+     "/" landing (RootGate), not as a real gate. `App.tsx`'s `RequireAuth`
+     checked only auth `status`, never `user.onboarded`, so a hard refresh or
+     deep-link straight to `/session` (or `/profile`, `/review`) reached the
+     protected screen with no level set -- and the session sampler's difficulty
+     bands (LEVEL_BANDS) are undefined without a level. FIX: `RequireAuth` gains
+     a `requireOnboarded` prop (default true) and redirects an authenticated-
+     but-not-onboarded user to `/onboarding` from ANY protected route. The
+     `/onboarding` route moves to a dedicated `OnboardingRoute` that requires
+     auth but NOT onboarding (requiring it there would loop) and, closing the
+     other half of the same audit finding, redirects an ALREADY-onboarded user
+     to "/" so they can't silently re-pick their level. No backend change.
+     VERIFIED (`frontend/e2e/onboarding-gate.spec.ts`, hermetic -- stubs POST
+     /v1/auth/refresh to set `onboarded` directly, so no seeded user and no
+     refresh-token rotation are involved): a non-onboarded user deep-linking to
+     /session lands on /onboarding (the level-pick heading renders); an
+     already-onboarded user visiting /onboarding lands back on the dashboard.
+     `tsc --noEmit` clean. Cost: none; the redirect is a pure client-side gate,
+     and PATCH /me already persists the level as the onboarding action (D-42).
+
+D-106 Frontend resilience (red-team FIX-A, promoted to launch blocker): the
+     Dashboard (`Promise.all` of 3 fetches) and Profile (`Promise.all` of 6)
+     blanked the ENTIRE page if ANY single fetch rejected -- a transient 5xx on
+     one secondary panel took down the first screen every user sees daily, the
+     real cause of the "Could not reach the server" full-page failures observed
+     during the C2 work. FIX: a shared `frontend/src/lib/usePanel.ts` hook
+     (`Panel<T>` = loading | ok | error) loads each panel INDEPENDENTLY, so a
+     failed fetch degrades only its own panel. Dashboard: the primary "enter
+     session" CTA now renders in every state except a confirmed empty pool --
+     even a failed session fetch shows the CTA (linking to /session) plus a
+     "you can still start" note, and the two secondary panels (upcoming
+     reviews, recent sessions) show their own "couldn't load" notes. Profile:
+     the same via a `withPanel` wrapper -- streak, activity, accuracy-by-type,
+     accuracy-history, concepts, and recent-sessions each load and degrade
+     independently, and the already-best-effort review-status fetch stays
+     out-of-band (its failure only hides the "review again" affordance). No
+     more all-or-nothing top-level `error` state or `if (!a || !b || ...)
+     Loading` gate on either screen. VERIFIED (`frontend/e2e/dashboard-
+     resilience.spec.ts`, hermetic): with /v1/me/concepts stubbed to 500 and
+     the session fetch succeeding, the page still renders (the greeting header
+     is visible), the primary CTA is present AND navigates to /session on
+     click, and only the failed panel shows a "couldn't load upcoming reviews"
+     note -- never a blank page. `tsc --noEmit` clean; Profile inherits the
+     same pattern through the shared hook. Cost: none identified; three/six
+     independent fetches instead of one batched await, same total requests.
+
+D-107 Request-layer hardening (red-team, the three mediums), all in
+     `app/main.py`:
+     (M1) An UNAUTHENTICATED flood of POST /v1/attempts hit no rate limiter at
+     all: the endpoint was exempted from the default middleware (D-64) because
+     it self-enforces a stricter 10/min PER-USER limit -- but that limit lives
+     inside submit_attempt, AFTER `require_access_token`, so a request with a
+     missing/garbage token was 401'd before any limiter ran (verified live:
+     15x401, 0x429). FIX: `_needs_default_rate_limit` no longer exempts POST
+     /v1/attempts; the `default_rate_limit` middleware instead skips it ONLY
+     when the request is authenticated (identity is `user:...`), so an
+     authenticated user still defers to the per-user limit and is not
+     double-limited, while an unauthenticated one (identity `ip:...`) is capped
+     by the default IP limit before it ever reaches auth. Test:
+     `test_unauthenticated_attempts_flood_is_rate_limited_by_ip` (limit 2 ->
+     [401, 401, 429]) plus `test_authenticated_attempts_are_not_double_limited_
+     by_the_default` (default limit 1 -> two authenticated attempts both 200).
+     (M2) An unhandled exception fell through to Starlette's default plain-text
+     "Internal Server Error": no uniform JSON body, no request_id for a user to
+     quote to support, and -- that path being outside the header middlewares --
+     no security headers (verified live). FIX: an `@app.exception_handler(
+     Exception)` returns `error_body("internal", ...)` with the request_id and
+     re-applies the security headers (and HSTS in prod) itself, since its
+     response does not pass back through the header middleware. The exception is
+     never leaked: a fixed generic message to the client, the traceback to the
+     server log (exc_info) and Sentry only. FastAPI resolves ApiError /
+     RequestValidationError to their existing, more-specific handlers, so only
+     genuinely-unhandled errors reach this one. Test:
+     `test_unhandled_500_returns_uniform_json_shape_headers_and_no_stacktrace`
+     (drives the debug endpoint's RuntimeError; asserts JSON code 'internal',
+     a request_id, X-Content-Type-Options/X-Frame-Options/X-Request-ID present,
+     and that 'Traceback'/'RuntimeError'/the exception message are absent from
+     the body). Verified live too.
+     (M3) A client-supplied X-Request-ID was trusted verbatim -- written into
+     every structured log line and a Sentry tag and echoed in the response --
+     a log-injection / correlation-spoofing vector. FIX: `_resolve_request_id`
+     honors the incoming header only if it matches `^[A-Za-z0-9_-]{1,64}$`
+     (blocking spaces, newlines, `=`, `:` and over-long values), otherwise
+     generates a server id; a trusted upstream can still propagate a
+     well-formed trace id. Test: `test_client_supplied_request_id_is_sanitized`
+     (an injection-shaped value is replaced with a `req_...` id; a well-formed
+     one is echoed). Verified live. Cost: none identified; all three are
+     request/middleware-layer changes with no route logic touched, and no gate,
+     guard, or invariant is weakened -- these only ADD enforcement/robustness.
+
+D-108 Smoke-suite repair (red-team FIX-B): the M6 Playwright smoke
+     (`frontend/e2e/session.spec.ts`) asserted `toHaveURL(/session)` at "/",
+     but "/" became the dashboard at M9 (D-98/D-99), so the WHOLE smoke suite
+     failed on its first assertion -- red for a benign routing reason, giving
+     zero signal for the entire M9 era. FIX (navigation, no coverage dropped):
+     the test now clicks the dashboard's "Enter sandbox" CTA to reach /session,
+     then proceeds through the session exactly as before. Running it green
+     again surfaced two follow-ons:
+     (a) The final `expect(seenTypes.has('predict the fix'))` assertion was
+     ~1-in-5 flaky: the session's type mix is SAMPLED from the live pool (~8
+     predict_the_fix among ~25 live exercises), so a 5-slot session misses it
+     often. Requiring a specific sampled type is not a meaningful smoke
+     invariant. Relaxed to the real one -- a full session of whatever it served
+     plays through reveal to completion -- and the deterministic per-type UI
+     coverage it was aspirationally providing is MOVED (not deleted) to a new
+     hermetic `frontend/e2e/predict-the-fix.spec.ts` that stubs a PTF session +
+     graded reveal and always exercises the PTF answer radios and reveal.
+     Net: coverage up and no longer flaky.
+     (b) `Session.tsx` still loaded via `Promise.all([getSessionToday(),
+     getMeStats()])` -- the same all-or-nothing pattern FIX-A (D-106) fixed on
+     the dashboard, but here on the CORE session player: a transient failure of
+     getMeStats (only the gate's streak count) blanked the entire session with
+     "Could not reach the server." Made getMeStats best-effort (the session
+     loads on getSessionToday alone; the gate shows a 0 streak if stats fail),
+     extending FIX-A's resilience to the one screen that matters most.
+     VERIFIED: session.spec.ts runs the full seeded session (dashboard ->
+     /session -> answer each served type -> reveal -> "Session complete") green;
+     predict-the-fix.spec.ts, onboarding-gate.spec.ts, dashboard-resilience.
+     spec.ts pass; reveal-error-boundary.spec.ts passes (the Session change
+     removed its getMeStats-flake failures). `tsc --noEmit` clean. NOTE on the
+     e2e harness (also in D-103): seed_e2e.py's refresh token rotates on first
+     use, so each token-consuming spec needs its OWN fresh seed -- the two
+     real-backend specs (session, reveal) are run one fresh-token at a time;
+     the three hermetic specs need no token. The intermittent browser->API
+     "Could not reach the server" is an environment artifact (Windows/docker/
+     vite dev networking; curl to the API always succeeds), now with a far
+     smaller blast radius after (b).
