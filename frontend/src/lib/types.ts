@@ -27,6 +27,22 @@ export interface MeStats {
   total_correct: number;
   accuracy_by_type: Record<string, number>;
   last_active_local_date: string | null;
+  total_sessions: number;
+}
+
+export interface MeSessionSummary {
+  session_date: string;
+  completed: boolean;
+  exercise_count: number;
+  correct_count: number;
+  skipped_count: number;
+  concepts: string[];
+}
+
+export interface AccuracyHistoryDay {
+  date: string;
+  accuracy: number;
+  attempts: number;
 }
 
 export interface ConceptMastery {
@@ -36,7 +52,7 @@ export interface ConceptMastery {
   next_review_at: string;
 }
 
-export type ExerciseType = 'spot_the_bug' | 'trace' | 'summarize';
+export type ExerciseType = 'spot_the_bug' | 'trace' | 'summarize' | 'predict_the_fix';
 export type DifficultyBand = 'easy' | 'medium' | 'hard' | 'boss';
 
 export interface ReasonOption {
@@ -57,6 +73,10 @@ export interface SessionExercisePayload {
   question?: string | null;
   choices?: TraceChoice[] | null;
   max_words?: number | null;
+  // predict_the_fix: the failing test and its captured output; `choices`
+  // carries the candidate fixes (id + code).
+  failing_test?: string | null;
+  test_output?: string | null;
 }
 
 export interface SessionExercise {
@@ -64,6 +84,7 @@ export interface SessionExercise {
   exercise_id: string;
   version: number;
   type: ExerciseType;
+  concepts: string[];
   language: string;
   difficulty_band: DifficultyBand;
   est_time_s: number;
@@ -78,10 +99,53 @@ export interface SessionResponse {
   exercises: SessionExercise[];
 }
 
+export interface ActivityDay {
+  session_date: string;
+  completed: boolean;
+}
+
+export type ReviewVerdict = 'correct' | 'incorrect' | 'skipped' | 'grading_pending' | 'grading_failed';
+
+export interface SessionReviewExercise {
+  slot: number;
+  exercise_id: string;
+  version: number;
+  type: ExerciseType;
+  concepts: string[];
+  code: string;
+  context_note: string;
+  answer: Answer;
+  verdict: ReviewVerdict;
+  reveal: Reveal | null;
+}
+
+export interface SessionReviewResponse {
+  session_date: string;
+  exercises: SessionReviewExercise[];
+}
+
+export interface ReviewRequest {
+  rating: number;
+  body?: string | null;
+}
+
+export interface ReviewResponse {
+  rating: number;
+  body: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewStatusResponse {
+  reviewed: boolean;
+  review: ReviewResponse | null;
+}
+
 export type Answer =
   | { line: number; reason_id: string }
   | { choice_id: string }
-  | { text: string };
+  | { text: string }
+  | { skipped: true };
 
 export interface AttemptRequest {
   exercise_id: string;
@@ -129,6 +193,17 @@ export interface TraceReveal {
   explanation: TraceExplanation;
 }
 
+export interface PredictTheFixExplanation {
+  summary: string;
+  principle: string;
+  why_wrong: WhyWrongEntry[];
+}
+
+export interface PredictTheFixReveal {
+  correct_choice_id: string;
+  explanation: PredictTheFixExplanation;
+}
+
 export interface SummarizeExplanation {
   summary: string;
   principle: string;
@@ -138,7 +213,7 @@ export interface SummarizeReveal {
   explanation: SummarizeExplanation;
 }
 
-export type Reveal = STBReveal | TraceReveal | SummarizeReveal;
+export type Reveal = STBReveal | TraceReveal | PredictTheFixReveal | SummarizeReveal;
 
 export interface GraderOutput {
   rubric_hits: string[];
@@ -159,9 +234,10 @@ export interface StreakInfo {
 export interface SessionProgress {
   completed: boolean;
   remaining: number;
+  first_completed_session: boolean;
 }
 
-export type AttemptStatus = 'graded' | 'grading_pending' | 'grading_failed';
+export type AttemptStatus = 'graded' | 'grading_pending' | 'grading_failed' | 'skipped';
 
 export interface AttemptResponse {
   attempt_id: number;

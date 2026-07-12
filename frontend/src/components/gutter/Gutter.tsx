@@ -12,6 +12,7 @@ export type GutterCellState =
   | 'incorrect'
   | 'boss'
   | 'filled'
+  | 'tint'
   | 'empty';
 
 export interface GutterCellProps {
@@ -31,6 +32,10 @@ const STATE_CLASSES: Record<GutterCellState, string> = {
   incorrect: 'text-incorrect border border-incorrect',
   boss: 'text-ink border border-ink-muted',
   filled: 'bg-action text-surface-reading',
+  // Lighter fill than `filled`, no border -- the middle rung of a blue-
+  // intensity ladder (D-99's contribution grid: hollow/tint/solid, all
+  // --color-action, never green).
+  tint: 'bg-action-tint text-action',
   empty: 'border border-border text-transparent',
 };
 
@@ -88,6 +93,7 @@ const LINE_STATE_CLASSES: Record<GutterCellState, string> = {
   incorrect: 'text-incorrect bg-incorrect-tint',
   boss: 'text-ink',
   filled: 'text-action',
+  tint: 'text-action bg-action-tint',
   empty: 'text-transparent',
 };
 
@@ -131,5 +137,26 @@ export function GutterTick({ filled, label, boss }: { filled: boolean; label?: s
         filled ? (boss ? 'border-ink-muted bg-ink' : 'border-action bg-action') : 'border-border bg-transparent'
       }`}
     />
+  );
+}
+
+const STREAK_TICK_CAP = 30;
+
+/** Streak history = a column of gutter tick marks (docs/08), never a single
+ * dot or a flame emoji. One filled tick per day of the current streak,
+ * most recent last; capped so a long streak can't render an unbounded
+ * column of DOM nodes. Shared by every place the app shows the streak
+ * (session complete, profile). */
+export function StreakTicks({ current }: { current: number }) {
+  const shown = Math.min(Math.max(current, 1), STREAK_TICK_CAP);
+  const overflow = Math.max(current - STREAK_TICK_CAP, 0);
+  const ticks = Array.from({ length: shown }, (_, i) => i >= shown - current);
+  return (
+    <div className="flex flex-col items-start gap-1" aria-label={`${current}-day streak`}>
+      {overflow > 0 ? <span className="font-code text-2xs text-ink-muted">+{overflow} earlier</span> : null}
+      {ticks.map((filled, i) => (
+        <GutterTick key={i} filled={filled} />
+      ))}
+    </div>
   );
 }

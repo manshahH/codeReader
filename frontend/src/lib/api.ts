@@ -2,15 +2,22 @@
 // localStorage/sessionStorage. The refresh token is the backend-set
 // HttpOnly cookie; this client never reads or stores it.
 import type {
+  AccuracyHistoryDay,
+  ActivityDay,
   AttemptRequest,
   AttemptResponse,
   ConceptMastery,
   DisputeRequest,
   DisputeResponse,
   Level,
+  MeSessionSummary,
   MeStats,
   RefreshResponse,
+  ReviewRequest,
+  ReviewResponse,
+  ReviewStatusResponse,
   SessionResponse,
+  SessionReviewResponse,
   User,
 } from './types';
 
@@ -185,9 +192,41 @@ export function getMeConcepts(): Promise<ConceptMastery[]> {
   return request<ConceptMastery[]>('/v1/me/concepts');
 }
 
+export function getMeSessions(limit?: number): Promise<MeSessionSummary[]> {
+  return request<MeSessionSummary[]>(`/v1/me/sessions${limit ? `?limit=${limit}` : ''}`);
+}
+
+export function getMeAccuracyHistory(from?: string, to?: string): Promise<AccuracyHistoryDay[]> {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const qs = params.toString();
+  return request<AccuracyHistoryDay[]>(`/v1/me/accuracy-history${qs ? `?${qs}` : ''}`);
+}
+
 export function postDispute(exerciseId: string, version: number, body: DisputeRequest): Promise<DisputeResponse> {
   return request<DisputeResponse>(`/v1/exercises/${exerciseId}/v/${version}/dispute`, {
     method: 'POST',
     body,
   });
+}
+
+export function getMeActivity(from?: string, to?: string): Promise<ActivityDay[]> {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const qs = params.toString();
+  return request<ActivityDay[]>(`/v1/me/activity${qs ? `?${qs}` : ''}`);
+}
+
+export function getSessionTodayReview(): Promise<SessionReviewResponse> {
+  return request<SessionReviewResponse>('/v1/session/today/review');
+}
+
+export function postReview(body: ReviewRequest): Promise<ReviewResponse> {
+  return request<ReviewResponse>('/v1/me/review', { method: 'POST', body });
+}
+
+export function getReviewStatus(): Promise<ReviewStatusResponse> {
+  return request<ReviewStatusResponse>('/v1/me/review');
 }

@@ -1,21 +1,15 @@
 import { expect, test } from '@playwright/test';
 
-// Auth: no real GitHub OAuth here. scripts/seed_e2e.py issues a refresh
-// token through the exact same app.auth.tokens code the real OAuth callback
-// uses, and this test sets it as the `rt` cookie directly -- the SPA's
-// normal POST /auth/refresh flow (RootGate) takes it from there. This is
-// the "login (seed)" step from the milestone's success criteria, not a
-// bypass of the auth code itself.
-const API_BASE = process.env.E2E_API_BASE_URL ?? 'http://localhost:8000';
-const REFRESH_TOKEN = process.env.E2E_REFRESH_TOKEN;
+import { seedAuthCookie } from './_seed';
 
-if (!REFRESH_TOKEN) {
-  throw new Error(
-    'E2E_REFRESH_TOKEN env var is required (run CODEREADER_ALLOW_SEED=1 python scripts/seed_e2e.py and export it)',
-  );
-}
+// Auth: no real GitHub OAuth here. seedAuthCookie() seeds a fresh user and
+// issues a refresh token through the exact same app.auth.tokens code the real
+// OAuth callback uses, and sets it as the `rt` cookie -- the SPA's normal POST
+// /auth/refresh flow (RootGate) takes it from there. This is the "login (seed)"
+// step from the milestone's success criteria, not a bypass of the auth code.
 
 test('full session: login (seed) -> one of each type -> reveal -> complete', async ({ page, context }) => {
+  const MAX_EXERCISES = 8; // sampler may add a boss slot; never more than MIN_SLOTS..MAX_NON_BOSS_SLOTS+1
   page.on('console', (msg) => console.log(`[browser:${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (err) => console.log(`[pageerror] ${err.message}`));
   page.on('requestfailed', (req) => console.log(`[requestfailed] ${req.url()} ${req.failure()?.errorText}`));
@@ -23,32 +17,59 @@ test('full session: login (seed) -> one of each type -> reveal -> complete', asy
     if (res.url().includes('/v1/')) console.log(`[response] ${res.status()} ${res.url()}`);
   });
 
-  const apiUrl = new URL(API_BASE);
-  await context.addCookies([
-    {
-      name: 'rt',
-      value: REFRESH_TOKEN as string,
-      domain: apiUrl.hostname,
-      path: '/',
-      httpOnly: true,
-      secure: false,
-      sameSite: 'Lax',
-    },
-  ]);
+  await seedAuthCookie(context);
 
+  // "/" is the dashboard for an onboarded user (RootGate, D-98/D-99), not an
+  // auto-redirect to /session -- entering the session is the user's own click
+  // from the dashboard's CTA. (Pre-M9 this test asserted "/" === /session,
+  // which is why the whole M6 smoke suite had been red on a benign routing
+  // change; fixed here without dropping any coverage.)
   await page.goto('/');
+  await page.getByRole('link', { name: 'Enter sandbox' }).click({ timeout: 15_000 });
   await expect(page).toHaveURL(/\/session$/, { timeout: 15_000 });
 
-  for (let i = 0; i < 3; i++) {
+  // Session-ready gate: entering is the user's choice, never automatic.
+  await expect(page.getByText('Your session is ready.')).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Enter sandbox' }).click();
+
+  const seenTypes = new Set<string>();
+  let skipped = false;
+
+  for (let i = 0; i < MAX_EXERCISES; i++) {
+    if (await page.getByText('Session complete').isVisible().catch(() => false)) break;
+
     const typeLabel = page.locator('span.capitalize').first();
     await expect(typeLabel).toBeVisible({ timeout: 15_000 });
     const label = (await typeLabel.textContent())?.toLowerCase().trim() ?? '';
+    seenTypes.add(label);
+
+    // Skip exactly one non-summarize exercise, first opportunity only, so
+    // the rest of the run still exercises the normal answer path.
+    if (!skipped && !label.includes('summarize')) {
+      skipped = true;
+      await page.getByRole('button', { name: "I don't know" }).click();
+      // Anchored regex, not a plain-string getByText: the latter is a
+      // case-insensitive substring match and can collide with the word
+      // "skipped" inside an exercise's own explanation prose.
+      await expect(page.getByText(/^Skipped\.$/)).toBeVisible({ timeout: 25_000 });
+      await page.getByRole('button', { name: 'Next' }).click();
+      continue;
+    }
 
     if (label.includes('spot the bug')) {
-      await page.getByRole('button', { name: 'Select line 1' }).click();
-      await page.getByRole('radio', { name: 'Mutable default argument shared across calls' }).click();
+      // Selecting a specific line/reason text assumes one fixed seeded
+      // exercise; the live pool has more than that, so pick *a* valid
+      // answer (any line, first reason) rather than depend on its content --
+      // the assertion below only needs a verdict to render.
+      await page.getByRole('button', { name: 'Select line 1', exact: true }).click();
+      await page.locator('input[name="reason"]').first().click();
+    } else if (label.includes('predict the fix')) {
+      // Choices render as full code blocks (no plain-text accessible name),
+      // so select by the radio group's name rather than by label text --
+      // `name="fix"` is unique to PredictTheFixAnswer (trace uses "choice").
+      await page.locator('input[name="fix"]').first().click();
     } else if (label.includes('trace')) {
-      await page.getByRole('radio', { name: '2', exact: true }).click();
+      await page.locator('input[name="choice"]').first().click();
     } else if (label.includes('summarize')) {
       await page
         .getByLabel(/Describe what this does/i)
@@ -67,6 +88,14 @@ test('full session: login (seed) -> one of each type -> reveal -> complete', asy
 
     await page.getByRole('button', { name: 'Next' }).click();
   }
+
+  // The exact type mix is sampled from the live pool and not guaranteed to
+  // contain any one type on a given day, so requiring predict_the_fix here was
+  // ~1-in-5 flaky. The smoke's real invariant is that a full session of
+  // WHATEVER it served plays all the way through reveal to completion;
+  // deterministic per-type UI coverage (predict_the_fix included) lives in its
+  // own hermetic spec (predict-the-fix.spec.ts), not in this sampling-driven run.
+  expect(seenTypes.size, 'session served no exercises').toBeGreaterThan(0);
 
   await expect(page.getByText('Session complete')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/correct today\.|done for today\./)).toBeVisible();

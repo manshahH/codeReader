@@ -1,28 +1,41 @@
 import type { ReactNode } from 'react';
 import { Navigate, Route, BrowserRouter, Routes } from 'react-router-dom';
 
-import { NavBar } from './components/NavBar';
+import { AppLayout } from './components/AppLayout';
 import { AuthProvider, useAuth } from './lib/auth-context';
 import { Login } from './routes/Login';
 import { Onboarding } from './routes/Onboarding';
 import { Profile } from './routes/Profile';
+import { Review } from './routes/Review';
 import { RootGate } from './routes/RootGate';
 import { Session } from './routes/Session';
 
-function RequireAuth({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+function RequireAuth({
+  children,
+  requireOnboarded = true,
+}: {
+  children: ReactNode;
+  requireOnboarded?: boolean;
+}) {
+  const { status, user } = useAuth();
   if (status === 'loading') return <p className="p-6 text-ink-muted">Loading…</p>;
-  if (status === 'unauthenticated') return <Navigate to="/login" replace />;
+  if (status === 'unauthenticated' || !user) return <Navigate to="/login" replace />;
+  // Onboarding is a hard gate, not just the "/" landing: a deep-link straight
+  // to /session (or /profile, /review) must not skip the level pick, or the
+  // sampler runs with no level and its difficulty bands are undefined.
+  if (requireOnboarded && !user.onboarded) return <Navigate to="/onboarding" replace />;
   return <>{children}</>;
 }
 
-function AppLayout({ children }: { children: ReactNode }) {
-  return (
-    <div className="min-h-screen bg-surface-reading">
-      <NavBar />
-      {children}
-    </div>
-  );
+function OnboardingRoute() {
+  // Auth required, but onboarding NOT (requiring it here would loop). An
+  // already-onboarded user has no reason to be on this screen -- send them to
+  // their dashboard so they can't silently re-pick their level.
+  const { status, user } = useAuth();
+  if (status === 'loading') return <p className="p-6 text-ink-muted">Loading…</p>;
+  if (status === 'unauthenticated' || !user) return <Navigate to="/login" replace />;
+  if (user.onboarded) return <Navigate to="/" replace />;
+  return <Onboarding />;
 }
 
 function AppRoutes() {
@@ -30,14 +43,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<RootGate />} />
       <Route path="/login" element={<Login />} />
-      <Route
-        path="/onboarding"
-        element={
-          <RequireAuth>
-            <Onboarding />
-          </RequireAuth>
-        }
-      />
+      <Route path="/onboarding" element={<OnboardingRoute />} />
       <Route
         path="/session"
         element={
@@ -54,6 +60,16 @@ function AppRoutes() {
           <RequireAuth>
             <AppLayout>
               <Profile />
+            </AppLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/review"
+        element={
+          <RequireAuth>
+            <AppLayout>
+              <Review />
             </AppLayout>
           </RequireAuth>
         }

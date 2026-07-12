@@ -5,6 +5,7 @@ import { githubLoginUrl } from '../lib/api';
 const ERROR_COPY: Record<string, string> = {
   oauth_state: 'That sign-in link expired. Try again.',
   oauth_denied: 'GitHub sign-in was cancelled.',
+  beta_required: "You're not on the beta list yet. Ask for an invite and try again.",
 };
 
 export function Login() {

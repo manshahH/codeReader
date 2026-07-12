@@ -1,8 +1,17 @@
-import { CodeBlock } from '../gutter/CodeBlock';
-import { GutterTick } from '../gutter/Gutter';
+import { StreakTicks } from '../gutter/Gutter';
+import { pluralizeDays } from '../../lib/format';
+import { VerdictText } from '../../lib/verdict';
+import {
+  ExplanationSummary,
+  PredictTheFixRevealView,
+  SpotTheBugRevealView,
+  TraceRevealView,
+} from './revealViews';
 import type {
   Answer,
   AttemptResponse,
+  PredictTheFixReveal,
+  ReviewVerdict,
   STBReveal,
   SessionExercise,
   SummarizeReveal,
@@ -15,15 +24,6 @@ interface Props {
   userAnswer: Answer;
   onNext: () => void;
   onDispute: () => void;
-}
-
-function VerdictBadge({ isCorrect }: { isCorrect: boolean | null }) {
-  if (isCorrect === null) return null;
-  return (
-    <p className={`font-ui text-lg font-medium ${isCorrect ? 'text-correct' : 'text-incorrect'}`}>
-      {isCorrect ? 'Correct.' : 'Incorrect.'}
-    </p>
-  );
 }
 
 function PercentileLine({ percentile }: { percentile: AttemptResponse['percentile'] }) {
@@ -39,69 +39,19 @@ function PercentileLine({ percentile }: { percentile: AttemptResponse['percentil
 function StreakLine({ streak }: { streak: AttemptResponse['streak'] }) {
   if (!streak) return null;
   return (
-    <div className="flex items-center gap-2 text-sm text-ink-muted">
-      <GutterTick filled label="streak" />
+    <div className="flex items-center gap-3 text-sm text-ink-muted">
+      <StreakTicks current={streak.current} />
       <span>
-        {streak.event === 'extended' ? `Streak extended to ${streak.current} days.` : `Streak reset to ${streak.current}.`}
+        {streak.event === 'extended'
+          ? `Streak extended to ${pluralizeDays(streak.current)}.`
+          : `Streak reset to ${pluralizeDays(streak.current)}.`}
       </span>
     </div>
   );
 }
 
-function SpotTheBugReveal({ exercise, attempt, userAnswer }: { exercise: SessionExercise; attempt: AttemptResponse; userAnswer: Answer }) {
-  const reveal = attempt.reveal as STBReveal;
-  const markLines: Record<number, 'correct' | 'incorrect'> = {};
-  reveal.correct_lines.forEach((line) => {
-    markLines[line] = 'correct';
-  });
-  if ('line' in userAnswer && !reveal.correct_lines.includes(userAnswer.line)) {
-    markLines[userAnswer.line] = 'incorrect';
-  }
-  const notedLines = new Set(reveal.explanation.line_notes.map((n) => n.line));
-  const correctReasonText = exercise.payload.reason_options?.find((r) => r.id === reveal.correct_reason_id)?.text;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <CodeBlock code={exercise.payload.code} markLines={markLines} notedLines={notedLines} />
-      {correctReasonText ? <p className="text-sm text-ink-muted">Reason: {correctReasonText}</p> : null}
-      <ul className="flex flex-col gap-2">
-        {reveal.explanation.line_notes.map((note) => (
-          <li key={note.line} className="text-sm text-ink-muted">
-            <span className="font-code text-action">Line {note.line}</span> — {note.note}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function TraceRevealView({ exercise, attempt, userAnswer }: { exercise: SessionExercise; attempt: AttemptResponse; userAnswer: Answer }) {
-  const reveal = attempt.reveal as TraceReveal;
-  const userChoiceId = 'choice_id' in userAnswer ? userAnswer.choice_id : null;
-  const wrongNote = reveal.explanation.why_wrong.find((w) => w.choice_id === userChoiceId);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <CodeBlock code={exercise.payload.code} />
-      {wrongNote ? <p className="text-sm text-incorrect">{wrongNote.note}</p> : null}
-      <div className="rounded-soft border border-border">
-        <table className="w-full text-left font-code text-sm">
-          <tbody>
-            {reveal.explanation.trace_table.map((row) => (
-              <tr key={row.line} className="border-b border-border last:border-0">
-                <td className="px-3 py-2 text-ink-muted">L{row.line}</td>
-                <td className="px-3 py-2 text-ink">{row.state}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 function SummarizeRevealView({ attempt }: { attempt: AttemptResponse }) {
-  const reveal = attempt.reveal as SummarizeReveal;
+  const reveal = attempt.reveal as SummarizeReveal | null;
   return (
     <div className="flex flex-col gap-4">
       {attempt.score !== undefined && attempt.score !== null ? (
@@ -135,31 +85,45 @@ function SummarizeRevealView({ attempt }: { attempt: AttemptResponse }) {
           </div>
         </div>
       ) : null}
-      <p className="font-explanation text-base leading-relaxed text-ink">{reveal.explanation.summary}</p>
+      {reveal?.explanation?.summary ? (
+        <p className="font-explanation text-base leading-relaxed text-ink">{reveal.explanation.summary}</p>
+      ) : null}
     </div>
   );
 }
 
 export function Reveal({ exercise, attempt, userAnswer, onNext, onDispute }: Props) {
   const explanation = attempt.reveal && 'explanation' in attempt.reveal ? attempt.reveal.explanation : null;
+  // Within this component is_correct is null iff status === 'skipped':
+  // grading_pending/grading_failed never reach Reveal (Session.tsx routes
+  // them to their own phase branches before this renders).
+  const verdict: ReviewVerdict = attempt.status === 'skipped' ? 'skipped' : attempt.is_correct ? 'correct' : 'incorrect';
 
   return (
     <div className="flex flex-col gap-6">
-      <VerdictBadge isCorrect={attempt.is_correct} />
+      <VerdictText verdict={verdict} />
 
       {exercise.type === 'spot_the_bug' ? (
-        <SpotTheBugReveal exercise={exercise} attempt={attempt} userAnswer={userAnswer} />
+        <SpotTheBugRevealView
+          code={exercise.payload.code}
+          reveal={attempt.reveal as STBReveal}
+          answer={userAnswer}
+          reasonOptions={exercise.payload.reason_options ?? undefined}
+        />
       ) : exercise.type === 'trace' ? (
-        <TraceRevealView exercise={exercise} attempt={attempt} userAnswer={userAnswer} />
+        <TraceRevealView code={exercise.payload.code} reveal={attempt.reveal as TraceReveal} answer={userAnswer} />
+      ) : exercise.type === 'predict_the_fix' ? (
+        <PredictTheFixRevealView
+          reveal={attempt.reveal as PredictTheFixReveal}
+          answer={userAnswer}
+          choices={exercise.payload.choices ?? undefined}
+        />
       ) : (
         <SummarizeRevealView attempt={attempt} />
       )}
 
       {explanation && exercise.type !== 'summarize' ? (
-        <div className="measure flex flex-col gap-2 border-t border-border pt-4">
-          <p className="font-explanation text-base leading-relaxed text-ink">{explanation.summary}</p>
-          <p className="font-explanation text-sm italic leading-relaxed text-ink-muted">{explanation.principle}</p>
-        </div>
+        <ExplanationSummary summary={explanation.summary} principle={explanation.principle} />
       ) : null}
 
       <PercentileLine percentile={attempt.percentile} />

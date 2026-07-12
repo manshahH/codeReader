@@ -1,7 +1,12 @@
 /*
- * Design tokens (docs/08, docs/08b). Every value a component needs lives
- * here, under a semantic name. Components never invent a color, spacing, or
- * radius value of their own.
+ * Design tokens (docs/08, docs/08b, D-98). Every value a component needs
+ * lives here, under a semantic name. Components never invent a color,
+ * spacing, or radius value of their own.
+ *
+ * D-98: dark-only, deliberate override of docs/08b's "explicit toggle,
+ * default light" -- the toggle, the light token set, and theme.ts's
+ * switching logic are deleted entirely, not defaulted. One surface, one
+ * set of values, no [data-theme] branching.
  *
  * Values marked "derived" fill a gap docs/08b left open (it fixes the
  * structure -- 9-level scale, 4px spacing, intentional radius variation,
@@ -10,24 +15,26 @@
  */
 
 :root {
-  /* ---- Surfaces & ink (docs/08b: exact; ink carried from docs/08's own proposal) ---- */
-  --surface-reading: #FAFAF7;
-  --surface-raised: #F2F1EA;
-  --color-ink: #1C1E21;
-  --color-ink-muted: #55595E;
-  --color-border: #DEDFE0;
-  --color-scrim: rgba(15, 17, 19, 0.45);
+  /* ---- Surfaces & ink ---- */
+  --surface-reading: #0F1419;
+  --surface-raised: #171D24;
+  --color-ink: #E7E9EC;
+  --color-ink-muted: #9AA1AB;
+  --color-border: #262B33;
+  --color-scrim: rgba(0, 0, 0, 0.6);
 
   /* ---- Semantic law: red/green reserved for correctness/diff only ---- */
-  --color-correct: #059669;
-  --color-incorrect: #DC2626;
-  --color-correct-tint: rgba(5, 150, 105, 0.12);
-  --color-incorrect-tint: rgba(220, 38, 38, 0.12);
+  --color-correct: #10B981;
+  --color-incorrect: #F0554A;
+  --color-correct-tint: rgba(16, 185, 129, 0.16);
+  --color-incorrect-tint: rgba(240, 85, 74, 0.16);
 
-  /* ---- Interaction (annotation-ink blue) ---- */
-  --color-action: #1E40AF;
-  --color-action-hover: #1A3690;
-  --color-action-tint: rgba(30, 64, 175, 0.1);
+  /* ---- Interaction (annotation-ink blue). Lightened from docs/08b's
+     raw #1E40AF, which fails AA as text on this dark surface (~2.2:1);
+     same hue, never purple. ---- */
+  --color-action: #7FA6FF;
+  --color-action-hover: #9DBBFF;
+  --color-action-tint: rgba(127, 166, 255, 0.16);
 
   /* ---- Typefaces (self-hosted, styles/fonts.css) ---- */
   --font-code: 'Iosevka', 'JetBrains Mono', ui-monospace, monospace;
@@ -74,35 +81,7 @@
   --motion-max: 280ms;
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* ---- Syntax theme, light: muted, cool ink family, no red/green hues ---- */
-  --syntax-plain: #1C1E21;
-  --syntax-comment: #767B83;
-  --syntax-keyword: #34517C;
-  --syntax-string: #8A6A3A;
-  --syntax-function: #4A5568;
-  --syntax-number: #8A5540;
-  --syntax-punctuation: #767B83;
-}
-
-[data-theme='dark'] {
-  --surface-reading: #0F1419;
-  --surface-raised: #171D24;
-  --color-ink: #E7E9EC;
-  --color-ink-muted: #9AA1AB;
-  --color-border: #262B33;
-  --color-scrim: rgba(0, 0, 0, 0.6);
-
-  --color-correct: #10B981;
-  --color-incorrect: #F0554A;
-  --color-correct-tint: rgba(16, 185, 129, 0.16);
-  --color-incorrect-tint: rgba(240, 85, 74, 0.16);
-
-  /* Raw --color-action (#1E40AF) fails AA as text on this surface (~2.2:1);
-     lightened for dark-mode text/links only, same hue, never purple. */
-  --color-action: #7FA6FF;
-  --color-action-hover: #9DBBFF;
-  --color-action-tint: rgba(127, 166, 255, 0.16);
-
+  /* ---- Syntax theme: muted, cool ink family, no red/green hues ---- */
   --syntax-plain: #E7E9EC;
   --syntax-comment: #7C8492;
   --syntax-keyword: #7C9CDB;

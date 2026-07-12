@@ -25,7 +25,7 @@ export function Onboarding() {
     try {
       const { user } = await patchMe({ level });
       setUser(user);
-      navigate('/session', { replace: true });
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save that. Try again.');
       setSaving(false);
