@@ -9,6 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient, Response
 from redis.asyncio import Redis
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.auth.service as auth_service
@@ -22,7 +23,7 @@ from app.auth.tokens import (
 from app.config import get_settings
 from app.core.security import decrypt_token
 from app.main import create_app
-from app.models import AuthIdentity, RefreshToken, User
+from app.models import AuthIdentity, BetaInvite, RefreshToken, User
 
 KNOWN_GITHUB_TOKEN = "gho_known_test_token_secret"
 TOKEN_ENC_KEY = "test-token-enc-key-32-byte-value"
@@ -80,6 +81,21 @@ async def clean_redis() -> None:
         await redis.flushdb()
     finally:
         await redis.aclose()
+
+
+@pytest.fixture(autouse=True)
+async def beta_invite_for_octoreader(db_session: AsyncSession) -> None:
+    """M8: login is now gated on users.beta_allowed. FakeGithubClient always
+    resolves to login="octoreader"; pre-inviting it keeps this file's OAuth
+    flow tests exercising the OAuth mechanics they're actually about,
+    without every one of them re-asserting the beta gate itself (that has
+    its own dedicated test module). on_conflict_do_nothing: the DB is only
+    reset once per test SESSION (see conftest's `migrated_db`), not per
+    test, and github_login is the primary key.
+    """
+    stmt = pg_insert(BetaInvite).values(github_login="octoreader").on_conflict_do_nothing()
+    await db_session.execute(stmt)
+    await db_session.commit()
 
 
 @pytest.fixture

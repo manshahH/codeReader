@@ -108,7 +108,8 @@ async def resolve_pending_summarize_grades(
         if redis is not None:
             await grader_health.mark_success(redis)
 
-        await update_concept_state(db, user, list(exercise.concepts), result.is_correct, now)
+        outcome = "correct" if result.is_correct else "incorrect"
+        await update_concept_state(db, user, list(exercise.concepts), outcome, now)
         await update_correctness_stats(db, user, exercise.type, result.is_correct)
 
     await db.commit()

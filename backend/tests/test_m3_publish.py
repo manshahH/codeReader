@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 import pytest
 from pipeline.publish import approve, fix_and_bump, insert_candidate, kill
 from pipeline.schemas import (
@@ -65,16 +67,28 @@ def _trace_candidate() -> TraceCandidate:
     )
 
 
-async def _insert(session: AsyncSession) -> Exercise:
+async def _insert(session: AsyncSession, rng: random.Random | None = None) -> Exercise:
     return await insert_candidate(
         session,
         _trace_spec(),
         _trace_candidate(),
-        final_explanation={"summary": "s", "verified": {"captured_stdout": "6"}},
+        final_explanation={
+            "summary": "s",
+            "verified": {"captured_stdout": "6"},
+            "why_wrong": [
+                {"choice_id": "b", "note": "m1"},
+                {"choice_id": "c", "note": "m2"},
+                {"choice_id": "d", "note": "m3"},
+            ],
+        },
         content_hash="deadbeef",
         validation_report={"template_id": "trace_py_v1", "sandbox_gate": {"accepted": True}},
         generator_model="generator-model-placeholder",
         captured_stdout="6",
+        # Seeded so this fixture is deterministic despite the C1 publish-time
+        # choice shuffle; the shuffle itself is exercised by the distribution
+        # test below.
+        rng=rng or random.Random(0),
     )
 
 
@@ -87,9 +101,47 @@ async def test_insert_candidate_writes_in_review_row_with_validation_report(
     assert exercise.status == "in_review"
     assert exercise.human_reviewed is False
     assert exercise.validation_report_url is not None
-    # correct choice's text is replaced with the captured stdout
-    assert exercise.payload["choices"][0]["text"] == "6"
+    # correct choice's text is replaced with the captured stdout -- keyed by
+    # the (post-shuffle) correct_choice_id, wherever the shuffle placed it,
+    # never by a fixed index (C1: the correct choice is no longer always [0]).
+    correct_id = exercise.grading["correct_choice_id"]
+    correct_choice = next(c for c in exercise.payload["choices"] if c["id"] == correct_id)
+    assert correct_choice["text"] == "6"
     assert exercise.source["content_hash"] == "deadbeef"
+
+
+@pytest.mark.asyncio
+async def test_published_trace_correct_choice_is_distributed_not_always_a(
+    db_session: AsyncSession,
+) -> None:
+    """C1 negative test: before the publish-time shuffle, every trace keyed to
+    id "a" (the generator prompt pins it) so answering "a" scored 100% without
+    reading the code. A published batch's correct_choice_id must now be
+    distributed across the id set, not constant. Reproduces the bug (a single
+    shared rng across many inserts) and proves the fix.
+    """
+    rng = random.Random(12345)
+    correct_ids: list[str] = []
+    for _ in range(40):
+        exercise = await _insert(db_session, rng=rng)
+        correct_id = exercise.grading["correct_choice_id"]
+        correct_ids.append(correct_id)
+        # The answer key must always agree with the shown options and the
+        # explanation, wherever the shuffle put it.
+        choice_ids = {c["id"] for c in exercise.payload["choices"]}
+        assert correct_id in choice_ids
+        # The correct choice's text stays the verified captured output.
+        correct_choice = next(c for c in exercise.payload["choices"] if c["id"] == correct_id)
+        assert correct_choice["text"] == "6"
+        # why_wrong only ever references distractor ids, never the correct one.
+        why_wrong_ids = {w["choice_id"] for w in exercise.explanation["why_wrong"]}
+        assert correct_id not in why_wrong_ids
+        assert why_wrong_ids == choice_ids - {correct_id}
+
+    distinct = set(correct_ids)
+    # Not constant (the bug), and genuinely spread across the four ids.
+    assert len(distinct) >= 3, f"correct_choice_id barely moved: {sorted(distinct)}"
+    assert correct_ids.count("a") < len(correct_ids), "correct_choice_id still always 'a'"
 
 
 @pytest.mark.asyncio

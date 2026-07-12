@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.attempts.service import get_attempt, submit_attempt
 from app.auth.deps import CurrentUser, CurrentUserDep, DbSessionDep
 from app.core.errors import ApiError
+from app.core.metrics import record_outcome
 from app.core.redis import get_redis
 from app.models import User
 from app.schemas.attempts import AttemptRequest
@@ -31,13 +32,26 @@ async def post_attempt(
     if user is None:
         raise ApiError(401, "invalid_token", "Access token is invalid.")
 
-    outcome = await submit_attempt(
-        session,
-        redis,
-        user,
-        idempotency_key=idempotency_key,
-        payload=payload,
-    )
+    try:
+        outcome = await submit_attempt(
+            session,
+            redis,
+            user,
+            idempotency_key=idempotency_key,
+            payload=payload,
+        )
+    except ApiError:
+        # Expected control flow (already_attempted, rate_limited, ...), not
+        # an insert failure -- still counts toward the denominator, not the
+        # numerator, of the attempt-insert error rate (docs/06 M7 golden
+        # signal).
+        await record_outcome(redis, "attempt_insert", is_error=False)
+        raise
+    except Exception:
+        await record_outcome(redis, "attempt_insert", is_error=True)
+        raise
+    else:
+        await record_outcome(redis, "attempt_insert", is_error=False)
 
     headers = dict(outcome.rate_limit_headers or {})
     if outcome.is_replay:

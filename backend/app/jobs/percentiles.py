@@ -26,14 +26,29 @@ async def compute_exercise_stats(session: AsyncSession) -> int:
         await session.execute(
             text(
                 """
+                -- D-8 was corrected (see docs/07): idempotency is Redis-only,
+                -- and a replay racing a Redis outage/loss CAN duplicate an
+                -- attempts row for the same (user, exercise, session_date).
+                -- Collapse to one row per that key -- the earliest-created
+                -- graded attempt -- before counting, so a duplicate never
+                -- inflates a percentile's n or its solve rate.
+                WITH deduped AS (
+                    SELECT DISTINCT ON (user_id, exercise_id, exercise_version, session_date)
+                        exercise_id,
+                        exercise_version,
+                        is_correct,
+                        time_taken_ms
+                    FROM attempts
+                    WHERE status = 'graded'
+                    ORDER BY user_id, exercise_id, exercise_version, session_date, created_at ASC
+                )
                 SELECT
                     exercise_id,
                     exercise_version,
                     count(*) AS attempts_count,
                     count(*) FILTER (WHERE is_correct) AS correct_count,
                     percentile_cont(0.5) WITHIN GROUP (ORDER BY time_taken_ms) AS median_time_ms
-                FROM attempts
-                WHERE status = 'graded'
+                FROM deduped
                 GROUP BY exercise_id, exercise_version
                 """,
             ),

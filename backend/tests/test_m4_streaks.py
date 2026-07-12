@@ -228,11 +228,20 @@ async def test_streak_audit_invariant_every_transition_writes_a_streak_event_row
     await _submit(client, headers, ex2)  # same local day: no transition
 
     today = local_date_for(user.timezone)
+    yesterday = today - dt.timedelta(days=1)
     stats = await db_session.get(UserStats, user.id)
-    stats.last_active_local_date = today - dt.timedelta(days=1)
+    stats.last_active_local_date = yesterday
+    # The first transition really happened "yesterday": move its audit row's
+    # local_date back too, so the two transitions land on two DIFFERENT local
+    # days -- as they always do in reality (at most one extend/reset per user
+    # per local day, now enforced by the partial unique index, migration 0007).
+    # Rewinding only last_active while leaving the first row dated "today" would
+    # be an impossible state, and correctly trips that index.
+    for event in await _streak_events(db_session, user):
+        event.local_date = yesterday
     await db_session.commit()
 
-    await _submit(client, headers, ex3)  # transition 2: extended 1 -> 2
+    await _submit(client, headers, ex3)  # transition 2 (today): extended 1 -> 2
 
     events = await _streak_events(db_session, user)
     assert len(events) == 2

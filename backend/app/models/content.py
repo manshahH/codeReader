@@ -26,7 +26,7 @@ class Exercise(Base):
     __table_args__ = (
         CheckConstraint("version >= 1"),
         CheckConstraint("language IN ('python')"),
-        CheckConstraint("type IN ('spot_the_bug','trace','summarize')"),
+        CheckConstraint("type IN ('spot_the_bug','trace','summarize','predict_the_fix')"),
         CheckConstraint("grading_mode IN ('deterministic','rubric')"),
         CheckConstraint("difficulty_authored BETWEEN 1 AND 10"),
         CheckConstraint("cardinality(concepts) >= 1"),

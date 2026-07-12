@@ -10,11 +10,12 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.main import create_app
-from app.models import DailySession
+from app.models import DailySession, Review, ReviewHistory
 from tests.factories_m4 import (
     auth_headers,
     clean_m4_tables,  # noqa: F401
@@ -256,6 +257,58 @@ async def test_review_upsert_replaces_the_prior_review(
 
     status = await client.get("/v1/me/review", headers=headers)
     assert status.json() == {"reviewed": True, "review": second.json()}
+
+
+@pytest.mark.asyncio
+async def test_review_history_keeps_every_submission_while_reviews_stays_one_row(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session)
+    headers = auth_headers(user)
+
+    await client.post("/v1/me/review", headers=headers, json={"rating": 3, "body": "ok"})
+    await client.post("/v1/me/review", headers=headers, json={"rating": 5, "body": "great"})
+
+    reviews_count = await db_session.scalar(
+        select(func.count()).select_from(Review).where(Review.user_id == user.id),
+    )
+    assert reviews_count == 1
+
+    history = (
+        (
+            await db_session.execute(
+                select(ReviewHistory)
+                .where(ReviewHistory.user_id == user.id)
+                .order_by(ReviewHistory.created_at.asc()),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(history) == 2
+    assert history[0].rating == 3
+    assert history[1].rating == 5
+
+
+@pytest.mark.asyncio
+async def test_review_resubmit_with_identical_values_still_advances_updated_at(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The "review us again" flow pre-fills the form with the existing
+    rating/body, so an unedited resubmit is a real path, not an edge case --
+    ORM attribute assignment silently skips the UPDATE (and therefore the
+    trg_reviews_touch trigger) when nothing actually changed."""
+    user = await make_user(db_session)
+    headers = auth_headers(user)
+
+    first = await client.post("/v1/me/review", headers=headers, json={"rating": 3, "body": "ok"})
+    assert first.status_code == 200
+
+    second = await client.post("/v1/me/review", headers=headers, json={"rating": 3, "body": "ok"})
+    assert second.status_code == 200
+    assert second.json()["updated_at"] > first.json()["updated_at"]
 
 
 @pytest.mark.asyncio
@@ -515,9 +568,24 @@ async def test_accuracy_history_excludes_skips_from_numerator_and_denominator(
             user_id=user.id,
             session_date=today,
             exercise_list=[
-                {"slot": 1, "exercise_id": str(correct_exercise.id), "version": correct_exercise.version, "is_boss": False},
-                {"slot": 2, "exercise_id": str(wrong_exercise.id), "version": wrong_exercise.version, "is_boss": False},
-                {"slot": 3, "exercise_id": str(skipped_exercise.id), "version": skipped_exercise.version, "is_boss": False},
+                {
+                    "slot": 1,
+                    "exercise_id": str(correct_exercise.id),
+                    "version": correct_exercise.version,
+                    "is_boss": False,
+                },
+                {
+                    "slot": 2,
+                    "exercise_id": str(wrong_exercise.id),
+                    "version": wrong_exercise.version,
+                    "is_boss": False,
+                },
+                {
+                    "slot": 3,
+                    "exercise_id": str(skipped_exercise.id),
+                    "version": skipped_exercise.version,
+                    "is_boss": False,
+                },
             ],
         ),
     )

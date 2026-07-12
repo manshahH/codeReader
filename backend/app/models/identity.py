@@ -34,6 +34,7 @@ class User(Base):
     timezone: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'UTC'"))
     level: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'mid'"))
     onboarded: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
+    beta_allowed: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
     reminder_local_time: Mapped[dt.time | None] = mapped_column()
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
@@ -99,3 +100,16 @@ class RefreshToken(Base):
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     user_agent: Mapped[str | None] = mapped_column(Text)
     ip: Mapped[str | None] = mapped_column(INET)
+
+
+class BetaInvite(Base):
+    """Invite a GitHub handle before they've ever logged in (M8). upsert_
+    github_user() flips users.beta_allowed on the matching row at login."""
+
+    __tablename__ = "beta_invites"
+
+    github_login: Mapped[str] = mapped_column(CITEXT(), primary_key=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )

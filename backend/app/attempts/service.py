@@ -23,9 +23,10 @@ import datetime as dt
 import decimal
 import uuid
 from dataclasses import dataclass
+from typing import Literal
 
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.attempts.grading import (
@@ -34,6 +35,7 @@ from app.attempts.grading import (
     UnsupportedExerciseTypeError,
     build_reveal,
     grade_deterministic,
+    is_skip_answer,
     validate_answer_shape,
 )
 from app.attempts.rubric import (
@@ -48,7 +50,13 @@ from app.core import grader_health
 from app.core.accuracy import bump as bump_accuracy
 from app.core.errors import ApiError
 from app.core.events import append_attempt_event
-from app.core.idempotency import get_cached, request_hash
+from app.core.idempotency import (
+    acquire_reservation,
+    get_cached,
+    release_reservation,
+    request_hash,
+    wait_for_cached,
+)
 from app.core.idempotency import store as store_idempotency
 from app.core.ratelimit import check_token_bucket
 from app.models import (
@@ -77,10 +85,21 @@ PERCENTILE_MIN_N = 30
 CONCEPT_INTERVAL_WRONG_DAYS = 2
 CONCEPT_INTERVAL_RIGHT_DAYS = 7
 CONCEPT_INTERVAL_RIGHT_AGAIN_DAYS = 21
+# D-93: shorter than WRONG_DAYS on purpose. An honest "I don't know" is a
+# CLEANER signal than a wrong guess -- no misconception was planted, just an
+# absence of evidence -- so it is worth re-testing sooner, not later.
+CONCEPT_INTERVAL_SKIPPED_DAYS = 1
 
 _MASTERY_DECAY = decimal.Decimal("0.7")
 _MASTERY_GAIN = decimal.Decimal("0.3")
+# A wrong answer pulls mastery toward 0 (mastery*0.7 + 0*0.3): it asserts a
+# misconception. A skip asserts nothing directional -- it should decay
+# mastery LESS than a wrong answer, reflecting only time-since-practice, with
+# no target term pulling it anywhere. 0.85 > 0.7 (less shrinkage than WRONG).
+_MASTERY_DECAY_SKIPPED = decimal.Decimal("0.85")
 _MASTERY_QUANT = decimal.Decimal("0.001")
+
+ConceptOutcome = Literal["correct", "incorrect", "skipped"]
 
 
 @dataclass(frozen=True)
@@ -109,9 +128,15 @@ async def update_concept_state(
     db: AsyncSession,
     user: User,
     concepts: list[str],
-    is_correct: bool,
+    outcome: ConceptOutcome,
     now: dt.datetime,
 ) -> None:
+    """D-93: a third branch for an honest skip, alongside correct/incorrect.
+    A skip increments `declined`, never `attempts` -- it must not inflate the
+    accuracy denominator (attempts/correct) that per-concept accuracy and
+    exercise_stats-style ratios are built from. It schedules sooner than a
+    wrong answer (CONCEPT_INTERVAL_SKIPPED_DAYS < WRONG_DAYS) and decays
+    mastery less (no directional target term, just a gentler multiplier)."""
     for concept in concepts:
         row = await db.get(UserConceptState, (user.id, concept))
         if row is None:
@@ -121,30 +146,38 @@ async def update_concept_state(
                 mastery=decimal.Decimal("0"),
                 attempts=0,
                 correct=0,
+                declined=0,
             )
             db.add(row)
             await db.flush()
 
-        already_correct_before = row.correct > 0
-
-        row.attempts += 1
-        if is_correct:
-            row.correct += 1
-
-        target = decimal.Decimal("1") if is_correct else decimal.Decimal("0")
-        updated_mastery = row.mastery * _MASTERY_DECAY + target * _MASTERY_GAIN
-        row.mastery = updated_mastery.quantize(_MASTERY_QUANT)
-        row.last_seen_at = now
-
-        # D-36: "right again" = correct at least once before this attempt,
-        # not strictly consecutive-correct (no schema column tracks that).
-        if not is_correct:
-            interval_days = CONCEPT_INTERVAL_WRONG_DAYS
-        elif already_correct_before:
-            interval_days = CONCEPT_INTERVAL_RIGHT_AGAIN_DAYS
+        if outcome == "skipped":
+            row.declined += 1
+            row.mastery = (row.mastery * _MASTERY_DECAY_SKIPPED).quantize(_MASTERY_QUANT)
+            row.next_review_at = now + dt.timedelta(days=CONCEPT_INTERVAL_SKIPPED_DAYS)
         else:
-            interval_days = CONCEPT_INTERVAL_RIGHT_DAYS
-        row.next_review_at = now + dt.timedelta(days=interval_days)
+            is_correct = outcome == "correct"
+            already_correct_before = row.correct > 0
+
+            row.attempts += 1
+            if is_correct:
+                row.correct += 1
+
+            target = decimal.Decimal("1") if is_correct else decimal.Decimal("0")
+            updated_mastery = row.mastery * _MASTERY_DECAY + target * _MASTERY_GAIN
+            row.mastery = updated_mastery.quantize(_MASTERY_QUANT)
+
+            # D-36: "right again" = correct at least once before this attempt,
+            # not strictly consecutive-correct (no schema column tracks that).
+            if not is_correct:
+                interval_days = CONCEPT_INTERVAL_WRONG_DAYS
+            elif already_correct_before:
+                interval_days = CONCEPT_INTERVAL_RIGHT_AGAIN_DAYS
+            else:
+                interval_days = CONCEPT_INTERVAL_RIGHT_DAYS
+            row.next_review_at = now + dt.timedelta(days=interval_days)
+
+        row.last_seen_at = now
 
     await db.flush()
 
@@ -251,6 +284,19 @@ async def submit_attempt(
     body_dict = payload.model_dump(mode="json")
     req_hash = request_hash(body_dict)
 
+    # Rate limit is checked BEFORE the idempotency lookup so every response
+    # -- including a replay -- carries X-RateLimit-* headers (docs/05
+    # section 1: "Headers on every response"); checking only on a fresh
+    # submit left replays with no headers at all.
+    settings = get_settings()
+    rl = await check_token_bucket(
+        redis,
+        key=f"rl:attempts:{user.id}",
+        limit=settings.RATE_LIMIT_ATTEMPTS_PER_MINUTE,
+    )
+    if not rl.allowed:
+        raise ApiError(429, "rate_limited", "Too many requests.", headers=rl.headers)
+
     cached = await get_cached(
         redis,
         namespace=IDEMPOTENCY_NAMESPACE,
@@ -267,18 +313,76 @@ async def submit_attempt(
             status_code=cached.status_code,
             body=cached.body,
             is_replay=True,
-            rate_limit_headers=None,
+            rate_limit_headers=rl.headers,
         )
 
-    settings = get_settings()
-    rl = await check_token_bucket(
+    # Concurrency fix (M7 audit): a network retry racing the still-in-flight
+    # original carries the SAME Idempotency-Key. Without a reservation here,
+    # both requests miss the `cached` lookup above (neither has stored a
+    # result yet) and would run independently -- a duplicate attempt row, a
+    # duplicate stats update. Whoever wins this SET NX proceeds normally;
+    # the loser waits for the winner's result and replays it
+    # byte-identically instead of racing it through to a DB-level conflict.
+    reserved = await acquire_reservation(
         redis,
-        key=f"rl:attempts:{user.id}",
-        limit=settings.RATE_LIMIT_ATTEMPTS_PER_MINUTE,
+        namespace=IDEMPOTENCY_NAMESPACE,
+        idempotency_key=idempotency_key,
     )
-    if not rl.allowed:
-        raise ApiError(429, "rate_limited", "Too many requests.", headers=rl.headers)
+    if not reserved:
+        record = await wait_for_cached(
+            redis,
+            namespace=IDEMPOTENCY_NAMESPACE,
+            idempotency_key=idempotency_key,
+            timeout_seconds=settings.GRADER_TIMEOUT_S + 3,
+        )
+        if record is not None:
+            if record.request_hash != req_hash:
+                raise ApiError(
+                    409,
+                    "idempotency_conflict",
+                    "This Idempotency-Key was already used with a different request body.",
+                )
+            return AttemptOutcome(
+                status_code=record.status_code,
+                body=record.body,
+                is_replay=True,
+                rate_limit_headers=rl.headers,
+            )
+        # The in-flight winner never finished within the wait budget (a
+        # crashed process, an abnormally slow request): fall through and
+        # process normally. The DB advisory lock below is the real
+        # backstop against a duplicate attempts row regardless of what
+        # happens at this Redis reservation layer.
 
+    try:
+        return await _build_and_store_attempt(
+            db,
+            redis,
+            user,
+            idempotency_key=idempotency_key,
+            payload=payload,
+            req_hash=req_hash,
+            rl_headers=rl.headers,
+        )
+    finally:
+        if reserved:
+            await release_reservation(
+                redis,
+                namespace=IDEMPOTENCY_NAMESPACE,
+                idempotency_key=idempotency_key,
+            )
+
+
+async def _build_and_store_attempt(
+    db: AsyncSession,
+    redis: Redis,
+    user: User,
+    *,
+    idempotency_key: str,
+    payload: AttemptRequest,
+    req_hash: str,
+    rl_headers: dict[str, str],
+) -> AttemptOutcome:
     today, slots = await get_today_slots(db, redis, user)
     slot = next(
         (
@@ -322,6 +426,37 @@ async def submit_attempt(
             f"no grading path for exercise type {exercise.type!r}",
         )
 
+    # Concurrency fix (M7 audit, widened for H1/D-104): the already-attempted
+    # check below is a plain SELECT with no row lock, and the partitioned
+    # attempts table can't carry a DB unique constraint (D-7). Without
+    # serialization here, concurrent submits by the same user on the same day
+    # can both pass this check and both run the per-USER stats read-modify-
+    # write below.
+    #
+    # The lock is keyed on (user_id, session_date) -- NOT (user_id,
+    # exercise_id, session_date). The stats/streak update
+    # (_update_streak_and_attempt_count) mutates per-USER rows (user_stats)
+    # and writes at most one streak_events row per user per local day, so the
+    # race that corrupts them is ANY two same-day submits by the user, not
+    # only two of the SAME exercise. A per-exercise lock left the cross-
+    # exercise first-of-day race wide open: two tabs answering two DIFFERENT
+    # exercises both saw last_active != today, both took the "extended"
+    # branch, and wrote TWO streak_events rows (invariant 5) plus a lost
+    # total_attempts increment. A per-(user, day) lock serializes every
+    # same-day submit, so the second observes the first's committed stats
+    # (last_active == today -> no second transition) and its committed
+    # attempt (for the same-exercise case -> correct 409). Still transaction-
+    # scoped, released at commit/rollback, no explicit unlock. The partial
+    # unique index on streak_events(user_id, local_date) for extended/reset
+    # (migration 0007, D-104) is the un-raceable DB backstop underneath this.
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:lock_a), hashtext(:lock_b))"),
+        {
+            "lock_a": str(user.id),
+            "lock_b": today.isoformat(),
+        },
+    )
+
     already = await db.scalar(
         select(Attempt.id).where(
             Attempt.user_id == user.id,
@@ -336,14 +471,19 @@ async def submit_attempt(
 
     if exercise.type in DETERMINISTIC_TYPES:
         grading_mode = "deterministic"
-        status = "graded"
+        is_skip = is_skip_answer(payload.answer)
         is_correct: bool | None = grade_deterministic(exercise, payload.answer)
+        status = "skipped" if is_skip else "graded"
         score: float | None = None
         grader_output_dict: dict | None = None
+        # A skip still teaches (docs/08: the app respects, it never scolds) --
+        # the same reveal a real answer would get, just no correct/incorrect
+        # verdict to show alongside it.
         reveal = build_reveal(exercise)
         graded_at: dt.datetime | None = now
     else:
         grading_mode = "rubric"
+        is_skip = False
         is_correct = None
         score = None
         grader_output_dict = None
@@ -391,21 +531,40 @@ async def submit_attempt(
     db.add(attempt)
     await db.flush()
 
-    # D-19/D-38: total_attempts + streak count on every submission; concept
-    # mastery and correctness stats only apply once is_correct is known --
-    # skipped here for a pending/failed summarize, applied later by
-    # jobs/grading_retry.py when (if) it resolves to graded.
-    if is_correct is not None:
-        await update_concept_state(db, user, list(exercise.concepts), is_correct, now)
+    # D-19/D-38/D-93: total_attempts + streak count on every submission
+    # (including a skip -- it's still a submission). Concept mastery updates
+    # on a skip too (the third "skipped" branch), but correctness stats
+    # (total_correct/accuracy_by_type) only ever apply to a real verdict --
+    # a skip must not inflate that denominator either. A pending/failed
+    # summarize gets neither here; jobs/grading_retry.py applies both once
+    # (if) it resolves to graded.
+    if is_skip:
+        await update_concept_state(db, user, list(exercise.concepts), "skipped", now)
+    elif is_correct is not None:
+        outcome: ConceptOutcome = "correct" if is_correct else "incorrect"
+        await update_concept_state(db, user, list(exercise.concepts), outcome, now)
         await update_correctness_stats(db, user, exercise.type, is_correct)
 
     streak_info = await _update_streak_and_attempt_count(db, user, today)
 
     remaining = await _remaining_count(db, user, today, slots)
+    first_completed_session = False
     if remaining == 0:
         daily_session_row = await db.get(DailySession, (user.id, today))
         if daily_session_row is not None and daily_session_row.completed_at is None:
             daily_session_row.completed_at = now
+            # D-93b: count AFTER setting completed_at above (same transaction,
+            # so the just-completed row is already included) -- 1 means this
+            # attempt is the first daily session this user has ever finished.
+            completed_count = await db.scalar(
+                select(func.count())
+                .select_from(DailySession)
+                .where(
+                    DailySession.user_id == user.id,
+                    DailySession.completed_at.isnot(None),
+                ),
+            )
+            first_completed_session = completed_count == 1
 
     await db.commit()
 
@@ -435,7 +594,11 @@ async def submit_attempt(
         grader_output=GraderOutput(**grader_output_dict) if grader_output_dict else None,
         percentile=percentile,
         streak=streak_info,
-        session=SessionProgress(completed=remaining == 0, remaining=remaining),
+        session=SessionProgress(
+            completed=remaining == 0,
+            remaining=remaining,
+            first_completed_session=first_completed_session,
+        ),
     ).model_dump(mode="json")
 
     await store_idempotency(
@@ -451,7 +614,7 @@ async def submit_attempt(
         status_code=200,
         body=response_body,
         is_replay=False,
-        rate_limit_headers=rl.headers,
+        rate_limit_headers=rl_headers,
     )
 
 
@@ -481,11 +644,12 @@ async def get_attempt(db: AsyncSession, user: User, attempt_id: int) -> dict | N
     # grading_pending/grading_failed: no reveal yet. grading_failed is
     # terminal (never retried) and reported gracefully here -- never a 500
     # or a hang -- so the client can tell the user their answer couldn't be
-    # graded.
+    # graded. skipped (D-93) gets a reveal too -- it's terminal and immediate,
+    # same as graded, just with no correct/incorrect verdict alongside it.
     reveal = None
     score: float | None = None
     grader_output: GraderOutput | None = None
-    if attempt.status == "graded":
+    if attempt.status in ("graded", "skipped"):
         if exercise.type in DETERMINISTIC_TYPES:
             reveal = build_reveal(exercise)
         else:

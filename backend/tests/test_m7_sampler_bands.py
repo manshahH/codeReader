@@ -186,14 +186,18 @@ async def test_fetch_candidates_prefers_empirical_difficulty_once_n_reaches_30(
         difficulty_authored=4,
     )
     now = dt.datetime.now(dt.UTC)
+    # Distinct session_dates per attempt: the percentiles job dedupes to one
+    # row per (user, exercise, version, session_date) (D-8 correction), so
+    # `count` attempts from the SAME user on the SAME day would collapse to
+    # one and never reach the n>=30 threshold this test is asserting on.
     for exercise, count in ((hard_in_practice, 30), (too_few_attempts, 10)):
-        for _ in range(count):
+        for day_offset in range(count):
             db_session.add(
                 Attempt(
                     user_id=user.id,
                     exercise_id=exercise.id,
                     exercise_version=exercise.version,
-                    session_date=now.date(),
+                    session_date=now.date() - dt.timedelta(days=day_offset),
                     answer={"line": 2, "reason_id": "b"},
                     grading_mode="deterministic",
                     status="graded",

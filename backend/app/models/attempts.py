@@ -33,7 +33,7 @@ class Attempt(Base):
             ["exercises.id", "exercises.version"],
         ),
         CheckConstraint("grading_mode IN ('deterministic','rubric')"),
-        CheckConstraint("status IN ('graded','grading_pending','grading_failed')"),
+        CheckConstraint("status IN ('graded','grading_pending','grading_failed','skipped')"),
         CheckConstraint("score IS NULL OR (score >= 0 AND score <= 1)"),
         CheckConstraint("client IN ('web','pwa')"),
         Index("idx_attempts_user", "user_id", text("created_at DESC")),

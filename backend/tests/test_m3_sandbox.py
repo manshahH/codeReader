@@ -8,7 +8,11 @@ from pipeline.sandbox.runner import (
     run_python,
     verify_sandbox_available,
 )
-from pipeline.sandbox_gate import validate_spot_the_bug, validate_trace
+from pipeline.sandbox_gate import (
+    validate_predict_the_fix,
+    validate_spot_the_bug,
+    validate_trace,
+)
 from pipeline.schemas import (
     Choice,
     LineNote,
@@ -22,6 +26,7 @@ from pipeline.schemas import (
     TraceTableEntry,
     WhyWrong,
 )
+from pydantic import ValidationError
 
 # --- the dry-run's own candidate (prompts/dryrun_stb_validation.py), ported ---
 
@@ -331,6 +336,118 @@ def test_sandbox_gate_rejects_has_bug_false_candidate_whose_fixed_code_differs_a
     assert result.verified_bug_lines is None
 
 
+# --- D-82: v4 divergence fields, free B3 static check + B4 execution claim-check
+
+_V4_BUGGY = (
+    "def tier_discount(order_total):\n"
+    "    if order_total > 100:\n"
+    "        return 0.10\n"
+    "    return 0.0\n"
+)
+_V4_FIXED = (
+    "def tier_discount(order_total):\n"
+    "    if order_total >= 100:\n"
+    "        return 0.10\n"
+    "    return 0.0\n"
+)
+# The v4 test prints repr(result) before asserting, so the sandbox captures the
+# actual buggy/fixed results and claim-checks them (B4).
+_V4_TEST = (
+    "result = tier_discount(100)\n"
+    "print(repr(result))\n"
+    "assert result == 0.1, 'spend of exactly 100 should earn the discount'\n"
+)
+
+
+def _v4_candidate(
+    *,
+    buggy_result: str = "0.0",
+    fixed_result: str = "0.1",
+) -> STBCandidate:
+    return STBCandidate(
+        buggy_code=_V4_BUGGY,
+        fixed_code=_V4_FIXED,
+        bug_lines=[2],
+        test_code=_V4_TEST,
+        context_note="Runs once per order in the checkout worker.",
+        reason_options=[
+            ReasonOption(id="a", text="The threshold uses > where the spec says at least 100."),
+            ReasonOption(id="b", text="round() introduces floating point drift here."),
+            ReasonOption(id="c", text="The discount is applied twice."),
+            ReasonOption(id="d", text="0.10 should be 0.1 (they are the same float)."),
+        ],
+        correct_reason_id="a",
+        draft_explanation=STBDraftExplanation(
+            summary="`>` excludes the exact threshold; `>=` includes it.",
+            principle="'at least N' is >=, not >.",
+            line_notes=[LineNote(line=2, note="Excludes order_total == 100 from the discount.")],
+        ),
+        concepts=["off-by-one"],
+        self_difficulty=2,
+        self_check=STBSelfCheck(
+            single_bug_confirmed=True,
+            runs_without_error_on_happy_path=True,
+            no_hinting_names_or_comments=True,
+            distractors_verifiably_wrong=True,
+            test_input_is_on_the_divergence_boundary=True,
+            test_asserts_on_divergence_input=True,
+        ),
+        bug_trigger_condition="order_total is exactly the threshold, 100",
+        divergence_input="order_total = 100",
+        buggy_result_on_divergence_input=buggy_result,
+        fixed_result_on_divergence_input=fixed_result,
+        divergence_justification="at exactly 100, > is False (0.0) but >= is True (0.1)",
+    )
+
+
+def test_schema_rejects_identical_divergence_results_for_free_before_the_sandbox() -> None:
+    # B3: the model claiming buggy and fixed produce the SAME result on its own
+    # divergence input is an admission the test cannot discriminate -- rejected
+    # at schema validation, zero tokens, zero sandbox.
+    with pytest.raises(ValidationError, match="cannot discriminate"):
+        _v4_candidate(buggy_result="0.1", fixed_result="0.1")
+
+
+def test_schema_rejects_partial_divergence_fields() -> None:
+    # All-or-none: a v4 candidate that fills some divergence fields but not all
+    # is malformed. (model_validate re-runs the validator; model_copy would not.)
+    data = _v4_candidate().model_dump()
+    data["divergence_justification"] = None
+    with pytest.raises(ValidationError, match="must be provided together"):
+        STBCandidate.model_validate(data)
+
+
+def test_schema_accepts_a_candidate_with_no_divergence_fields_backward_compat() -> None:
+    # v2/v3 candidates and every existing fixture omit the divergence fields and
+    # must still validate.
+    candidate = _stb_candidate(test_code=_STRONG_TEST, bug_lines=[2])
+
+    assert candidate.buggy_result_on_divergence_input is None
+
+
+def test_sandbox_gate_v4_claim_check_accepts_a_correct_prediction() -> None:
+    candidate = _v4_candidate(buggy_result="0.0", fixed_result="0.1")
+
+    result = validate_spot_the_bug(candidate, has_bug=True)
+
+    assert result.accepted, result.as_report()
+    checks_by_name = {c.name: c for c in result.checks}
+    assert checks_by_name["stb_claim_matches_execution"].passed is True
+
+
+def test_sandbox_gate_v4_claim_check_rejects_a_mispredicted_result() -> None:
+    # B4 (D-11 for STB): the model claims buggy returns 0.5, but it actually
+    # returns 0.0. A model that mis-predicts its own code's behavior wrote an
+    # unreliable exercise -> reject, exactly as trace's claim-check does.
+    candidate = _v4_candidate(buggy_result="0.5", fixed_result="0.1")
+
+    result = validate_spot_the_bug(candidate, has_bug=True)
+
+    assert not result.accepted
+    checks_by_name = {c.name: c for c in result.checks}
+    assert checks_by_name["stb_claim_matches_execution"].passed is False
+
+
 def _trace_candidate(
     *,
     expected_stdout: str,
@@ -401,6 +518,101 @@ def test_sandbox_gate_rejects_nondeterministic_candidate() -> None:
     assert not result.accepted
     checks_by_name = {c.name: c for c in result.checks}
     assert checks_by_name["deterministic_double_run"].passed is False
+
+
+# --- D-80: predict_the_fix gate -- every distractor must STILL FAIL the test ---
+
+_PTF_BUGGY = (
+    "def tier_discount(order_total):\n"
+    "    if order_total > 100:\n"
+    "        return 0.10\n"
+    "    return 0.0\n"
+)
+_PTF_FIXED = (
+    "def tier_discount(order_total):\n"
+    "    if order_total >= 100:\n"
+    "        return 0.10\n"
+    "    return 0.0\n"
+)
+# The test picks exactly the divergence boundary (order_total == 100).
+_PTF_TEST = "assert tier_discount(100) == 0.10\n"
+
+# Three plausible-but-wrong fixes; each still returns something != 0.10 at 100.
+_PTF_WRONG_ELSE_VALUE = (
+    "def tier_discount(order_total):\n"
+    "    if order_total > 100:\n"
+    "        return 0.10\n"
+    "    return 0.05\n"
+)
+_PTF_WRONG_BOUNDARY = (
+    "def tier_discount(order_total):\n"
+    "    if order_total > 101:\n"
+    "        return 0.10\n"
+    "    return 0.0\n"
+)
+_PTF_WRONG_DISCOUNT = (
+    "def tier_discount(order_total):\n"
+    "    if order_total > 100:\n"
+    "        return 0.15\n"
+    "    return 0.0\n"
+)
+# A "wrong" fix that actually PASSES the test (100 > 99 -> 0.10): not wrong.
+_PTF_ACTUALLY_CORRECT = (
+    "def tier_discount(order_total):\n"
+    "    if order_total > 99:\n"
+    "        return 0.10\n"
+    "    return 0.0\n"
+)
+
+
+def test_validate_predict_the_fix_accepts_distractors_that_all_still_fail() -> None:
+    result = validate_predict_the_fix(
+        buggy_code=_PTF_BUGGY,
+        fixed_code=_PTF_FIXED,
+        test_code=_PTF_TEST,
+        wrong_fixes=[_PTF_WRONG_ELSE_VALUE, _PTF_WRONG_BOUNDARY, _PTF_WRONG_DISCOUNT],
+    )
+
+    assert result.accepted, result.as_report()
+    passed = {c.name for c in result.checks if c.passed}
+    assert "correct_fix_passes_test" in passed
+    assert "buggy_fails_test" in passed
+    assert "distractors_distinct" in passed
+    # captured failing-test output is handed back for the payload.
+    assert result.captured_test_output is not None
+    assert "AssertionError" in result.captured_test_output
+
+
+def test_validate_predict_the_fix_rejects_a_distractor_that_passes_the_test() -> None:
+    # The new invariant: a distractor that makes the test PASS is a second
+    # correct answer, so the whole candidate is rejected.
+    result = validate_predict_the_fix(
+        buggy_code=_PTF_BUGGY,
+        fixed_code=_PTF_FIXED,
+        test_code=_PTF_TEST,
+        wrong_fixes=[_PTF_WRONG_ELSE_VALUE, _PTF_ACTUALLY_CORRECT, _PTF_WRONG_DISCOUNT],
+    )
+
+    assert not result.accepted
+    checks_by_name = {c.name: c for c in result.checks}
+    # the actually-correct variant is at index 1
+    assert checks_by_name["distractor_1_still_fails_test"].passed is False
+    assert result.captured_test_output is None
+
+
+def test_validate_predict_the_fix_rejects_distractor_equal_to_buggy_or_fixed() -> None:
+    # A distractor identical to buggy_code still fails the test, but it is the
+    # unchanged original, not a real alternative -> distinctness rejects it.
+    result = validate_predict_the_fix(
+        buggy_code=_PTF_BUGGY,
+        fixed_code=_PTF_FIXED,
+        test_code=_PTF_TEST,
+        wrong_fixes=[_PTF_WRONG_ELSE_VALUE, _PTF_BUGGY, _PTF_WRONG_DISCOUNT],
+    )
+
+    assert not result.accepted
+    checks_by_name = {c.name: c for c in result.checks}
+    assert checks_by_name["distractors_distinct"].passed is False
 
 
 def test_sandbox_has_no_database_or_secret_env_vars() -> None:

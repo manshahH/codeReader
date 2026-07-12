@@ -78,6 +78,21 @@ class TraceReveal(BaseModel):
     explanation: TraceExplanation
 
 
+class PredictTheFixExplanation(BaseModel):
+    model_config = _STRICT
+
+    summary: str
+    principle: str
+    why_wrong: list[WhyWrongEntry]
+
+
+class PredictTheFixReveal(BaseModel):
+    model_config = _STRICT
+
+    correct_choice_id: str
+    explanation: PredictTheFixExplanation
+
+
 class SummarizeExplanation(BaseModel):
     model_config = _STRICT
 
@@ -118,15 +133,23 @@ class SessionProgress(BaseModel):
 
     completed: bool
     remaining: int
+    # True only on the single attempt response that flips this session to
+    # completed AND is the user's first-ever completed daily_sessions row
+    # (D-93b). False on every other response, including replays.
+    first_completed_session: bool = False
 
 
 class AttemptResponse(BaseModel):
     model_config = _STRICT
 
     attempt_id: int
-    status: Literal["graded", "grading_pending", "grading_failed"]
+    # "skipped" (D-93): an honest {"skipped": true} answer. Distinct from
+    # grading_pending/grading_failed -- both of those are None-is_correct
+    # states waiting on/failed at a real grade; skipped is terminal and
+    # immediate, there is simply no grade to give.
+    status: Literal["graded", "grading_pending", "grading_failed", "skipped"]
     is_correct: bool | None
-    reveal: STBReveal | TraceReveal | SummarizeReveal | None
+    reveal: STBReveal | TraceReveal | PredictTheFixReveal | SummarizeReveal | None
     score: float | None = None
     grader_output: GraderOutput | None = None
     percentile: PercentileInfo | None

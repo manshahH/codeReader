@@ -162,19 +162,30 @@ async def purge_sessions_referencing(
     redis: Redis,
     exercise_id: uuid.UUID,
 ) -> int:
-    """Remove every still-servable daily session that references an exercise
+    """Remove every still-in-flight daily session that references an exercise
     (D-58, the pull path). Deletes the daily_sessions rows, commits (together
     with whatever the caller flushed, e.g. the status flip), THEN deletes the
     Redis keys -- in that order, so a concurrent GET racing the purge cannot
-    re-cache a row that is about to disappear. Only rows from yesterday
-    onward are touched: older rows can no longer be served (the cache TTL is
-    36h and keys are per-date) and stay as the durable history they are.
+    re-cache a row that is about to disappear.
+
+    Two conditions bound what is purged (D-102):
+    - `session_date >= yesterday`: older rows can no longer be served (the
+      cache TTL is 36h and keys are per-date) and stay as durable history.
+    - `completed_at IS NULL`: a COMPLETED session is never served for
+      answering again, so pulling content out of it protects the user from
+      nothing -- it only erases a day they already finished from their history
+      (session count, heatmap, streak evidence). The pull's job is to stop
+      an IN-FLIGHT session from serving bad content; a finished one has
+      nothing left to serve. The pulled exercise row still exists (status
+      flips to 'pulled', the row is not deleted), so a kept completed session
+      still renders its already-answered exercise on the review screen.
     """
     servable_cutoff = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=1)
     rows = (
         await db.execute(
             select(DailySession.user_id, DailySession.session_date).where(
                 DailySession.session_date >= servable_cutoff,
+                DailySession.completed_at.is_(None),
                 DailySession.exercise_list.contains([{"exercise_id": str(exercise_id)}]),
             ),
         )

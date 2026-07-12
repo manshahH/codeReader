@@ -80,6 +80,43 @@ def test_static_gate_rejects_line_budget_violation() -> None:
     assert any("line_count" in v for v in result.violations)
 
 
+# --- D-80: max-only budget (None low bound) drops the minimum ---------------
+
+
+def test_static_gate_max_only_budget_accepts_code_under_the_old_minimum() -> None:
+    # 5-line buggy snippet against a budget whose min used to be 10: the
+    # min was the cause of nearly every real budget reject (a minimal clear
+    # bug is naturally short), so max-only must accept it.
+    code = "x = 1\n" * 5
+
+    result = check(code, line_budget=(None, 20))
+
+    assert result.accepted, result.violations
+
+
+def test_static_gate_max_only_budget_still_rejects_over_the_maximum() -> None:
+    code = "x = 1\n" * 25
+
+    result = check(code, line_budget=(None, 20))
+
+    assert not result.accepted
+    assert any("line_count" in v for v in result.violations)
+
+
+def test_orchestrator_static_check_uses_max_only_for_short_buggy_code() -> None:
+    # A 3-line bug against a sampled budget of (10, 20): under the old min,
+    # rejected; max-only, accepted. This is FIX 2b's exact false-reject class.
+    from pipeline.orchestrator import _static_gate_check
+
+    buggy = "def f(items):\n    total = 0\n    return total\n"
+    candidate = _stb_candidate_for_budget(buggy, buggy)  # has_bug shape irrelevant here
+    candidate = candidate.model_copy(update={"bug_lines": []})
+
+    ok, violations = _static_gate_check(candidate, _spec_with_budget(10, 20))
+
+    assert ok, violations
+
+
 # --- D-51: line_budget=None skips ONLY the length check ---------------------
 
 

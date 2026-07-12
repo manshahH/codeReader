@@ -28,6 +28,7 @@ from app.auth.service import (
 from app.auth.tokens import issue_access_token
 from app.config import get_settings
 from app.core.errors import ApiError, request_id
+from app.core.network import resolve_client_ip
 from app.core.ratelimit import check_token_bucket
 from app.core.redis import get_redis
 
@@ -38,10 +39,7 @@ GithubClientDep = Depends(get_github_client)
 
 
 def _client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip()
-    return request.client.host if request.client else "unknown"
+    return resolve_client_ip(request, get_settings().TRUSTED_PROXY_COUNT)
 
 
 def _login_redirect(error: str) -> str:
@@ -131,6 +129,18 @@ async def github_callback(
             scopes=token.scope,
             settings=get_settings(),
         )
+        if get_settings().BETA_GATE_ENABLED and not user.beta_allowed:
+            # M8: the app is not open to the world -- the user row is kept
+            # (so an admin can invite them by username later without a fresh
+            # login), but no session is issued. Commit here, not rollback:
+            # the upsert itself (username/avatar refresh, or the brand-new
+            # row) is real state worth keeping regardless of beta status.
+            await session.commit()
+            return RedirectResponse(
+                _login_redirect("beta_required"),
+                status_code=302,
+                headers=headers,
+            )
         refresh_issue = await issue_refresh_token(
             session,
             user_id=user.id,

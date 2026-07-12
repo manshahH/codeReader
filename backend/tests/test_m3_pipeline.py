@@ -64,6 +64,38 @@ def test_sample_spec_never_emits_a_flagged_concept() -> None:
     assert not (sampled & _FLAGGED_SLUGS)
 
 
+# --- D-80: omission / no-divergence concepts unsamplable FOR spot_the_bug ----
+
+_STB_UNSAMPLABLE_SLUGS = {
+    "decorator-losing-metadata",
+    "idempotency-missing",
+    "concurrency-conceptual",
+    "exception-type-too-broad",
+    "n-plus-one-pattern",
+}
+
+
+def test_taxonomy_flags_the_audited_omission_and_no_divergence_concepts() -> None:
+    for slug in _STB_UNSAMPLABLE_SLUGS:
+        assert taxonomy.get_concept(slug).stb_unsamplable  # flagged, not deleted
+
+
+def test_concepts_for_type_excludes_stb_unsamplable_only_for_spot_the_bug() -> None:
+    stb_slugs = {c.slug for c in taxonomy.concepts_for_type("spot_the_bug")}
+    trace_slugs = {c.slug for c in taxonomy.concepts_for_type("trace")}
+    # none of the flagged concepts is samplable as spot_the_bug
+    assert not (stb_slugs & _STB_UNSAMPLABLE_SLUGS)
+    # exception-type-too-broad is _BOTH and stays valid for trace (per-type,
+    # not global -- unlike D-54's requires_forbidden)
+    assert "exception-type-too-broad" in trace_slugs
+
+
+def test_sample_spec_stb_never_emits_an_stb_unsamplable_concept() -> None:
+    rng = random.Random(23)
+    sampled = {sample_spec(rng, "spot_the_bug").concept for _ in range(800)}
+    assert not (sampled & _STB_UNSAMPLABLE_SLUGS)
+
+
 # --- spec_sampler ---------------------------------------------------------
 
 
@@ -106,21 +138,37 @@ def test_sample_batch_alternates_type_mix() -> None:
 def test_load_template_parses_stb_template() -> None:
     template = load_template("spot_the_bug")
 
-    assert template.template_id == "stb_py_v2"  # D-53
+    assert template.template_id == "stb_py_v5"  # D-86 (cache-optimized v4)
     assert "senior Python engineer" in template.system
     assert "{{concept}}" in template.user
     assert "BEGIN USER" not in template.user
-    # D-53: the exception-to-assertion worked example is in; the v1
-    # trailing-newline constraint is out (the gate joins with a newline
+    # D-53: the exception-to-assertion worked example carries forward; the v1
+    # trailing-newline constraint stays out (the gate joins with a newline
     # itself, D-50).
     assert "except RuntimeError" in template.user
     assert "trailing newline" not in template.user
+    # D-80/D-82: the divergence worked examples carry forward.
+    assert "divergence" in template.user.lower()
+    # D-82: v4 forces the divergence derivation as required fields and the
+    # print(repr(result)) test contract the B4 claim-check reads.
+    assert "bug_trigger_condition" in template.user
+    assert "print(repr(result))" in template.user
+
+
+def test_load_template_parses_predict_the_fix_template() -> None:
+    template = load_template("predict_the_fix")
+
+    assert template.template_id == "ptf_py_v1"  # D-80
+    assert "{{buggy_code}}" in template.user
+    assert "{{fixed_code}}" in template.user
+    assert "{{test_code}}" in template.user
+    assert "wrong_fixes" in template.user
 
 
 def test_load_template_parses_trace_template() -> None:
     template = load_template("trace")
 
-    assert template.template_id == "trace_py_v1"
+    assert template.template_id == "trace_py_v2"  # D-86 (cache-optimized v1)
     assert "{{python_version}}" in template.user
 
 

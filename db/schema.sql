@@ -33,6 +33,7 @@ CREATE TABLE users (
   level               text        NOT NULL DEFAULT 'mid'
                         CHECK (level IN ('junior','mid','senior')),
   onboarded           boolean     NOT NULL DEFAULT false,     -- set true by PATCH /me's level pick
+  beta_allowed        boolean     NOT NULL DEFAULT false,     -- gates login/session access (M8)
   reminder_local_time time,                                  -- NULL = reminders off
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
@@ -77,6 +78,16 @@ CREATE TABLE refresh_tokens (
 CREATE INDEX idx_refresh_tokens_user   ON refresh_tokens (user_id);
 CREATE INDEX idx_refresh_tokens_family ON refresh_tokens (family_id);
 
+-- Beta allowlist (M8): an admin invites a GitHub handle here BEFORE that
+-- person ever logs in; upsert_github_user() flips users.beta_allowed on the
+-- matching row the moment they authenticate. Also the record of "who did we
+-- invite", independent of whether they've shown up yet.
+CREATE TABLE beta_invites (
+  github_login citext      PRIMARY KEY,
+  note         text,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
 -- ============================================================
 -- CONTENT
 -- ============================================================
@@ -91,7 +102,7 @@ CREATE TABLE exercises (
   version               int         NOT NULL DEFAULT 1 CHECK (version >= 1),
   language              text        NOT NULL CHECK (language IN ('python')),
   type                  text        NOT NULL
-                          CHECK (type IN ('spot_the_bug','trace','summarize')),
+                          CHECK (type IN ('spot_the_bug','trace','summarize','predict_the_fix')),
   grading_mode          text        NOT NULL
                           CHECK (grading_mode IN ('deterministic','rubric')),
   difficulty_authored   smallint    NOT NULL CHECK (difficulty_authored BETWEEN 1 AND 10),
@@ -158,7 +169,7 @@ CREATE TABLE attempts (
   answer           jsonb       NOT NULL,             -- shape depends on exercise type
   grading_mode     text        NOT NULL CHECK (grading_mode IN ('deterministic','rubric')),
   status           text        NOT NULL DEFAULT 'graded'
-                     CHECK (status IN ('graded','grading_pending','grading_failed')),
+                     CHECK (status IN ('graded','grading_pending','grading_failed','skipped')),
   is_correct       boolean,                          -- NULL while rubric pending
   score            numeric(4,3) CHECK (score IS NULL OR (score >= 0 AND score <= 1)),
   grader_output    jsonb,                            -- rubric hits/misses, for the UI
@@ -222,6 +233,15 @@ CREATE TABLE streak_events (
 
 CREATE INDEX idx_streak_events_user ON streak_events (user_id, created_at DESC);
 
+-- H1/D-104: a streak transition ('extended'/'reset') happens at most once per
+-- user per local day. This partial unique index is the un-raceable DB backstop
+-- (under the per-(user, day) advisory lock in attempts/service.py) against a
+-- concurrent same-day submit writing two transition rows for one transition.
+-- 'repaired'/'freeze_used'/'adjusted' are separate event kinds and unconstrained.
+CREATE UNIQUE INDEX uq_streak_events_one_transition_per_day
+  ON streak_events (user_id, local_date)
+  WHERE event IN ('extended', 'reset');
+
 -- Spaced repetition + skill graph state, keyed to the controlled
 -- concept taxonomy (validated app-side against a versioned list).
 CREATE TABLE user_concept_state (
@@ -230,6 +250,7 @@ CREATE TABLE user_concept_state (
   mastery        numeric(4,3) NOT NULL DEFAULT 0 CHECK (mastery >= 0 AND mastery <= 1),
   attempts       int         NOT NULL DEFAULT 0,
   correct        int         NOT NULL DEFAULT 0,
+  declined       int         NOT NULL DEFAULT 0,   -- "I don't know" count; never inflates attempts/correct
   last_seen_at   timestamptz,
   next_review_at timestamptz,
   PRIMARY KEY (user_id, concept)
@@ -274,6 +295,34 @@ CREATE TABLE disputes (
 
 CREATE INDEX idx_disputes_open ON disputes (status, created_at) WHERE status = 'open';
 CREATE INDEX idx_disputes_ex   ON disputes (exercise_id, exercise_version);
+
+-- Beta feedback (D-93c): one review per user, upserted. Separate from
+-- disputes -- a dispute is about a specific exercise/answer key, a review is
+-- about the product as a whole.
+CREATE TABLE reviews (
+  id          bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+  rating      smallint    NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  body        text,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_reviews_touch BEFORE UPDATE ON reviews
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- Append-only: one row per POST /v1/me/review call, never updated or
+-- deleted. reviews (above) stays the current opinion via upsert; this is
+-- the record of how it got there, so a rating change over time is visible.
+CREATE TABLE review_history (
+  id          bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  rating      smallint    NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  body        text,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_review_history_user ON review_history (user_id, created_at);
 
 -- ============================================================
 -- OPERATIONAL NOTES (not DDL)

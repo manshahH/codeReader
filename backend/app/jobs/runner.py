@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import datetime as dt
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -52,6 +53,12 @@ class JobScheduler:
         self.jobs = list(jobs)
         self.run_counts: dict[str, int] = {job.name: 0 for job in self.jobs}
         self.error_counts: dict[str, int] = {job.name: 0 for job in self.jobs}
+        # M8 beta readiness: "job-runner health" needs more than a
+        # cumulative count to answer "is this job still alive right now" --
+        # a run_count that stopped climbing between two /admin/metrics polls
+        # is invisible without a timestamp to compare against.
+        self.last_run_at: dict[str, str | None] = dict.fromkeys(self.run_counts)
+        self.last_error_at: dict[str, str | None] = dict.fromkeys(self.run_counts)
         self._stop = asyncio.Event()
         self._tasks: list[asyncio.Task] = []
 
@@ -77,9 +84,11 @@ class JobScheduler:
             raise
         except Exception:
             self.error_counts[job.name] += 1
+            self.last_error_at[job.name] = dt.datetime.now(dt.UTC).isoformat()
             logger.exception("periodic job %r failed; next tick unaffected", job.name)
         else:
             self.run_counts[job.name] += 1
+            self.last_run_at[job.name] = dt.datetime.now(dt.UTC).isoformat()
             logger.info("periodic job %r ran: %s", job.name, result)
 
     async def _job_loop(self, job: PeriodicJob) -> None:

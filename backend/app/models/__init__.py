@@ -7,7 +7,8 @@ from app.models.attempts import (
 )
 from app.models.content import Exercise, ExerciseStat
 from app.models.feedback import Dispute
-from app.models.identity import AuthIdentity, RefreshToken, User
+from app.models.identity import AuthIdentity, BetaInvite, RefreshToken, User
+from app.models.reviews import Review, ReviewHistory
 from app.models.sessions import DailySession
 from app.models.user_state import StreakEvent, UserConceptState, UserStats
 
@@ -19,11 +20,14 @@ __all__ = [
     "Attempt202608",
     "AttemptDefault",
     "AuthIdentity",
+    "BetaInvite",
     "DailySession",
     "Dispute",
     "Exercise",
     "ExerciseStat",
     "RefreshToken",
+    "Review",
+    "ReviewHistory",
     "StreakEvent",
     "User",
     "UserConceptState",

@@ -89,5 +89,8 @@ class UserConceptState(Base):
     )
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     correct: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    # D-93: "I don't know" count, distinct from attempts/correct so a skip
+    # never inflates the accuracy denominator those two drive.
+    declined: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     next_review_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))

@@ -139,7 +139,10 @@ async def get_sessions(db: AsyncSession, user_id: uuid.UUID, *, limit: int) -> l
                 tuple_(Exercise.id, Exercise.version).in_(exercise_keys),
             ),
         )
-        concepts_by_key = {(ex_id, version): list(concepts) for ex_id, version, concepts in exercise_rows.all()}
+        concepts_by_key = {
+            (ex_id, version): list(concepts)
+            for ex_id, version, concepts in exercise_rows.all()
+        }
 
     dates = [daily_session.session_date for daily_session in sessions]
     attempt_rows = await db.execute(

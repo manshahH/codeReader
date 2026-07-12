@@ -4,7 +4,7 @@ import datetime as dt
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.tokens import generate_refresh_token, refresh_token_hash
@@ -12,7 +12,7 @@ from app.config import Settings
 from app.core.errors import ApiError
 from app.core.events import alert_refresh_reuse
 from app.core.security import encrypt_token
-from app.models import AuthIdentity, RefreshToken, User
+from app.models import AuthIdentity, BetaInvite, RefreshToken, User
 
 REFRESH_COOKIE_NAME = "rt"
 REFRESH_COOKIE_PATH = "/v1/auth"
@@ -44,6 +44,22 @@ def user_response(user: User) -> dict[str, str | bool | None]:
     }
 
 
+async def _apply_beta_invite(session: AsyncSession, user: User, github_login: str) -> None:
+    """Flip beta_allowed on if this handle is on the invite list (M8) --
+    covers both "invited before ever logging in" (the row already exists at
+    login time) and "invited after a first, then-rejected, login attempt"
+    (they log in again and this re-checks). Never flips it off: revocation
+    is an explicit admin action (revoke_beta_access), not an absence check.
+    """
+    if user.beta_allowed:
+        return
+    invited = await session.scalar(
+        select(BetaInvite).where(BetaInvite.github_login == github_login),
+    )
+    if invited is not None:
+        user.beta_allowed = True
+
+
 async def upsert_github_user(
     session: AsyncSession,
     *,
@@ -70,33 +86,79 @@ async def upsert_github_user(
         identity.provider_login = profile.login
         identity.access_token_enc = sealed_token
         identity.token_scopes = scopes
+    else:
+        username = profile.login
+        existing_user = await session.scalar(select(User).where(User.username == username))
+        if existing_user is not None:
+            username = f"{profile.login}-{profile.provider_user_id}"
+
+        user = User(
+            username=username,
+            display_name=profile.display_name,
+            avatar_url=profile.avatar_url,
+        )
+        session.add(user)
         await session.flush()
-        return user
 
-    username = profile.login
-    existing_user = await session.scalar(select(User).where(User.username == username))
-    if existing_user is not None:
-        username = f"{profile.login}-{profile.provider_user_id}"
+        identity = AuthIdentity(
+            user_id=user.id,
+            provider="github",
+            provider_user_id=profile.provider_user_id,
+            provider_login=profile.login,
+            access_token_enc=sealed_token,
+            token_scopes=scopes,
+        )
+        session.add(identity)
 
-    user = User(
-        username=username,
-        display_name=profile.display_name,
-        avatar_url=profile.avatar_url,
-    )
-    session.add(user)
-    await session.flush()
-
-    identity = AuthIdentity(
-        user_id=user.id,
-        provider="github",
-        provider_user_id=profile.provider_user_id,
-        provider_login=profile.login,
-        access_token_enc=sealed_token,
-        token_scopes=scopes,
-    )
-    session.add(identity)
+    await _apply_beta_invite(session, user, profile.login)
     await session.flush()
     return user
+
+
+async def invite_to_beta(session: AsyncSession, github_login: str) -> dict[str, bool | str]:
+    """Admin path (CLAUDE.md M8): invite a GitHub handle. Idempotent -- an
+    already-invited handle is a no-op, not an error. If a user with this
+    username already exists (logged in before being invited), flips their
+    access on immediately instead of waiting for their next login.
+    """
+    existing_invite = await session.scalar(
+        select(BetaInvite).where(BetaInvite.github_login == github_login),
+    )
+    if existing_invite is None:
+        session.add(BetaInvite(github_login=github_login))
+
+    user = await session.scalar(select(User).where(User.username == github_login))
+    user_flipped = False
+    if user is not None and not user.beta_allowed:
+        user.beta_allowed = True
+        user_flipped = True
+
+    await session.flush()
+    await session.commit()
+    return {
+        "github_login": github_login,
+        "already_invited": existing_invite is not None,
+        "user_flipped": user_flipped,
+    }
+
+
+async def revoke_beta_access(session: AsyncSession, github_login: str) -> dict[str, bool | str]:
+    """Admin path: remove a handle from the invite list AND revoke an
+    existing user's access, so a mid-beta removal takes effect (the next
+    refresh call 401s, per rotate_refresh_token's beta_allowed check) rather
+    than only blocking a login that already happened.
+    """
+    await session.execute(delete(BetaInvite).where(BetaInvite.github_login == github_login))
+
+    user = await session.scalar(select(User).where(User.username == github_login))
+    user_revoked = False
+    if user is not None and user.beta_allowed:
+        user.beta_allowed = False
+        user_revoked = True
+
+    await session.flush()
+    await session.commit()
+    return {"github_login": github_login, "user_revoked": user_revoked}
 
 
 async def issue_refresh_token(
@@ -157,6 +219,15 @@ async def rotate_refresh_token(
 
     user = await session.get(User, row.user_id)
     if user is None:
+        raise ApiError(401, "invalid_token", "Refresh token is invalid.")
+    if settings.BETA_GATE_ENABLED and not user.beta_allowed:
+        # Beta access revoked since this token was issued (M8): treat exactly
+        # like an invalid token rather than a distinct error, so a revoked
+        # user is silently logged out on their next refresh (within
+        # ACCESS_TOKEN_TTL of the revocation) instead of leaking whether the
+        # username is a known account. Gated on BETA_GATE_ENABLED (D-92) so
+        # a gate-off login can't be issued a session in github_callback and
+        # then immediately 401 here -- both enforcement points must agree.
         raise ApiError(401, "invalid_token", "Refresh token is invalid.")
 
     row.rotated_at = now

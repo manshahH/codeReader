@@ -3,7 +3,8 @@
 Not part of the production surface: creates one seeded, already-onboarded
 user plus a fresh refresh token issued the same way the real OAuth callback
 does (`app.auth.tokens`), and one live exercise of each type so
-GET /session/today has a full spot_the_bug/trace/summarize slate to serve.
+GET /session/today has a full spot_the_bug/trace/predict_the_fix/summarize
+slate to serve.
 
 Playwright never talks to GitHub -- it sets the printed raw token as the `rt`
 cookie directly (the same cookie the backend itself would have set), then
@@ -52,6 +53,37 @@ STB_CODE = (
 )
 
 TRACE_CODE = "x = [1, 2, 3]\nprint(x[1])\n"
+
+PTF_BUGGY_CODE = (
+    "def total_price(prices):\n"
+    "    total = 0\n"
+    "    for p in prices:\n"
+    "        total = p\n"
+    "    return total\n"
+)
+PTF_FAILING_TEST = "assert total_price([1, 2, 3]) == 6"
+PTF_FIXED_CHOICE = (
+    "def total_price(prices):\n"
+    "    total = 0\n"
+    "    for p in prices:\n"
+    "        total += p\n"
+    "    return total\n"
+)
+PTF_WRONG_UNCHANGED = PTF_BUGGY_CODE
+PTF_WRONG_START_AT_ONE = (
+    "def total_price(prices):\n"
+    "    total = 1\n"
+    "    for p in prices:\n"
+    "        total += p\n"
+    "    return total\n"
+)
+PTF_WRONG_DROPS_LAST = (
+    "def total_price(prices):\n"
+    "    total = 0\n"
+    "    for p in prices[:-1]:\n"
+    "        total += p\n"
+    "    return total\n"
+)
 
 EXERCISES = [
     dict(
@@ -143,6 +175,60 @@ EXERCISES = [
             "mismatch_detail": None,
         },
         est_time_s=60,
+        human_reviewed=True,
+    ),
+    dict(
+        id=uuid.uuid5(_SEED_NAMESPACE, "ptf-accumulator-overwrite-v1"),
+        version=1,
+        language="python",
+        type="predict_the_fix",
+        grading_mode="deterministic",
+        difficulty_authored=4,
+        concepts=["off-by-one"],
+        tags=["seed_e2e"],
+        status="live",
+        source={"origin": "seed_handauthored", "attribution": "e2e seed"},
+        payload={
+            "code": PTF_BUGGY_CODE,
+            "context_note": "A helper that totals a cart's line-item prices.",
+            "question": "Which change makes the failing test pass?",
+            "failing_test": PTF_FAILING_TEST,
+            "test_output": "AssertionError",
+            "answer_mode": "choose_fix",
+            "choices": [
+                {"id": "a", "text": PTF_FIXED_CHOICE},
+                {"id": "b", "text": PTF_WRONG_UNCHANGED},
+                {"id": "c", "text": PTF_WRONG_START_AT_ONE},
+                {"id": "d", "text": PTF_WRONG_DROPS_LAST},
+            ],
+        },
+        grading={
+            "mode": "deterministic",
+            "correct_choice_id": "a",
+            "artifacts": {"sandbox_checks": {"passed": True}},
+        },
+        explanation={
+            "summary": "total = p replaces the running total instead of adding to it.",
+            "principle": "Use += to accumulate; = overwrites the previous value.",
+            "why_wrong": [
+                {
+                    "choice_id": "b",
+                    "note": "Unchanged: total is still overwritten each loop, not accumulated.",
+                },
+                {
+                    "choice_id": "c",
+                    "note": "Starting at 1 overcounts by one; the test still fails.",
+                },
+                {
+                    "choice_id": "d",
+                    "note": "Dropping the last price undercounts; the test still fails.",
+                },
+            ],
+            "verified": {"confirmed_by": "sandbox_execution"},
+            "mismatch_flagged": False,
+            "mismatch_detail": None,
+        },
+        est_time_s=90,
         human_reviewed=True,
     ),
     SUMMARIZE_EXERCISES[0],

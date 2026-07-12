@@ -16,7 +16,10 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-DETERMINISTIC_TYPES = ("spot_the_bug", "trace")
+# predict_the_fix (D-80) is deterministic (choice-graded), so it serves like
+# spot_the_bug/trace and stays available even when the summarize grader is
+# degraded.
+DETERMINISTIC_TYPES = ("spot_the_bug", "trace", "predict_the_fix")
 ALL_CANDIDATE_TYPES = (*DETERMINISTIC_TYPES, "summarize")
 LEVEL_DIFFICULTY = {"junior": 3, "mid": 5, "senior": 7}
 # D-61: each level samples within a difficulty BAND, not just toward a
