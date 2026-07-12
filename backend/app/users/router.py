@@ -10,8 +10,15 @@ from app.auth.deps import CurrentUser, CurrentUserDep, DbSessionDep
 from app.auth.service import user_response
 from app.core.errors import ApiError
 from app.models import User
-from app.schemas.users import ActivityDay, UpdateMeRequest
-from app.users.service import get_activity, get_concepts, get_stats, update_me
+from app.schemas.users import AccuracyHistoryDay, ActivityDay, MeSessionSummary, UpdateMeRequest
+from app.users.service import (
+    get_accuracy_history,
+    get_activity,
+    get_concepts,
+    get_sessions,
+    get_stats,
+    update_me,
+)
 
 router = APIRouter(prefix="/v1", tags=["users"])
 
@@ -65,3 +72,25 @@ async def me_activity(
     if user is None:
         raise ApiError(401, "invalid_token", "Access token is invalid.")
     return await get_activity(session, user, date_from=date_from, date_to=date_to)
+
+
+@router.get("/me/sessions", response_model=list[MeSessionSummary])
+async def me_sessions(
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    current_user: CurrentUser = CurrentUserDep,
+    session: AsyncSession = DbSessionDep,
+) -> list[dict[str, object]]:
+    return await get_sessions(session, current_user.id, limit=limit)
+
+
+@router.get("/me/accuracy-history", response_model=list[AccuracyHistoryDay])
+async def me_accuracy_history(
+    date_from: Annotated[dt.date | None, Query(alias="from")] = None,
+    date_to: Annotated[dt.date | None, Query(alias="to")] = None,
+    current_user: CurrentUser = CurrentUserDep,
+    session: AsyncSession = DbSessionDep,
+) -> list[dict[str, object]]:
+    user = await session.get(User, current_user.id)
+    if user is None:
+        raise ApiError(401, "invalid_token", "Access token is invalid.")
+    return await get_accuracy_history(session, user, date_from=date_from, date_to=date_to)

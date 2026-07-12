@@ -51,6 +51,7 @@ async def test_me_stats_defaults_to_zero_with_no_attempts(
         "total_correct": 0,
         "accuracy_by_type": {},
         "last_active_local_date": None,
+        "total_sessions": 0,
     }
 
 
@@ -164,12 +165,16 @@ async def test_me_stats_and_concepts_never_aggregate_attempts_at_request_time(
 async def test_compute_exercise_stats_job_aggregates_attempts_into_exercise_stats(
     db_session: AsyncSession,
 ) -> None:
-    user = await make_user(db_session)
+    # Four DISTINCT users -- docs/05's one-attempt-per-exercise-per-session
+    # rule means a single user can never legitimately have more than one
+    # graded attempt for the same (exercise, session_date); see the
+    # dedup-specific test below for that same-user case.
     exercise = await make_stb_exercise(db_session, concepts=["mutable-default-arg"])
     now = dt.datetime.now(dt.UTC)
     outcomes = [True, True, False, True]
     times = [1000, 2000, 3000, 4000]
     for is_correct, time_taken_ms in zip(outcomes, times, strict=True):
+        user = await make_user(db_session)
         db_session.add(
             Attempt(
                 user_id=user.id,
@@ -196,3 +201,64 @@ async def test_compute_exercise_stats_job_aggregates_attempts_into_exercise_stat
     assert stat.correct_count == 3
     assert float(stat.solve_rate) == pytest.approx(0.75)
     assert stat.median_time_ms == 2500
+
+
+@pytest.mark.asyncio
+async def test_compute_exercise_stats_dedupes_duplicate_attempt_rows(
+    db_session: AsyncSession,
+) -> None:
+    """D-8 corrected: a replay racing a Redis idempotency-cache loss can
+    duplicate an attempts row for the same (user, exercise_id,
+    exercise_version, session_date). The percentiles job must collapse
+    those to the single EARLIEST row before counting, so a duplicate never
+    inflates a percentile's n or skews its solve rate.
+    """
+    user = await make_user(db_session)
+    exercise = await make_stb_exercise(db_session, concepts=["mutable-default-arg"])
+    now = dt.datetime.now(dt.UTC)
+    session_date = now.date()
+
+    # The earliest row: correct, 1000ms. A "duplicate" landed 5s later:
+    # incorrect, 9000ms -- if dedup didn't work this would double-count and
+    # drag the solve rate/median down.
+    db_session.add(
+        Attempt(
+            user_id=user.id,
+            exercise_id=exercise.id,
+            exercise_version=exercise.version,
+            session_date=session_date,
+            answer={"line": 1, "reason_id": "a"},
+            grading_mode="deterministic",
+            status="graded",
+            is_correct=True,
+            time_taken_ms=1000,
+            created_at=now,
+            graded_at=now,
+        ),
+    )
+    db_session.add(
+        Attempt(
+            user_id=user.id,
+            exercise_id=exercise.id,
+            exercise_version=exercise.version,
+            session_date=session_date,
+            answer={"line": 1, "reason_id": "a"},
+            grading_mode="deterministic",
+            status="graded",
+            is_correct=False,
+            time_taken_ms=9000,
+            created_at=now + dt.timedelta(seconds=5),
+            graded_at=now + dt.timedelta(seconds=5),
+        ),
+    )
+    await db_session.flush()
+    await db_session.commit()
+
+    updated = await compute_exercise_stats(db_session)
+
+    assert updated == 1
+    stat = await db_session.get(ExerciseStat, (exercise.id, exercise.version))
+    assert stat.attempts_count == 1
+    assert stat.correct_count == 1
+    assert float(stat.solve_rate) == pytest.approx(1.0)
+    assert stat.median_time_ms == 1000

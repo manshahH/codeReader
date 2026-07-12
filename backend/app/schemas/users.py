@@ -22,6 +22,39 @@ class ActivityDay(BaseModel):
     completed: bool
 
 
+class MeSessionSummary(BaseModel):
+    """One row of GET /me/sessions: a daily_sessions row joined against that
+    day's attempts. `exercise_count` is every exercise assigned that day
+    (the full daily_sessions.exercise_list), not just the ones answered so
+    far -- for an in-progress session this is deliberately the target, not
+    the current count. `concepts` is the union across every exercise
+    assigned, so it answers "what did/does this session cover" regardless
+    of completion state."""
+
+    model_config = _STRICT
+
+    session_date: dt.date
+    completed: bool
+    exercise_count: int
+    correct_count: int
+    skipped_count: int
+    concepts: list[str]
+
+
+class AccuracyHistoryDay(BaseModel):
+    """One row of GET /me/accuracy-history: a day's correct/total ratio
+    across every deterministically-resolved attempt (is_correct is not
+    NULL), bucketed by `attempts.session_date` -- the same local-day field
+    every other date-sensitive read in this app already uses, not a
+    re-derivation from created_at."""
+
+    model_config = _STRICT
+
+    date: dt.date
+    accuracy: float
+    attempts: int
+
+
 class UpdateMeRequest(BaseModel):
     model_config = _STRICT
 
