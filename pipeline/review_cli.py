@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import create_engine, create_session_factory
 from app.models import Exercise
+from pipeline.config import resolve_repo_path
 from pipeline.publish import approve, fix_and_bump, kill, pull
 
 # Human review at 200-exercise scale (CLAUDE.md M8 part 2) is bottlenecked on
@@ -77,10 +78,15 @@ def load_validation_report(exercise: Exercise) -> dict[str, Any] | None:
     """The receipts written by orchestrator.py/publish.py (D-48), read back
     for review. None if the pointer is missing or the file is gone --
     review must degrade gracefully, not crash, on a stale/moved report.
+
+    The pointer is repo-relative (D-109) and is resolved against the repo
+    root, so a report written by the containerised pipeline reads back from
+    the host. Graceful degradation is why this bug hid: 92 of 98 exercises
+    reported "no validation report on disk" while the files sat on disk.
     """
     if not exercise.validation_report_url:
         return None
-    path = Path(exercise.validation_report_url)
+    path = resolve_repo_path(exercise.validation_report_url)
     if not path.exists():
         return None
     try:
@@ -402,7 +408,11 @@ def main(argv: list[str] | None = None) -> None:
         packet = asyncio.run(_run(lambda session: cmd_packet(session, limit=args.limit)))
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(packet, encoding="utf-8")
-        print(f"wrote review packet: {args.out} ({packet.count('### ')} exercise(s))")
+        # Count SECTION headings only: `packet.count('### ')` also matched every
+        # '#### Code'/'#### Reason options' sub-heading and any '### ' inside a
+        # snippet, reporting 616 for a 77-exercise packet.
+        sections = sum(1 for line in packet.splitlines() if line.startswith("### "))
+        print(f"wrote review packet: {args.out} ({sections} exercise(s))")
 
 
 if __name__ == "__main__":

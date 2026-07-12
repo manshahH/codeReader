@@ -35,7 +35,7 @@ from app.exercises.service import (
 )
 from app.models import Exercise
 from pipeline import taxonomy
-from pipeline.config import get_pipeline_settings
+from pipeline.config import get_pipeline_settings, repo_relative_str
 from pipeline.schemas import STBCandidate, TraceCandidate
 from pipeline.spec_sampler import ExerciseSpec
 
@@ -59,11 +59,15 @@ __all__ = [
 
 
 def write_validation_report(report: dict[str, Any], exercise_id: uuid.UUID, version: int) -> str:
+    """Persist the receipts and return the pointer stored as
+    validation_report_url -- repo-relative, so it resolves identically from
+    inside the pipeline container and from the host (D-109).
+    """
     directory = get_pipeline_settings().validation_reports_dir
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{exercise_id}_v{version}.json"
     path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-    return str(path)
+    return repo_relative_str(path)
 
 
 def write_reject_report(report: dict[str, Any], *, stage: str, concept: str) -> str:

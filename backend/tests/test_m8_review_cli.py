@@ -9,7 +9,11 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path, PurePosixPath, PureWindowsPath
+
 import pytest
+from pipeline.config import REPO_ROOT, resolve_repo_path
 from pipeline.publish import insert_candidate
 from pipeline.review_cli import (
     build_review_packet,
@@ -310,3 +314,72 @@ def test_load_validation_report_returns_none_for_missing_file() -> None:
     )
 
     assert load_validation_report(exercise) is None
+
+
+# D-109: the pointer must resolve from BOTH the containerised pipeline (repo
+# bind-mounted at /work) and the host. The old code stored an absolute path
+# rooted at the writer's view of the repo, so /work/... was persisted and the
+# host read back nothing -- 92 of 98 exercises showed "no validation report on
+# disk" while every report sat on disk. A same-machine write-then-read test
+# passes even with that bug, so these assert the property that actually broke:
+# the stored string carries no filesystem root at all.
+
+
+@pytest.mark.asyncio
+async def test_validation_report_url_is_repo_relative_not_writer_machine_absolute(
+    db_session: AsyncSession,
+) -> None:
+    exercise = await _insert_stb_with_report(
+        db_session,
+        validation_report=_CLEAN_VALIDATION_REPORT,
+        content_hash="relative-path-hash",
+    )
+
+    url = exercise.validation_report_url
+
+    assert url.startswith("pipeline/validation_reports/")
+    # Rooted either way is the bug: /work/... on the container, D:\... on the host.
+    assert not PurePosixPath(url).is_absolute()
+    assert not PureWindowsPath(url).is_absolute()
+
+
+@pytest.mark.asyncio
+async def test_freshly_published_report_reads_back_from_the_host_filesystem(
+    db_session: AsyncSession,
+) -> None:
+    """A path that has never been read back is not a path."""
+    exercise = await _insert_stb_with_report(
+        db_session,
+        validation_report=_CLEAN_VALIDATION_REPORT,
+        content_hash="readback-hash",
+    )
+
+    path = resolve_repo_path(exercise.validation_report_url)
+
+    assert path.is_file()
+    assert json.loads(path.read_text(encoding="utf-8")) == _CLEAN_VALIDATION_REPORT
+    assert load_validation_report(exercise) == _CLEAN_VALIDATION_REPORT
+
+
+def test_stored_pointer_resolves_the_same_under_any_repo_root() -> None:
+    """The container and the host disagree about where the repo lives; the
+    pointer must not encode either answer. Resolving the same stored string
+    under two different roots must yield the same repo-relative tail."""
+    stored = "pipeline/validation_reports/abc_v1.json"
+
+    assert resolve_repo_path(stored) == REPO_ROOT / stored
+    assert (PurePosixPath("/work") / stored).as_posix() == "/work/" + stored
+
+
+def test_resolve_repo_path_does_not_graft_a_legacy_container_path_onto_the_repo_root() -> None:
+    """Negative test: a legacy absolute /work pointer is honoured as-is (and
+    simply will not exist on the host) -- it must never be silently joined onto
+    the repo root, which on Windows would manufacture a bogus D:/work/... path
+    and make a missing report look present."""
+    legacy = "/work/pipeline/validation_reports/abc_v1.json"
+
+    resolved = resolve_repo_path(legacy)
+
+    assert resolved == Path(legacy)
+    assert "work" in resolved.parts
+    assert resolved != REPO_ROOT / "work/pipeline/validation_reports/abc_v1.json"

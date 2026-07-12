@@ -1,193 +1,89 @@
-# Review packet -- 98 pending exercise(s)
+# Review packet -- 77 pending exercise(s)
 
 ## Contents
-1. spot_the_bug `6d8ce525-1874-4f80-be07-23e7b73353ca` v1 (concepts=['off-by-one-slicing'], difficulty=10) -- no validation report on disk
-2. predict_the_fix `ec7ad751-76f3-47d4-bb09-cfdb8012b66e` v1 (concepts=['off-by-one-slicing'], difficulty=10) -- no validation report on disk
-3. trace `e7376a2b-6cda-4b5c-a09a-331cbc29c268` v1 (concepts=['early-return-skipped-path'], difficulty=2) -- no validation report on disk
-4. trace `3ef49680-3791-42a2-a61b-e16c4486c54f` v1 (concepts=['shared-class-attribute'], difficulty=4) -- no validation report on disk
-5. trace `4bbd13a3-a4e9-4209-87b6-ef3ca67503ae` v1 (concepts=['aliasing-vs-copy'], difficulty=4) -- no validation report on disk
-6. trace `bb188a9b-182e-4f9d-a503-95a8d8e2e759` v1 (concepts=['generator-exhaustion'], difficulty=10) -- no validation report on disk
-7. trace `f3f72878-0760-4ab4-91b3-f8391a1e4492` v1 (concepts=['integer-division-truncation'], difficulty=6) -- no validation report on disk
-8. spot_the_bug `dbd2f905-058d-473d-8a0f-7725d6393a13` v1 (concepts=['integer-division-truncation'], difficulty=2) -- no validation report on disk
-9. trace `5fd95bd2-72e6-4a10-9c7c-355f6e82981a` v1 (concepts=['closure-late-binding'], difficulty=9) -- no validation report on disk
-10. trace `bab03791-a05e-4f53-8165-266f7473ae8e` v1 (concepts=['off-by-one'], difficulty=4) -- no validation report on disk
-11. spot_the_bug `1b77eca4-eeb3-4a6f-8948-1403bfdc4799` v1 (concepts=['list-mutation-during-iteration'], difficulty=4) -- no validation report on disk
-12. trace `7fee57dc-7e3f-46c2-bff2-15f5c4a20a65` v1 (concepts=['context-manager-misuse'], difficulty=6) -- no validation report on disk
-13. trace `3e89621c-bf49-4573-b540-98a4744b58db` v1 (concepts=['early-return-skipped-path'], difficulty=6) -- no validation report on disk
-14. trace `48f53359-9d57-4c83-9fb1-3fd0f9d102ae` v1 (concepts=['key-function-misuse'], difficulty=10) -- no validation report on disk
-15. trace `e187e8cf-6127-4350-a6f7-c52e8cd6a214` v1 (concepts=['float-precision'], difficulty=1) -- no validation report on disk
-16. trace `3024e685-99d4-4278-be05-464ad7aa0acb` v1 (concepts=['variable-shadowing'], difficulty=7) -- no validation report on disk
-17. trace `29e1f679-cb7c-447a-91ca-689d1c205eaa` v1 (concepts=['key-function-misuse'], difficulty=8) -- no validation report on disk
-18. spot_the_bug `1e117b13-c64d-46b6-bcdc-de44fda1509c` v1 (concepts=['closure-late-binding'], difficulty=5) -- no validation report on disk
-19. trace `9c84fa22-3b71-474c-b11b-d867dae57a1e` v1 (concepts=['off-by-one-slicing'], difficulty=8) -- no validation report on disk
-20. trace `5663857a-9678-4396-8fba-2deaa8e0dc31` v1 (concepts=['dict-mutation-during-iteration'], difficulty=7) -- no validation report on disk
-21. spot_the_bug `1803aa12-10cd-47c2-8e6d-1efbf2f7362d` v1 (concepts=['integer-division-truncation'], difficulty=7) -- no validation report on disk
-22. trace `6bf398fe-ce6e-442a-ad96-fbac988a5cbc` v1 (concepts=['off-by-one-slicing'], difficulty=4) -- no validation report on disk
-23. trace `17c52ad1-6f96-4715-a017-98c6d26daf7e` v1 (concepts=['mutable-default-arg'], difficulty=10) -- no validation report on disk
-24. trace `d8541a90-4ced-446d-831c-d4d5336dd594` v1 (concepts=['early-return-skipped-path'], difficulty=10) -- no validation report on disk
-25. spot_the_bug `6117f5d6-09e6-482b-aaba-8c219d5bc95b` v1 (concepts=['mutable-default-arg'], difficulty=3) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
-26. predict_the_fix `37e01c83-ecde-4302-ad56-d49bc14449d3` v1 (concepts=['off-by-one'], difficulty=2) -- clean
-27. spot_the_bug `950a22c1-e157-4532-8de1-22b028595937` v1 (concepts=['off-by-one'], difficulty=2) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
-28. spot_the_bug `79463928-f9c3-490a-86b4-0c246f2b3017` v1 (concepts=['shallow-vs-deep-copy'], difficulty=6) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
-29. spot_the_bug `8ccfcfed-c436-4f1d-9030-0cfebaa47ce4` v1 (concepts=['truthy-falsy-empty-check'], difficulty=5) -- defect_audit=flag solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: defect_audit=flag
-30. spot_the_bug `0434600e-b232-4e35-814e-ead0d323b49e` v1 (concepts=['is-vs-equality'], difficulty=5) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
-31. spot_the_bug `778fd26c-3714-4ff1-9218-7804580ec519` v1 (concepts=['truthy-falsy-empty-check'], difficulty=3) -- no validation report on disk
-32. predict_the_fix `a0c8ba51-a8cf-4cce-9d31-74495706ae41` v1 (concepts=['truthy-falsy-empty-check'], difficulty=3) -- no validation report on disk
-33. predict_the_fix `21feb161-7469-4f66-b49a-7375c8090105` v1 (concepts=['string-immutability-misuse'], difficulty=3) -- no validation report on disk
-34. spot_the_bug `5f6bee89-3387-4339-9c8e-781500dd6cc2` v1 (concepts=['string-immutability-misuse'], difficulty=3) -- no validation report on disk
-35. spot_the_bug `d1d1ed31-d667-4ce2-ae92-56e0bb6f2a7e` v1 (concepts=['key-function-misuse'], difficulty=4) -- no validation report on disk
-36. spot_the_bug `64ead3a0-3682-4e8e-a73f-8451d33e56a9` v1 (concepts=['float-precision'], difficulty=4) -- no validation report on disk
-37. spot_the_bug `bed3af5f-8e18-4893-bd9a-126ef560f718` v1 (concepts=['is-vs-equality'], difficulty=4) -- no validation report on disk
-38. spot_the_bug `4e41ec9e-fff9-445e-940c-b8fd4344e2b7` v1 (concepts=['global-state-mutation'], difficulty=4) -- no validation report on disk
-39. spot_the_bug `4c3f7c40-e0f7-410c-98a1-11aabab3ba22` v1 (concepts=['dataclass-mutable-default'], difficulty=5) -- no validation report on disk
-40. predict_the_fix `e0a08ca9-1b0c-4d47-9e44-c9736eee40c8` v1 (concepts=['dataclass-mutable-default'], difficulty=5) -- no validation report on disk
-41. spot_the_bug `2fe2b7c2-3979-4088-9e4c-878f25826c77` v1 (concepts=['off-by-one-slicing'], difficulty=3) -- no validation report on disk
-42. spot_the_bug `b3567247-a647-4269-a925-8789aab6338f` v1 (concepts=['list-mutation-during-iteration'], difficulty=4) -- no validation report on disk
-43. spot_the_bug `17d4aceb-adeb-46f1-a38f-2c9969705c75` v1 (concepts=['dict-mutation-during-iteration'], difficulty=4) -- no validation report on disk
-44. spot_the_bug `878953f9-64ef-4abd-9dc1-4680c601ead3` v1 (concepts=['string-formatting-mismatch'], difficulty=3) -- no validation report on disk
-45. spot_the_bug `4f1eb607-79ea-409b-85ce-3a03fb690cbb` v1 (concepts=['memoization-cache-staleness'], difficulty=4) -- no validation report on disk
-46. spot_the_bug `8b2a18e6-54f2-4168-b86f-9ffa5374181f` v1 (concepts=['encoding-decoding-mismatch'], difficulty=4) -- no validation report on disk
-47. spot_the_bug `3d0fd9e2-3c91-43a6-8e5c-7e4d2651a607` v1 (concepts=['integer-division-truncation'], difficulty=3) -- no validation report on disk
-48. predict_the_fix `e2ad0217-11bb-4dfe-87db-aa105c45920e` v1 (concepts=['integer-division-truncation'], difficulty=3) -- no validation report on disk
-49. spot_the_bug `6c542755-4a3d-4134-97d3-6dbe5b744707` v1 (concepts=['closure-late-binding'], difficulty=4) -- no validation report on disk
-50. predict_the_fix `33635266-e3fe-4942-8f02-72c0e84784cc` v1 (concepts=['shallow-vs-deep-copy'], difficulty=4) -- no validation report on disk
-51. spot_the_bug `546ba9d6-124b-4c35-a478-b2e1ce713a19` v1 (concepts=['shallow-vs-deep-copy'], difficulty=4) -- no validation report on disk
-52. spot_the_bug `a1a8833a-7f39-4cd9-a526-9a844f3e2219` v1 (concepts=['mutable-default-arg'], difficulty=4) -- no validation report on disk
-53. predict_the_fix `0774a668-33fd-4c01-a1b3-8636359f0c12` v1 (concepts=['off-by-one'], difficulty=3) -- no validation report on disk
-54. spot_the_bug `2e4c2d75-4ee3-4b3e-8ce2-4713c00e99f7` v1 (concepts=['off-by-one'], difficulty=3) -- no validation report on disk
-55. spot_the_bug `5876c089-5e1a-4988-a490-264964a2bde6` v1 (concepts=['string-vs-bytes-confusion'], difficulty=4) -- no validation report on disk
-56. spot_the_bug `20c12e7a-9a8a-4070-ba31-25b1be99da8e` v1 (concepts=['injection-string-concat'], difficulty=4) -- no validation report on disk
-57. predict_the_fix `b8141641-db53-4982-a5bf-1386bac144a6` v1 (concepts=['injection-string-concat'], difficulty=4) -- no validation report on disk
-58. predict_the_fix `5207abba-151d-4d33-b3da-9343891beda6` v1 (concepts=['aliasing-vs-copy'], difficulty=4) -- no validation report on disk
-59. spot_the_bug `4a6ae494-205c-4dca-b97d-c631dee08e50` v1 (concepts=['aliasing-vs-copy'], difficulty=4) -- no validation report on disk
-60. spot_the_bug `f4fb97c6-3d86-40e3-bb49-77fd8c00e0cf` v1 (concepts=['timezone-naive-vs-aware'], difficulty=4) -- no validation report on disk
-61. trace `13d21d87-a378-4aa0-ae32-c807026e0d1d` v1 (concepts=['string-formatting-mismatch'], difficulty=7) -- no validation report on disk
-62. trace `f065c31a-bda3-4fc0-8c84-6f32d0829c6b` v1 (concepts=['shared-class-attribute'], difficulty=7) -- no validation report on disk
-63. trace `87e4d8b2-7507-4ce8-819b-eb232d049f75` v1 (concepts=['string-formatting-mismatch'], difficulty=1) -- no validation report on disk
-64. trace `083bed4b-2781-4334-88f5-12239e25831c` v1 (concepts=['variable-shadowing'], difficulty=5) -- no validation report on disk
-65. trace `f5045866-9a31-4a5d-9306-16db39c62c04` v1 (concepts=['truthy-falsy-empty-check'], difficulty=5) -- no validation report on disk
-66. trace `886a7841-e709-44cf-8230-af92ffc38017` v1 (concepts=['dict-mutation-during-iteration'], difficulty=3) -- no validation report on disk
-67. trace `1d1bb4d1-36dc-4062-a9bc-fa9ae2a84dc3` v1 (concepts=['float-precision'], difficulty=2) -- no validation report on disk
-68. trace `f7255949-1cde-4d12-95b6-0629d45fc3a8` v1 (concepts=['sorting-stability-assumption'], difficulty=5) -- no validation report on disk
-69. trace `7e371553-e385-4d22-9768-ed8e7de2a4e1` v1 (concepts=['float-precision'], difficulty=1) -- no validation report on disk
-70. trace `75c67371-17ae-4b9c-861e-88d18820a14e` v1 (concepts=['global-state-mutation'], difficulty=2) -- no validation report on disk
-71. trace `98be7d5b-24d3-4ee2-825d-ac55f569a2b7` v1 (concepts=['integer-division-truncation'], difficulty=1) -- no validation report on disk
-72. trace `3988798a-5c3d-456e-bdf8-e617ccd04753` v1 (concepts=['boolean-short-circuit-side-effect'], difficulty=3) -- no validation report on disk
-73. trace `a2d3bf03-e388-48b8-be6d-64f4ccf9913c` v1 (concepts=['unpacking-order-assumption'], difficulty=5) -- no validation report on disk
-74. trace `f073a006-c7c5-47e6-9f3a-b14b49532d88` v1 (concepts=['sorting-stability-assumption'], difficulty=1) -- no validation report on disk
-75. trace `ce8e41c6-19c7-4cca-a59c-aff2c93eca30` v1 (concepts=['string-immutability-misuse'], difficulty=6) -- no validation report on disk
-76. trace `e1fbb620-45e0-4b4b-8fb7-358374591171` v1 (concepts=['early-return-skipped-path'], difficulty=2) -- no validation report on disk
-77. trace `cd585008-47f9-4c71-baf7-08e5c03ed583` v1 (concepts=['shallow-vs-deep-copy'], difficulty=7) -- no validation report on disk
-78. trace `56d6854c-83e7-49ef-8ede-69c42dfacdae` v1 (concepts=['unpacking-order-assumption'], difficulty=8) -- no validation report on disk
-79. trace `6ecc1d0e-c944-43d9-9748-fd5ad5403ecf` v1 (concepts=['shallow-vs-deep-copy'], difficulty=10) -- no validation report on disk
-80. trace `b6626824-8b0b-4287-9d4b-19a7c4b8da36` v1 (concepts=['list-mutation-during-iteration'], difficulty=6) -- no validation report on disk
-81. predict_the_fix `e28cc1a5-bb8a-46cc-9960-312e21c765f8` v1 (concepts=['mutable-default-arg'], difficulty=3) -- no validation report on disk
-82. predict_the_fix `df68ea78-f178-4a0c-941d-e5fcbca10b77` v1 (concepts=['shallow-vs-deep-copy'], difficulty=6) -- no validation report on disk
-83. predict_the_fix `9537ac46-2432-4894-a688-37727fc08442` v1 (concepts=['truthy-falsy-empty-check'], difficulty=5) -- no validation report on disk
-84. predict_the_fix `c022cdbd-8fc1-468a-81f3-7e9e30718e3c` v1 (concepts=['is-vs-equality'], difficulty=5) -- no validation report on disk
-85. predict_the_fix `13c269b8-a496-4a1f-8ddf-3d1d5689f3d6` v1 (concepts=['key-function-misuse'], difficulty=4) -- no validation report on disk
-86. predict_the_fix `ba4d64d0-05ef-457e-94fb-9a6bfd94a69e` v1 (concepts=['float-precision'], difficulty=4) -- no validation report on disk
-87. predict_the_fix `7307f9c7-a83a-45af-943c-819107bdd1d0` v1 (concepts=['is-vs-equality'], difficulty=4) -- no validation report on disk
-88. predict_the_fix `138177ad-9d73-4c35-8734-b34b719c4762` v1 (concepts=['global-state-mutation'], difficulty=4) -- no validation report on disk
-89. predict_the_fix `245ba6b9-6430-48da-bcb3-7838cf7d930f` v1 (concepts=['off-by-one-slicing'], difficulty=3) -- no validation report on disk
-90. predict_the_fix `8692c4aa-9239-44d1-919d-3754d7d20486` v1 (concepts=['list-mutation-during-iteration'], difficulty=4) -- no validation report on disk
-91. predict_the_fix `c78d7841-f812-4c18-95b7-87321c7fa3ab` v1 (concepts=['dict-mutation-during-iteration'], difficulty=4) -- no validation report on disk
-92. predict_the_fix `f52e284c-d5aa-4229-8f33-c29dca9946e5` v1 (concepts=['string-formatting-mismatch'], difficulty=3) -- no validation report on disk
-93. predict_the_fix `241f86cd-c6e5-45f0-a5dd-bc92a4f52f63` v1 (concepts=['memoization-cache-staleness'], difficulty=4) -- no validation report on disk
-94. predict_the_fix `10900108-ac59-4861-83d2-372920a5c88e` v1 (concepts=['encoding-decoding-mismatch'], difficulty=4) -- no validation report on disk
-95. predict_the_fix `b074fa02-d459-4b04-8d66-5cedaf2652d8` v1 (concepts=['closure-late-binding'], difficulty=4) -- no validation report on disk
-96. predict_the_fix `53c81087-ebe8-4712-bfda-488fac2e79f8` v1 (concepts=['mutable-default-arg'], difficulty=4) -- no validation report on disk
-97. predict_the_fix `23b69b00-043c-4a8a-a9af-786803b84ead` v1 (concepts=['string-vs-bytes-confusion'], difficulty=4) -- no validation report on disk
-98. predict_the_fix `e31cf425-bbe5-423b-ae46-a2c7a93df10d` v1 (concepts=['timezone-naive-vs-aware'], difficulty=4) -- no validation report on disk
-
----
-
-### spot_the_bug -- `6d8ce525-1874-4f80-be07-23e7b73353ca` v1
-status=in_review difficulty=10 concepts=['off-by-one-slicing'] created_at=2026-07-12T02:05:02.870289+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-class Inventory:
-    def __init__(self):
-        self._items = []
-
-    def add_item(self, item_id, quantity):
-        for i, (iid, qty) in enumerate(self._items):
-            if iid == item_id:
-                self._items[i] = (iid, qty + quantity)
-                return
-        self._items.append((item_id, quantity))
-
-    def remove_item(self, item_id, quantity):
-        for i, (iid, qty) in enumerate(self._items):
-            if iid == item_id:
-                if qty <= quantity:
-                    del self._items[i]
-                else:
-                    self._items[i] = (iid, qty - quantity)
-                return True
-        return False
-
-    def list_items(self, offset=0, limit=None):
-        if limit is None:
-            return self._items[offset:]
-        return self._items[offset:offset + limit - 1]
-
-    def batch_update(self, updates):
-        for item_id, delta in updates:
-            if delta > 0:
-                self.add_item(item_id, delta)
-            else:
-                self.remove_item(item_id, -delta)
-
-    def summarize(self):
-        summary = {}
-        for item_id, qty in self._items:
-            summary[item_id] = qty
-        return summary
-
-```
-context: This code powers paginated inventory listing for the admin dashboard.
-
-#### Reason options
-- **a**: list_items's limit parameter produces an off-by-one error, returning one fewer item than requested. <-- correct
-- **b**: Using enumerate in add_item could skip elements if the list changes size during iteration.
-- **c**: The summarize method mutates the internal list while iterating over it, risking RuntimeError.
-- **d**: If remove_item is called for an item not present, it may raise an exception rather than return False.
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [25]
-- correct_reason_id: a
-
-#### Failing-test proof
-```python
-inv = Inventory()
-inv.add_item('A', 10)
-inv.add_item('B', 20)
-inv.add_item('C', 30)
-inv.add_item('D', 40)
-result = inv.list_items(offset=1, limit=3)
-print(repr(result))
-assert result == [('B', 20), ('C', 30), ('D', 40)], "list_items(offset=1, limit=3) should return the next 3 items, not just 2"
-```
-
-#### Explanation
-- summary: The bug is in list_items: the slice stops at offset + limit - 1, so if you ask for 3 items, you only get 2. This is a classic off-by-one error, because the end index in Python slicing is already exclusive, so subtracting 1 causes the last intended item to be omitted. This only affects calls where limit is provided.
-- principle: When slicing with offsets and limits in Python, remember that the end index is exclusive; do not subtract one from limit.
-- mismatch_flagged: True (draft_explanation.line_notes ([20]) does not reference the sandbox-verified bug_lines ([25]))
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+1. predict_the_fix `ec7ad751-76f3-47d4-bb09-cfdb8012b66e` v1 (concepts=['off-by-one-slicing'], difficulty=10) -- clean
+2. spot_the_bug `6d8ce525-1874-4f80-be07-23e7b73353ca` v1 (concepts=['off-by-one-slicing'], difficulty=10) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: bug_lines_claim_mismatch, explanation_mismatch
+3. trace `3ef49680-3791-42a2-a61b-e16c4486c54f` v1 (concepts=['shared-class-attribute'], difficulty=4) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+4. trace `bb188a9b-182e-4f9d-a503-95a8d8e2e759` v1 (concepts=['generator-exhaustion'], difficulty=10) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+5. trace `f3f72878-0760-4ab4-91b3-f8391a1e4492` v1 (concepts=['integer-division-truncation'], difficulty=6) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+6. spot_the_bug `dbd2f905-058d-473d-8a0f-7725d6393a13` v1 (concepts=['integer-division-truncation'], difficulty=2) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+7. trace `5fd95bd2-72e6-4a10-9c7c-355f6e82981a` v1 (concepts=['closure-late-binding'], difficulty=9) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+8. trace `bab03791-a05e-4f53-8165-266f7473ae8e` v1 (concepts=['off-by-one'], difficulty=4) -- solver=pass | solver_confidence=1.0 | clean
+9. spot_the_bug `1b77eca4-eeb3-4a6f-8948-1403bfdc4799` v1 (concepts=['list-mutation-during-iteration'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: bug_lines_claim_mismatch
+10. trace `7fee57dc-7e3f-46c2-bff2-15f5c4a20a65` v1 (concepts=['context-manager-misuse'], difficulty=6) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+11. trace `3e89621c-bf49-4573-b540-98a4744b58db` v1 (concepts=['early-return-skipped-path'], difficulty=6) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+12. trace `48f53359-9d57-4c83-9fb1-3fd0f9d102ae` v1 (concepts=['key-function-misuse'], difficulty=10) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+13. trace `e187e8cf-6127-4350-a6f7-c52e8cd6a214` v1 (concepts=['float-precision'], difficulty=1) -- solver=pass | solver_confidence=1.0 | clean
+14. trace `3024e685-99d4-4278-be05-464ad7aa0acb` v1 (concepts=['variable-shadowing'], difficulty=7) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+15. spot_the_bug `1e117b13-c64d-46b6-bcdc-de44fda1509c` v1 (concepts=['closure-late-binding'], difficulty=5) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: bug_lines_claim_mismatch, explanation_mismatch
+16. trace `9c84fa22-3b71-474c-b11b-d867dae57a1e` v1 (concepts=['off-by-one-slicing'], difficulty=8) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+17. trace `5663857a-9678-4396-8fba-2deaa8e0dc31` v1 (concepts=['dict-mutation-during-iteration'], difficulty=7) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+18. spot_the_bug `1803aa12-10cd-47c2-8e6d-1efbf2f7362d` v1 (concepts=['integer-division-truncation'], difficulty=7) -- defect_audit=flag solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: bug_lines_claim_mismatch, explanation_mismatch, defect_audit=flag
+19. trace `6bf398fe-ce6e-442a-ad96-fbac988a5cbc` v1 (concepts=['off-by-one-slicing'], difficulty=4) -- solver=pass | solver_confidence=1.0 | clean
+20. trace `17c52ad1-6f96-4715-a017-98c6d26daf7e` v1 (concepts=['mutable-default-arg'], difficulty=10) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+21. trace `d8541a90-4ced-446d-831c-d4d5336dd594` v1 (concepts=['early-return-skipped-path'], difficulty=10) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+22. spot_the_bug `8ccfcfed-c436-4f1d-9030-0cfebaa47ce4` v1 (concepts=['truthy-falsy-empty-check'], difficulty=5) -- defect_audit=flag solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: defect_audit=flag
+23. spot_the_bug `0434600e-b232-4e35-814e-ead0d323b49e` v1 (concepts=['is-vs-equality'], difficulty=5) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+24. spot_the_bug `778fd26c-3714-4ff1-9218-7804580ec519` v1 (concepts=['truthy-falsy-empty-check'], difficulty=3) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+25. predict_the_fix `21feb161-7469-4f66-b49a-7375c8090105` v1 (concepts=['string-immutability-misuse'], difficulty=3) -- clean
+26. spot_the_bug `5f6bee89-3387-4339-9c8e-781500dd6cc2` v1 (concepts=['string-immutability-misuse'], difficulty=3) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+27. spot_the_bug `64ead3a0-3682-4e8e-a73f-8451d33e56a9` v1 (concepts=['float-precision'], difficulty=4) -- defect_audit=flag solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: defect_audit=flag
+28. spot_the_bug `bed3af5f-8e18-4893-bd9a-126ef560f718` v1 (concepts=['is-vs-equality'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+29. spot_the_bug `4e41ec9e-fff9-445e-940c-b8fd4344e2b7` v1 (concepts=['global-state-mutation'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+30. predict_the_fix `e0a08ca9-1b0c-4d47-9e44-c9736eee40c8` v1 (concepts=['dataclass-mutable-default'], difficulty=5) -- clean
+31. spot_the_bug `2fe2b7c2-3979-4088-9e4c-878f25826c77` v1 (concepts=['off-by-one-slicing'], difficulty=3) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+32. spot_the_bug `b3567247-a647-4269-a925-8789aab6338f` v1 (concepts=['list-mutation-during-iteration'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+33. spot_the_bug `4f1eb607-79ea-409b-85ce-3a03fb690cbb` v1 (concepts=['memoization-cache-staleness'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+34. spot_the_bug `8b2a18e6-54f2-4168-b86f-9ffa5374181f` v1 (concepts=['encoding-decoding-mismatch'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+35. predict_the_fix `e2ad0217-11bb-4dfe-87db-aa105c45920e` v1 (concepts=['integer-division-truncation'], difficulty=3) -- clean
+36. spot_the_bug `3d0fd9e2-3c91-43a6-8e5c-7e4d2651a607` v1 (concepts=['integer-division-truncation'], difficulty=3) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+37. spot_the_bug `6c542755-4a3d-4134-97d3-6dbe5b744707` v1 (concepts=['closure-late-binding'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+38. spot_the_bug `546ba9d6-124b-4c35-a478-b2e1ce713a19` v1 (concepts=['shallow-vs-deep-copy'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+39. predict_the_fix `33635266-e3fe-4942-8f02-72c0e84784cc` v1 (concepts=['shallow-vs-deep-copy'], difficulty=4) -- clean
+40. spot_the_bug `a1a8833a-7f39-4cd9-a526-9a844f3e2219` v1 (concepts=['mutable-default-arg'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+41. spot_the_bug `2e4c2d75-4ee3-4b3e-8ce2-4713c00e99f7` v1 (concepts=['off-by-one'], difficulty=3) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+42. predict_the_fix `0774a668-33fd-4c01-a1b3-8636359f0c12` v1 (concepts=['off-by-one'], difficulty=3) -- clean
+43. spot_the_bug `5876c089-5e1a-4988-a490-264964a2bde6` v1 (concepts=['string-vs-bytes-confusion'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+44. spot_the_bug `20c12e7a-9a8a-4070-ba31-25b1be99da8e` v1 (concepts=['injection-string-concat'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+45. predict_the_fix `b8141641-db53-4982-a5bf-1386bac144a6` v1 (concepts=['injection-string-concat'], difficulty=4) -- clean
+46. predict_the_fix `5207abba-151d-4d33-b3da-9343891beda6` v1 (concepts=['aliasing-vs-copy'], difficulty=4) -- clean
+47. spot_the_bug `4a6ae494-205c-4dca-b97d-c631dee08e50` v1 (concepts=['aliasing-vs-copy'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+48. spot_the_bug `f4fb97c6-3d86-40e3-bb49-77fd8c00e0cf` v1 (concepts=['timezone-naive-vs-aware'], difficulty=4) -- defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+49. trace `13d21d87-a378-4aa0-ae32-c807026e0d1d` v1 (concepts=['string-formatting-mismatch'], difficulty=7) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+50. trace `87e4d8b2-7507-4ce8-819b-eb232d049f75` v1 (concepts=['string-formatting-mismatch'], difficulty=1) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+51. trace `f5045866-9a31-4a5d-9306-16db39c62c04` v1 (concepts=['truthy-falsy-empty-check'], difficulty=5) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+52. trace `886a7841-e709-44cf-8230-af92ffc38017` v1 (concepts=['dict-mutation-during-iteration'], difficulty=3) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+53. trace `1d1bb4d1-36dc-4062-a9bc-fa9ae2a84dc3` v1 (concepts=['float-precision'], difficulty=2) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+54. trace `f7255949-1cde-4d12-95b6-0629d45fc3a8` v1 (concepts=['sorting-stability-assumption'], difficulty=5) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+55. trace `7e371553-e385-4d22-9768-ed8e7de2a4e1` v1 (concepts=['float-precision'], difficulty=1) -- solver=pass | solver_confidence=1.0 | clean
+56. trace `75c67371-17ae-4b9c-861e-88d18820a14e` v1 (concepts=['global-state-mutation'], difficulty=2) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+57. trace `a2d3bf03-e388-48b8-be6d-64f4ccf9913c` v1 (concepts=['unpacking-order-assumption'], difficulty=5) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+58. trace `f073a006-c7c5-47e6-9f3a-b14b49532d88` v1 (concepts=['sorting-stability-assumption'], difficulty=1) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+59. trace `ce8e41c6-19c7-4cca-a59c-aff2c93eca30` v1 (concepts=['string-immutability-misuse'], difficulty=6) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+60. trace `e1fbb620-45e0-4b4b-8fb7-358374591171` v1 (concepts=['early-return-skipped-path'], difficulty=2) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+61. trace `cd585008-47f9-4c71-baf7-08e5c03ed583` v1 (concepts=['shallow-vs-deep-copy'], difficulty=7) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+62. trace `56d6854c-83e7-49ef-8ede-69c42dfacdae` v1 (concepts=['unpacking-order-assumption'], difficulty=8) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+63. trace `6ecc1d0e-c944-43d9-9748-fd5ad5403ecf` v1 (concepts=['shallow-vs-deep-copy'], difficulty=10) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+64. trace `b6626824-8b0b-4287-9d4b-19a7c4b8da36` v1 (concepts=['list-mutation-during-iteration'], difficulty=6) -- solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
+65. predict_the_fix `e28cc1a5-bb8a-46cc-9960-312e21c765f8` v1 (concepts=['mutable-default-arg'], difficulty=3) -- clean
+66. predict_the_fix `df68ea78-f178-4a0c-941d-e5fcbca10b77` v1 (concepts=['shallow-vs-deep-copy'], difficulty=6) -- clean
+67. predict_the_fix `9537ac46-2432-4894-a688-37727fc08442` v1 (concepts=['truthy-falsy-empty-check'], difficulty=5) -- clean
+68. predict_the_fix `13c269b8-a496-4a1f-8ddf-3d1d5689f3d6` v1 (concepts=['key-function-misuse'], difficulty=4) -- clean
+69. predict_the_fix `7307f9c7-a83a-45af-943c-819107bdd1d0` v1 (concepts=['is-vs-equality'], difficulty=4) -- clean
+70. predict_the_fix `138177ad-9d73-4c35-8734-b34b719c4762` v1 (concepts=['global-state-mutation'], difficulty=4) -- clean
+71. predict_the_fix `8692c4aa-9239-44d1-919d-3754d7d20486` v1 (concepts=['list-mutation-during-iteration'], difficulty=4) -- clean
+72. predict_the_fix `c78d7841-f812-4c18-95b7-87321c7fa3ab` v1 (concepts=['dict-mutation-during-iteration'], difficulty=4) -- clean
+73. predict_the_fix `f52e284c-d5aa-4229-8f33-c29dca9946e5` v1 (concepts=['string-formatting-mismatch'], difficulty=3) -- clean
+74. predict_the_fix `241f86cd-c6e5-45f0-a5dd-bc92a4f52f63` v1 (concepts=['memoization-cache-staleness'], difficulty=4) -- clean
+75. predict_the_fix `10900108-ac59-4861-83d2-372920a5c88e` v1 (concepts=['encoding-decoding-mismatch'], difficulty=4) -- clean
+76. predict_the_fix `53c81087-ebe8-4712-bfda-488fac2e79f8` v1 (concepts=['mutable-default-arg'], difficulty=4) -- clean
+77. predict_the_fix `23b69b00-043c-4a8a-a9af-786803b84ead` v1 (concepts=['string-vs-bytes-confusion'], difficulty=4) -- clean
 
 ---
 
 ### predict_the_fix -- `ec7ad751-76f3-47d4-bb09-cfdb8012b66e` v1
 status=in_review difficulty=10 concepts=['off-by-one-slicing'] created_at=2026-07-12T02:05:02.870289+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -409,71 +305,127 @@ The test below fails on this code. Which change makes the test pass?
   - **d**: Adjusts the start index of the slice, but moves the offset ahead one too far, so returned items are still incorrect.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 46, in <module>
+AssertionError: list_items(offset=1, limit=3) should return the next 3 items, not just 2
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 46, in <module>
+AssertionError: list_items(offset=1, limit=3) should return the next 3 items, not just 2
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 48, in <module>
+AssertionError: list_items(offset=1, limit=3) should return the next 3 items, not just 2
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 46, in <module>
+AssertionError: list_items(offset=1, limit=3) should return the next 3 items, not just 2
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
-### trace -- `e7376a2b-6cda-4b5c-a09a-331cbc29c268` v1
-status=in_review difficulty=2 concepts=['early-return-skipped-path'] created_at=2026-07-12T02:05:30.561869+00:00
-quality: no validation report on disk
+### spot_the_bug -- `6d8ce525-1874-4f80-be07-23e7b73353ca` v1
+status=in_review difficulty=10 concepts=['off-by-one-slicing'] created_at=2026-07-12T02:05:02.870289+00:00
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: bug_lines_claim_mismatch, explanation_mismatch
 
 #### Code
 ```python
-def find_document(docs, keyword):
-    for doc in docs:
-        if keyword in doc['title']:
-            return doc['id']
-    return None
+class Inventory:
+    def __init__(self):
+        self._items = []
 
-index = [
-    {'id': 101, 'title': 'Python Basics'},
-    {'id': 102, 'title': 'Advanced Python'},
-    {'id': 103, 'title': 'Indexing Strategies'}
-]
+    def add_item(self, item_id, quantity):
+        for i, (iid, qty) in enumerate(self._items):
+            if iid == item_id:
+                self._items[i] = (iid, qty + quantity)
+                return
+        self._items.append((item_id, quantity))
 
-result = find_document(index, 'Index')
-if result is not None:
-    print(f'Document found: {result}')
-else:
-    print('No document found')
+    def remove_item(self, item_id, quantity):
+        for i, (iid, qty) in enumerate(self._items):
+            if iid == item_id:
+                if qty <= quantity:
+                    del self._items[i]
+                else:
+                    self._items[i] = (iid, qty - quantity)
+                return True
+        return False
+
+    def list_items(self, offset=0, limit=None):
+        if limit is None:
+            return self._items[offset:]
+        return self._items[offset:offset + limit - 1]
+
+    def batch_update(self, updates):
+        for item_id, delta in updates:
+            if delta > 0:
+                self.add_item(item_id, delta)
+            else:
+                self.remove_item(item_id, -delta)
+
+    def summarize(self):
+        summary = {}
+        for item_id, qty in self._items:
+            summary[item_id] = qty
+        return summary
+
 ```
-context: This simulates a search in a document index by title keyword.
+context: This code powers paginated inventory listing for the admin dashboard.
 
-#### Question
-What does this code print?
-#### Choices
-- **a**: Document found: 103 <-- correct
-- **b**: Document found: 101
-- **c**: No document found
-- **d**: Document found: 102
+#### Reason options
+- **a**: list_items's limit parameter produces an off-by-one error, returning one fewer item than requested. <-- correct
+- **b**: Using enumerate in add_item could skip elements if the list changes size during iteration.
+- **c**: The summarize method mutates the internal list while iterating over it, risking RuntimeError.
+- **d**: If remove_item is called for an item not present, it may raise an exception rather than return False.
 
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: 'Document found: 103'
+#### Verified answer key (sandbox-derived, D-49)
+- correct_lines: [25]
+- correct_reason_id: a
+
+#### Failing-test proof
+```python
+inv = Inventory()
+inv.add_item('A', 10)
+inv.add_item('B', 20)
+inv.add_item('C', 30)
+inv.add_item('D', 40)
+result = inv.list_items(offset=1, limit=3)
+print(repr(result))
+assert result == [('B', 20), ('C', 30), ('D', 40)], "list_items(offset=1, limit=3) should return the next 3 items, not just 2"
+```
 
 #### Explanation
-- summary: The function iterates over the documents. Only doc 103 has 'Index' in its title, so the function returns 103. The if branch prints 'Document found: 103'.
-- principle: Early return in a loop exits the function as soon as a matching item is found, skipping the rest.
-- mismatch_flagged: False
-- why_wrong:
-  - **b**: Assumes the function ignores the keyword and just returns the first document.
-  - **c**: Assumes the function only matches the full title exactly, not substrings.
-  - **d**: Assumes the function returns the second document's id, likely by confusing search logic.
+- summary: The bug is in list_items: the slice stops at offset + limit - 1, so if you ask for 3 items, you only get 2. This is a classic off-by-one error, because the end index in Python slicing is already exclusive, so subtracting 1 causes the last intended item to be omitted. This only affects calls where limit is provided.
+- principle: When slicing with offsets and limits in Python, remember that the end index is exclusive; do not subtract one from limit.
+- mismatch_flagged: True (draft_explanation.line_notes ([20]) does not reference the sandbox-verified bug_lines ([25]))
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 46, in <module>
+AssertionError: list_items(offset=1, limit=3) should return the next 3 items, not just 2
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [25] (diff-derived); generator claimed [20]
+- [x] stb_claim_matches_execution -- buggy: claimed "[('B', 20), ('C', 30)]" executed "[('B', 20), ('C', 30)]"; fixed: claimed "[('B', 20), ('C', 30), ('D', 40)]" executed "[('B', 20), ('C', 30), ('D', 40)]"
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### trace -- `3ef49680-3791-42a2-a61b-e16c4486c54f` v1
 status=in_review difficulty=4 concepts=['shared-class-attribute'] created_at=2026-07-12T02:06:39.311645+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -515,13 +467,13 @@ What does this code print?
 20.0
 20.0
 - **c**: 15.0
+25.0
 15.0
-20.0
-20.0
+25.0
 - **d**: 15.0
-25.0
 15.0
-25.0
+20.0
+20.0
 
 #### Verified answer key (sandbox-captured stdout)
 - correct_choice_id: a
@@ -533,78 +485,23 @@ What does this code print?
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output '15.0\n25.0\n20.0\n25.0'; the verified output is authoritative regardless)
 - why_wrong:
   - **b**: This assumes set_default_rate updates all rates, even instance attributes, but it only updates the class attribute.
-  - **c**: Assumes both instances always use the class attribute, ignoring that c2 has its own rate.
-  - **d**: Assumes set_default_rate has no effect on future calculations, so c1 keeps using the old default rate.
+  - **d**: Assumes both instances always use the class attribute, ignoring that c2 has its own rate.
+  - **c**: Assumes set_default_rate has no effect on future calculations, so c1 keeps using the old default rate.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='15.0\n25.0\n20.0\n25.0' expected_stdout='15.0\n25.0\n20.0\n25.0'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### trace -- `4bbd13a3-a4e9-4209-87b6-ef3ca67503ae` v1
-status=in_review difficulty=4 concepts=['aliasing-vs-copy'] created_at=2026-07-12T02:07:32.293737+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def update_stock(inventory, order):
-    updated = inventory.copy()
-    for item, qty in order.items():
-        if item in updated:
-            updated[item] -= qty
-        else:
-            updated[item] = -qty
-    return updated
-
-inventory = {'apple': 10, 'banana': 5}
-orders = [
-    {'apple': 3},
-    {'banana': 2, 'pear': 1}
-]
-
-for order in orders:
-    inventory = update_stock(inventory, order)
-
-print(inventory)
-
-```
-context: This inventory update code simulates processing sequential orders.
-
-#### Question
-What does this code print?
-#### Choices
-- **a**: {'apple': 7, 'banana': 3, 'pear': -1} <-- correct
-- **b**: {'apple': 7, 'banana': 3}
-- **c**: {'apple': 7, 'banana': 3, 'pear': 1}
-- **d**: {'apple': 7, 'banana': 3, 'pear': -1, 'orange': 0}
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: "{'apple': 7, 'banana': 3, 'pear': -1}"
-
-#### Explanation
-- summary: The function update_stock makes a shallow copy of the inventory and subtracts the ordered quantities, adding negative stock for new items. Each time, inventory is replaced with the updated dict. After both orders, apple is 7 (10-3), banana is 3 (5-2), and pear is -1 (added with -1 since it's not originally in inventory).
-- principle: Calling dict.copy() creates a shallow copy; the original and copy are independent after copying.
-- mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "{'apple': 7, 'banana': 3, 'pear': -1}"; the verified output is authoritative regardless)
-- why_wrong:
-  - **b**: Misses that the function adds new keys for items not in inventory, so 'pear' is included.
-  - **c**: Assumes new items are given positive stock instead of negative, mixing up the subtraction logic.
-  - **d**: Thinks all possible items show up, but only items present or added by orders are in the dict.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `bb188a9b-182e-4f9d-a503-95a8d8e2e759` v1
 status=in_review difficulty=10 concepts=['generator-exhaustion'] created_at=2026-07-12T02:09:02.524598+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -650,20 +547,20 @@ context: Code traces active subscription renewals, then counts how many remain.
 What does this code print?
 #### Choices
 - **a**: Mark phase: ['101-checked']
-First count:  2
-Second count:  4 <-- correct
-- **b**: Mark phase: ['101-checked']
 First count:  4
 Second count:  4
-- **c**: Mark phase: ['101-checked', '102-checked', '104-checked', '105-checked']
-First count:  2
-Second count:  4
-- **d**: Mark phase: ['101-checked']
+- **b**: Mark phase: ['101-checked']
 First count:  2
 Second count:  2
+- **c**: Mark phase: ['101-checked']
+First count:  2
+Second count:  4 <-- correct
+- **d**: Mark phase: ['101-checked', '102-checked', '104-checked', '105-checked']
+First count:  2
+Second count:  4
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: c
 - captured_stdout: "Mark phase: ['101-checked']\nFirst count:  2\nSecond count:  4"
 
 #### Explanation
@@ -671,21 +568,24 @@ Second count:  2
 - principle: Python generators are exhausted as you iterate them, and cannot be reused or restarted once consumed.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "Mark phase: ['101-checked']\nFirst count:  2\nSecond count:  4"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes the generator starts over for count_active(gen), but it continues from its current position (after break), not from the beginning.
-  - **c**: Assumes the mark_and_iterate function iterates through all items, not breaking at the first even id.
-  - **d**: Assumes both generators somehow pick up after break, or count only the remaining items after mark_and_iterate for both generators, but gen2 is a fresh generator and should count all actives.
+  - **a**: Assumes the generator starts over for count_active(gen), but it continues from its current position (after break), not from the beginning.
+  - **d**: Assumes the mark_and_iterate function iterates through all items, not breaking at the first even id.
+  - **b**: Assumes both generators somehow pick up after break, or count only the remaining items after mark_and_iterate for both generators, but gen2 is a fresh generator and should count all actives.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="Mark phase: ['101-checked']\nFirst count:  2\nSecond count:  4" expected_stdout="Mark phase: ['101-checked']\nFirst count:  2\nSecond count:  4"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `f3f72878-0760-4ab4-91b3-f8391a1e4492` v1
 status=in_review difficulty=6 concepts=['integer-division-truncation'] created_at=2026-07-12T02:10:11.500586+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -718,25 +618,25 @@ context: Order fulfillment system: shipping quantities in boxes of alternating s
 #### Question
 What does this code print?
 #### Choices
-- **a**: (3, 1)
-(5, 0)
-(1, 3)
-(6, 0) <-- correct
-- **b**: (3, 1)
-(4, 8)
-(1, 3)
-(5, 9)
-- **c**: (4, 1)
-(5, 0)
-(2, 3)
-(6, 0)
-- **d**: (3, 0)
+- **a**: (3, 0)
 (5, 0)
 (1, 0)
 (6, 0)
+- **b**: (4, 1)
+(5, 0)
+(2, 3)
+(6, 0)
+- **c**: (3, 1)
+(4, 8)
+(1, 3)
+(5, 9)
+- **d**: (3, 1)
+(5, 0)
+(1, 3)
+(6, 0) <-- correct
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: d
 - captured_stdout: '(3, 1)\n(5, 0)\n(1, 3)\n(6, 0)'
 
 #### Explanation
@@ -744,21 +644,24 @@ What does this code print?
 - principle: Integer division (//) truncates towards negative infinity, and all division/truncation in the code is strictly integer, so size // 3 produces a truncated integer threshold for promotion.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output '(3, 1)\n(5, 0)\n(1, 3)\n(6, 0)'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Misconception: Interpreted leftover >= size / 3 as float division, making the condition almost never true, so leftover is nearly always retained.
-  - **c**: Misconception: Used float division for full_boxes, then truncated down, so number of boxes is greater when division is not exact.
-  - **d**: Misconception: Promoted any leftover to a full box, ignoring the 'at least one third' threshold, causing all leftovers to be zero when there is any remainder.
+  - **c**: Misconception: Interpreted leftover >= size / 3 as float division, making the condition almost never true, so leftover is nearly always retained.
+  - **b**: Misconception: Used float division for full_boxes, then truncated down, so number of boxes is greater when division is not exact.
+  - **a**: Misconception: Promoted any leftover to a full box, ignoring the 'at least one third' threshold, causing all leftovers to be zero when there is any remainder.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='(3, 1)\n(5, 0)\n(1, 3)\n(6, 0)' expected_stdout='(3, 1)\n(5, 0)\n(1, 3)\n(6, 0)'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### spot_the_bug -- `dbd2f905-058d-473d-8a0f-7725d6393a13` v1
 status=in_review difficulty=2 concepts=['integer-division-truncation'] created_at=2026-07-12T02:10:59.328527+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -802,16 +705,22 @@ assert result == 2, "With 17 posts and moderate, should round to 2 (17/10=1.7 ro
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_passes_test_when_no_bug
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- diff says [], candidate says []
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- no defects on a has_bug=false candidate
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### trace -- `5fd95bd2-72e6-4a10-9c7c-355f6e82981a` v1
 status=in_review difficulty=9 concepts=['closure-late-binding'] created_at=2026-07-12T02:11:41.258452+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -859,29 +768,29 @@ context: A pricing engine applies various discount and special markdown rules to
 #### Question
 What does this code print?
 #### Choices
-- **a**: ('B', 85.0)
-('B', 85.0)
-('B', 85.0)
+- **a**: ('A', 90.0)
+('A', 90.0)
+('A', 90.0)
+('A-special', 95)
+('A-special', 95)
+- **b**: ('C', 85.0)
+('B', 80.0)
+('A', 90.0)
 ('B-special', 95)
-('B-special', 95) <-- correct
-- **b**: ('A', 90.0)
+('A-special', 95)
+- **c**: ('A', 90.0)
 ('B', 80.0)
 ('C', 85.0)
 ('A-special', 95)
 ('B-special', 95)
-- **c**: ('A', 90.0)
-('A', 90.0)
-('A', 90.0)
-('A-special', 95)
-('A-special', 95)
-- **d**: ('C', 85.0)
-('B', 80.0)
-('A', 90.0)
+- **d**: ('B', 85.0)
+('B', 85.0)
+('B', 85.0)
 ('B-special', 95)
-('A-special', 95)
+('B-special', 95) <-- correct
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: d
 - captured_stdout: "('B', 85.0)\n('B', 85.0)\n('B', 85.0)\n('B-special', 95)\n('B-special', 95)"
 
 #### Explanation
@@ -889,21 +798,24 @@ What does this code print?
 - principle: Python closures capture variables by reference, not by value; the variable's final value is used when the function is called, not when defined.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "('B', 85.0)\n('B', 85.0)\n('B', 85.0)\n('B-special', 95)\n('B-special', 95)"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes each rule captures the value of the loop variable at its own iteration (early binding), so discounts are ('A', 90.0), ('B', 80.0), ('C', 85.0), and specials apply as intended.
-  - **c**: Assumes all closures use the first value of the loop variable ('A'), so all rules use 'A' and its discount.
-  - **d**: Misunderstands how closures or appending work, believing the rules are built in the loop's reversed order, so values are applied in reverse.
+  - **c**: Assumes each rule captures the value of the loop variable at its own iteration (early binding), so discounts are ('A', 90.0), ('B', 80.0), ('C', 85.0), and specials apply as intended.
+  - **a**: Assumes all closures use the first value of the loop variable ('A'), so all rules use 'A' and its discount.
+  - **b**: Misunderstands how closures or appending work, believing the rules are built in the loop's reversed order, so values are applied in reverse.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="('B', 85.0)\n('B', 85.0)\n('B', 85.0)\n('B-special', 95)\n('B-special', 95)" expected_stdout="('B', 85.0)\n('B', 85.0)\n('B', 85.0)\n('B-special', 95)\n('B-special', 95)"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `bab03791-a05e-4f53-8165-266f7473ae8e` v1
 status=in_review difficulty=4 concepts=['off-by-one'] created_at=2026-07-12T02:12:53.117910+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -933,13 +845,13 @@ context: Delivering a batch of webhooks, each may fail a number of times before 
 #### Question
 What does this code print?
 #### Choices
-- **a**: [('A', 1), ('B', 3), ('C', 3)] <-- correct
-- **b**: [('A', 1), ('B', 2), ('C', 2)]
-- **c**: [('A', 1), ('B', 1), ('C', 1)]
-- **d**: [('A', 1), ('B', 3), ('C', 2)]
+- **a**: [('A', 1), ('B', 2), ('C', 2)]
+- **b**: [('A', 1), ('B', 3), ('C', 2)]
+- **c**: [('A', 1), ('B', 3), ('C', 3)] <-- correct
+- **d**: [('A', 1), ('B', 1), ('C', 1)]
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: c
 - captured_stdout: "[('A', 1), ('B', 3), ('C', 3)]"
 
 #### Explanation
@@ -947,21 +859,24 @@ What does this code print?
 - principle: Off-by-one errors commonly occur when using counters and termination conditions, especially around whether to use < or <=.
 - mismatch_flagged: False
 - why_wrong:
-  - **b**: This assumes the webhook is delivered after max_attempts - 1 retries, but delivery actually occurs on the max_attempts-th attempt.
-  - **c**: This assumes should_fail only applies to the first attempt, but the condition actually causes failure until the last attempt.
-  - **d**: This stops retrying C one iteration early, as if the loop exits at attempts = max_attempts - 1 instead of when it reaches max_attempts.
+  - **a**: This assumes the webhook is delivered after max_attempts - 1 retries, but delivery actually occurs on the max_attempts-th attempt.
+  - **d**: This assumes should_fail only applies to the first attempt, but the condition actually causes failure until the last attempt.
+  - **b**: This stops retrying C one iteration early, as if the loop exits at attempts = max_attempts - 1 instead of when it reaches max_attempts.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="[('A', 1), ('B', 3), ('C', 3)]" expected_stdout="[('A', 1), ('B', 3), ('C', 3)]"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### spot_the_bug -- `1b77eca4-eeb3-4a6f-8948-1403bfdc4799` v1
 status=in_review difficulty=4 concepts=['list-mutation-during-iteration'] created_at=2026-07-12T02:13:34.620274+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: bug_lines_claim_mismatch
 
 #### Code
 ```python
@@ -1017,16 +932,26 @@ assert result == [
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: All unmatched charges should be removed, but mutating the list during iteration skips some records.
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [3, 4, 5, 6] (diff-derived); generator claimed [3]
+- [x] stb_claim_matches_execution -- buggy: claimed "[{'charge_id': 'X1', 'amount': 50}, {'charge_id': 'Z3', 'amount': 125}]" executed "[{'charge_id': 'X1', 'amount': 50}, {'charge_id': 'Z3', 'amount': 125}]"; fixed: claimed "[{'charge_id': 'X1', 'amount': 50}, {'charge_id': 'Y2', 'amount': 75}, {'charge_id': 'Z3', 'amount': 125}]" executed "[{'charge_id': 'X1', 'amount': 50}, {'charge_id': 'Y2', 'amount': 75}, {'charge_id': 'Z3', 'amount': 125}]"
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### trace -- `7fee57dc-7e3f-46c2-bff2-15f5c4a20a65` v1
 status=in_review difficulty=6 concepts=['context-manager-misuse'] created_at=2026-07-12T02:14:13.247357+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -1064,20 +989,20 @@ context: A RateLimiter context manager is used to control how many times an acti
 What does this code print?
 #### Choices
 - **a**: Allowed 0
-Allowed 1
-Denied 2 : Rate limit exceeded <-- correct
+Denied 1 : Rate limit exceeded
+Denied 2 : Rate limit exceeded
 - **b**: Allowed 0
 Allowed 1
 Allowed 2
 - **c**: Allowed 0
-Denied 1 : Rate limit exceeded
-Denied 2 : Rate limit exceeded
+Allowed 1
+Denied 2 : Rate limit exceeded <-- correct
 - **d**: Denied 0 : Rate limit exceeded
 Denied 1 : Rate limit exceeded
 Denied 2 : Rate limit exceeded
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: c
 - captured_stdout: 'Allowed 0\nAllowed 1\nDenied 2 : Rate limit exceeded'
 
 #### Explanation
@@ -1086,20 +1011,23 @@ Denied 2 : Rate limit exceeded
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Allowed 0\nAllowed 1\nDenied 2 : Rate limit exceeded'; the verified output is authoritative regardless)
 - why_wrong:
   - **b**: Assumes the context manager resets self.calls on each __exit__, so the calls never exceed the limit.
-  - **c**: Assumes the check for limit occurs after incrementing self.calls, so only first iteration is allowed; in reality, increment happens after the check.
+  - **a**: Assumes the check for limit occurs after incrementing self.calls, so only first iteration is allowed; in reality, increment happens after the check.
   - **d**: Mistakenly thinks self.calls starts at the maximum, so all attempts raise immediately.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='Allowed 0\nAllowed 1\nDenied 2 : Rate limit exceeded' expected_stdout='Allowed 0\nAllowed 1\nDenied 2 : Rate limit exceeded'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `3e89621c-bf49-4573-b540-98a4744b58db` v1
 status=in_review difficulty=6 concepts=['early-return-skipped-path'] created_at=2026-07-12T02:15:15.432413+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -1138,13 +1066,13 @@ context: A shipping rate calculator must handle early returns for specific cases
 What does this code print?
 #### Choices
 - **a**: 5
-7.5
-43.0
-15.5 <-- correct
-- **b**: 5
 10.5
 43.0
 15.5
+- **b**: 5
+7.5
+43.0
+15.5 <-- correct
 - **c**: 5
 7.5
 30.0
@@ -1155,7 +1083,7 @@ What does this code print?
 13.5
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: '5\n7.5\n43.0\n15.5'
 
 #### Explanation
@@ -1163,21 +1091,24 @@ What does this code print?
 - principle: Early return statements can cause later logic branches to be skipped entirely, which affects the output for specific cases.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output '5\n7.5\n43.0\n15.5'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Did not apply the -2 discount for (3, False); applied only base+weight.
+  - **a**: Did not apply the -2 discount for (3, False); applied only base+weight.
   - **c**: Missed the early return for heavy expedited (12, True), so omitted the +20 surcharge.
   - **d**: Incorrectly applied the discount to (7, False) when weight >= 5 should not get it.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='5\n7.5\n43.0\n15.5' expected_stdout='5\n7.5\n43.0\n15.5'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `48f53359-9d57-4c83-9fb1-3fd0f9d102ae` v1
 status=in_review difficulty=10 concepts=['key-function-misuse'] created_at=2026-07-12T02:18:12.421797+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -1229,21 +1160,21 @@ context: Webhook retry logic: filtering, sorting, and updating delivery task sta
 #### Question
 What does this code print?
 #### Choices
-- **a**: [4, 1]
+- **a**: [1, 4]
+4
+[(1, 'pending'), (2, 'failed'), (3, 'pending'), (4, 'delivered'), (5, 'failed')]
+- **b**: [4, 1]
 3
 [(1, 'pending'), (2, 'failed'), (3, 'delivered'), (4, 'pending'), (5, 'failed')] <-- correct
-- **b**: [1, 4]
+- **c**: [1, 3]
 4
 [(1, 'pending'), (2, 'failed'), (3, 'pending'), (4, 'delivered'), (5, 'failed')]
-- **c**: [1, 3, 4]
+- **d**: [1, 3, 4]
 3
 [(1, 'pending'), (2, 'failed'), (3, 'delivered'), (4, 'pending'), (5, 'failed')]
-- **d**: [1, 3]
-4
-[(1, 'pending'), (2, 'failed'), (3, 'pending'), (4, 'delivered'), (5, 'failed')]
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: "[4, 1]\n3\n[(1, 'pending'), (2, 'failed'), (3, 'delivered'), (4, 'pending'), (5, 'failed')]"
 
 #### Explanation
@@ -1251,21 +1182,24 @@ What does this code print?
 - principle: If sorted() and min() use different key functions, the selected element may not be the first after sort.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "[4, 1]\n3\n[(1, 'pending'), (2, 'failed'), (3, 'delivered'), (4, 'pending'), (5, 'failed')]"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes min() uses same key as sorted(), so picks id=4 (lowest retry=1, lowest time=105 among retry=1), and pending list is [1, 4], delivered id is 4.
-  - **c**: Thinks all pending tasks remain pending after delivery (misses that one was delivered and filtered out), so outputs [1, 3, 4].
-  - **d**: Mixes up the key order, using (time, retry) everywhere, so pending list is [1, 3].
+  - **a**: Assumes min() uses same key as sorted(), so picks id=4 (lowest retry=1, lowest time=105 among retry=1), and pending list is [1, 4], delivered id is 4.
+  - **d**: Thinks all pending tasks remain pending after delivery (misses that one was delivered and filtered out), so outputs [1, 3, 4].
+  - **c**: Mixes up the key order, using (time, retry) everywhere, so pending list is [1, 3].
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="[4, 1]\n3\n[(1, 'pending'), (2, 'failed'), (3, 'delivered'), (4, 'pending'), (5, 'failed')]" expected_stdout="[4, 1]\n3\n[(1, 'pending'), (2, 'failed'), (3, 'delivered'), (4, 'pending'), (5, 'failed')]"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `e187e8cf-6127-4350-a6f7-c52e8cd6a214` v1
 status=in_review difficulty=1 concepts=['float-precision'] created_at=2026-07-12T02:19:05.693574+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -1286,15 +1220,15 @@ context: A rate limiter checks if enough time has passed between requests.
 #### Question
 What does this code print?
 #### Choices
-- **a**: allowed <-- correct
-- **b**: blocked
+- **a**: blocked
+allowed
+- **b**: allowed <-- correct
 - **c**: allowed
 blocked
 - **d**: blocked
-allowed
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: 'allowed'
 
 #### Explanation
@@ -1302,21 +1236,24 @@ allowed
 - principle: For most decimal fractions like 0.5, Python's float representation is exact, so basic comparisons work as expected.
 - mismatch_flagged: False
 - why_wrong:
-  - **b**: Assumes Python float math yields a small error here, so 0.5 >= 0.5 is False and 'blocked' prints.
+  - **d**: Assumes Python float math yields a small error here, so 0.5 >= 0.5 is False and 'blocked' prints.
   - **c**: Thinks both print statements execute, misunderstanding the if-else control flow.
-  - **d**: Believes the function is called twice, conflating possible outputs.
+  - **a**: Believes the function is called twice, conflating possible outputs.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='allowed' expected_stdout='allowed'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `3024e685-99d4-4278-be05-464ad7aa0acb` v1
 status=in_review difficulty=7 concepts=['variable-shadowing'] created_at=2026-07-12T02:20:34.010459+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -1361,7 +1298,14 @@ context: A sync job applies stock updates to a book catalog and reports both the
 #### Question
 What does this code print?
 #### Choices
-- **a**: 1: Python 101 - stock 3
+- **a**: 1: Python 101 - stock 7
+2: Effective Java - stock 5
+3: Clean Code - stock 12
+---
+1: Python 101 - stock 3
+2: Effective Java - stock 5
+3: Clean Code - stock 0
+- **b**: 1: Python 101 - stock 3
 2: Effective Java - stock 5
 3: Clean Code - stock 0
 1: Python 101 - stock 7
@@ -1370,20 +1314,13 @@ What does this code print?
 1: Python 101 - stock 3
 2: Effective Java - stock 5
 3: Clean Code - stock 0 <-- correct
-- **b**: 1: Python 101 - stock 7
+- **c**: 1: Python 101 - stock 7
 2: Effective Java - stock 5
 3: Clean Code - stock 12
 ---
 1: Python 101 - stock 7
 2: Effective Java - stock 5
 3: Clean Code - stock 12
-- **c**: 1: Python 101 - stock 7
-2: Effective Java - stock 5
-3: Clean Code - stock 12
----
-1: Python 101 - stock 3
-2: Effective Java - stock 5
-3: Clean Code - stock 0
 - **d**: 1: Python 101 - stock 3
 2: Effective Java - stock 5
 3: Clean Code - stock 0
@@ -1393,7 +1330,7 @@ What does this code print?
 3: Clean Code - stock 0
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: '1: Python 101 - stock 3\n2: Effective Java - stock 5\n3: Clean Code - stock 0\n1: Python 101 - stock 7\n3: Clean Code - stock 12\n---\n1: Python 101 - stock 3\n2: Effective Java - stock 5\n3: Clean Code - stock 0'
 
 #### Explanation
@@ -1401,105 +1338,24 @@ What does this code print?
 - principle: Variable shadowing in Python can cause assignments to affect only local variables, and not mutate outer-scope or original data unless referenced directly.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output '1: Python 101 - stock 3\n2: Effective Java - stock 5\n3: Clean Code - stock 0\n1: Python 101 - stock 7\n3: Clean Code - stock 12\n---\n1: Python 101 - stock 3\n2: Effective Java - stock 5\n3: Clean Code - stock 0'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: This assumes that assigning to 'book' in the inner loop updates the books list elements directly, but in reality, 'book' is shadowed and reassigned to a copy; only the new copies are modified and appended.
-  - **c**: This is similar to b but misses that the print in sync_stock prints all books in the local catalog, including appended ones.
+  - **c**: This assumes that assigning to 'book' in the inner loop updates the books list elements directly, but in reality, 'book' is shadowed and reassigned to a copy; only the new copies are modified and appended.
+  - **a**: This is similar to b but misses that the print in sync_stock prints all books in the local catalog, including appended ones.
   - **d**: This ignores that the code appends the updated copies to the list, so sync_stock should print five books, not three.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='1: Python 101 - stock 3\n2: Effective Java - stock 5\n3: Clean Code - stock 0\n1: Python 101 - stock 7\n3: Clean Code - stock 12\n---\n1: Python 101 - stock 3\n2: Effective Java - stock 5\n3: Clean Code - stock 0' expected_stdout='1: Python 101 - stock 3\n2: Effective Java - stock 5\n3: Clean Code - stock 0\n1: Python 101 - stock 7\n3: Clean Code - stock 12\n---\n1: Python 101 - stock 3\n2: Effective Java - stock 5\n3: Clean Code - stock 0'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### trace -- `29e1f679-cb7c-447a-91ca-689d1c205eaa` v1
-status=in_review difficulty=8 concepts=['key-function-misuse'] created_at=2026-07-12T02:21:43.413087+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-from typing import List, Dict
-
-def top_items(inventory: List[Dict[str, int]], n: int) -> List[str]:
-    # Sort items by 'stock', then by 'name'
-    return [item['name'] for item in sorted(
-        inventory,
-        key=lambda x: (x['stock'], x['name']),
-        reverse=True
-    )[:n]]
-
-items = [
-    {'name': 'alpha', 'stock': 10},
-    {'name': 'beta', 'stock': 5},
-    {'name': 'gamma', 'stock': 10},
-    {'name': 'delta', 'stock': 7},
-    {'name': 'epsilon', 'stock': 5}
-]
-
-def print_report(items: List[Dict[str, int]]):
-    # Show the top 3 items by stock
-    best = top_items(items, 3)
-    print(best)
-
-    # Now, restock 'beta' and 'epsilon', but only if they exist
-    for item in items:
-        if item['name'] in ('beta', 'epsilon'):
-            item['stock'] += 8
-
-    # Top 3 after restock
-    best = top_items(items, 3)
-    print(best)
-
-    # Remove 'gamma' and print top 2
-    items = [item for item in items if item['name'] != 'gamma']
-    best = top_items(items, 2)
-    print(best)
-
-print_report(items)
-```
-context: In an inventory API, top-N selection and restocking affects future queries.
-
-#### Question
-What does this code print?
-#### Choices
-- **a**: ['gamma', 'alpha', 'delta']
-['epsilon', 'beta', 'gamma']
-['epsilon', 'beta'] <-- correct
-- **b**: ['gamma', 'alpha', 'delta']
-['gamma', 'alpha', 'delta']
-['gamma', 'alpha']
-- **c**: ['gamma', 'alpha', 'delta']
-['gamma', 'alpha', 'delta']
-['epsilon', 'beta']
-- **d**: ['gamma', 'alpha', 'delta']
-['epsilon', 'beta', 'gamma']
-['gamma', 'alpha']
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: "['gamma', 'alpha', 'delta']\n['epsilon', 'beta', 'gamma']\n['epsilon', 'beta']"
-
-#### Explanation
-- summary: First, the top_items sorts by stock and name in reverse, so 'gamma', 'alpha', and 'delta' are the top 3. Then 'beta' and 'epsilon' are restocked (items mutated in-place) to have the highest stock. After sorting, 'epsilon' and 'beta' are now highest, plus the next top is 'gamma'. Removing 'gamma' (within the function scope, not globally), the top two are 'epsilon' and 'beta'.
-- principle: Sorting by multiple keys in reverse and mutating a list of dicts in-place affects subsequent results; assigning a new list to a local variable does not affect the original list outside the function.
-- mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "['gamma', 'alpha', 'delta']\n['epsilon', 'beta', 'gamma']\n['epsilon', 'beta']"; the verified output is authoritative regardless)
-- why_wrong:
-  - **b**: Assumes restocking doesn't mutate the actual items, so the printed lists don't change.
-  - **c**: Removes 'gamma' visually from the output but not in code, so includes it in last output.
-  - **d**: Thinks removing 'gamma' from 'items' affects the global list, so the top items change.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### spot_the_bug -- `1e117b13-c64d-46b6-bcdc-de44fda1509c` v1
 status=in_review difficulty=5 concepts=['closure-late-binding'] created_at=2026-07-12T02:22:36.897982+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: bug_lines_claim_mismatch, explanation_mismatch
 
 #### Code
 ```python
@@ -1554,16 +1410,26 @@ assert result == 23.5, "Each calculator must use its correct zone's base_rate, n
 - mismatch_flagged: True (draft_explanation.line_notes ([4]) does not reference the sandbox-verified bug_lines ([5, 6]))
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 27, in <module>
+AssertionError: Each calculator must use its correct zone's base_rate, not the last one bound in the loop.
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [5, 6] (diff-derived); generator claimed [4]
+- [x] stb_claim_matches_execution -- buggy: claimed '28.5' executed '28.5'; fixed: claimed '23.5' executed '23.5'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### trace -- `9c84fa22-3b71-474c-b11b-d867dae57a1e` v1
 status=in_review difficulty=8 concepts=['off-by-one-slicing'] created_at=2026-07-12T02:23:33.837334+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -1613,13 +1479,13 @@ What does this code print?
 - **a**: Unmatched invoices: [{'ref': 'B200', 'amount': 200}, {'ref': 'D400', 'amount': 180}]
 Unmatched payments: [{'ref': 'F600', 'amount': 50}]
 Matched count: 4 <-- correct
-- **b**: Unmatched invoices: [{'ref': 'D400', 'amount': 180}, {'ref': 'E500', 'amount': 90}]
-Unmatched payments: [{'ref': 'F600', 'amount': 50}, {'ref': 'B200', 'amount': 200}]
-Matched count: 3
-- **c**: Unmatched invoices: [{'ref': 'D400', 'amount': 180}, {'ref': 'E500', 'amount': 90}]
+- **b**: Unmatched invoices: [{'ref': 'D400', 'amount': 180}]
 Unmatched payments: [{'ref': 'F600', 'amount': 50}, {'ref': 'B200', 'amount': 200}]
 Matched count: 4
-- **d**: Unmatched invoices: [{'ref': 'D400', 'amount': 180}]
+- **c**: Unmatched invoices: [{'ref': 'D400', 'amount': 180}, {'ref': 'E500', 'amount': 90}]
+Unmatched payments: [{'ref': 'F600', 'amount': 50}, {'ref': 'B200', 'amount': 200}]
+Matched count: 3
+- **d**: Unmatched invoices: [{'ref': 'D400', 'amount': 180}, {'ref': 'E500', 'amount': 90}]
 Unmatched payments: [{'ref': 'F600', 'amount': 50}, {'ref': 'B200', 'amount': 200}]
 Matched count: 4
 
@@ -1632,21 +1498,24 @@ Matched count: 4
 - principle: List slicing after each match mutates the unmatched lists, so slicing at the end operates on the already-mutated lists, not on the originals.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "Unmatched invoices: [{'ref': 'B200', 'amount': 200}, {'ref': 'D400', 'amount': 180}]\nUnmatched payments: [{'ref': 'F600', 'amount': 50}]\nMatched count: 4"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Misses that 4 matches are possible and doesn't track the mutation of the unmatched lists correctly, so includes two unmatched invoices/payments and only 3 matches.
-  - **c**: Assumes slicing happens on the original, not the updated, unmatched lists, so two elements appear in each output list even after matches remove them.
-  - **d**: Thinks unmatched_payments[:2] will always have 2 items, but after matching only one remains.
+  - **c**: Misses that 4 matches are possible and doesn't track the mutation of the unmatched lists correctly, so includes two unmatched invoices/payments and only 3 matches.
+  - **d**: Assumes slicing happens on the original, not the updated, unmatched lists, so two elements appear in each output list even after matches remove them.
+  - **b**: Thinks unmatched_payments[:2] will always have 2 items, but after matching only one remains.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="Unmatched invoices: [{'ref': 'B200', 'amount': 200}, {'ref': 'D400', 'amount': 180}]\nUnmatched payments: [{'ref': 'F600', 'amount': 50}]\nMatched count: 4" expected_stdout="Unmatched invoices: [{'ref': 'B200', 'amount': 200}, {'ref': 'D400', 'amount': 180}]\nUnmatched payments: [{'ref': 'F600', 'amount': 50}]\nMatched count: 4"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `5663857a-9678-4396-8fba-2deaa8e0dc31` v1
 status=in_review difficulty=7 concepts=['dict-mutation-during-iteration'] created_at=2026-07-12T02:25:13.312704+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -1695,12 +1564,12 @@ What does this code print?
 #### Choices
 - **a**: {'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid+remaining'}
 {'acme': 150, 'globex': 90, 'soylent': 0} <-- correct
-- **b**: {'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid', 'umbrella': 'manual_review'}
-{'acme': 150, 'globex': 90, 'soylent': 0}
+- **b**: {'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid+remaining'}
+{'acme': 150, 'globex': 90, 'soylent': 0, 'umbrella': 0}
 - **c**: {'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid+remaining', 'umbrella': 'manual_review'}
 {'acme': 150, 'globex': 90, 'soylent': 100}
-- **d**: {'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid+remaining'}
-{'acme': 150, 'globex': 90, 'soylent': 0, 'umbrella': 0}
+- **d**: {'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid', 'umbrella': 'manual_review'}
+{'acme': 150, 'globex': 90, 'soylent': 0}
 
 #### Verified answer key (sandbox-captured stdout)
 - correct_choice_id: a
@@ -1711,21 +1580,24 @@ What does this code print?
 - principle: Mutation of a dictionary during iteration is safe only when collecting keys to remove and deleting them after iteration; in-place value mutation is allowed, but removing keys during iteration directly is not.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "{'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid+remaining'}\n{'acme': 150, 'globex': 90, 'soylent': 0}"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Misses that after paying soylent 100, its remaining balance is now 0 (<100), so 'paid+remaining' is appended.
+  - **d**: Misses that after paying soylent 100, its remaining balance is now 0 (<100), so 'paid+remaining' is appended.
   - **c**: Incorrectly assumes vendor_payouts['soylent'] stays at 100 after payout, but the function decrements in place.
-  - **d**: Forgets that umbrella is removed from vendor_payouts after the iteration because its payout is 0 and handled in the to_remove deletion pass.
+  - **b**: Forgets that umbrella is removed from vendor_payouts after the iteration because its payout is 0 and handled in the to_remove deletion pass.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="{'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid+remaining'}\n{'acme': 150, 'globex': 90, 'soylent': 0}" expected_stdout="{'acme': 'paid', 'globex': 'deferred', 'initech': 'manual_review', 'soylent': 'paid+remaining'}\n{'acme': 150, 'globex': 90, 'soylent': 0}"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### spot_the_bug -- `1803aa12-10cd-47c2-8e6d-1efbf2f7362d` v1
 status=in_review difficulty=7 concepts=['integer-division-truncation'] created_at=2026-07-12T02:26:00.746754+00:00
-quality: no validation report on disk
+quality: defect_audit=flag solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: bug_lines_claim_mismatch, explanation_mismatch, defect_audit=flag
 
 #### Code
 ```python
@@ -1781,16 +1653,26 @@ assert result == [767], "Refund must be rounded to nearest cent, not truncated"
 - mismatch_flagged: True (draft_explanation.line_notes ([7]) does not reference the sandbox-verified bug_lines ([8, 9]))
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 28, in <module>
+AssertionError: Refund must be rounded to nearest cent, not truncated
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [8, 9] (diff-derived); generator claimed [7]
+- [x] stb_claim_matches_execution -- buggy: claimed '[766]' executed '[766]'; fixed: claimed '[767]' executed '[767]'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: flag -- defect_audit found zero defects on a has_bug=true candidate
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### trace -- `6bf398fe-ce6e-442a-ad96-fbac988a5cbc` v1
 status=in_review difficulty=4 concepts=['off-by-one-slicing'] created_at=2026-07-12T02:26:39.606773+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -1816,13 +1698,13 @@ context: A shipping module adjusts rates for all but the heaviest weight bracket
 #### Question
 What does this code print?
 #### Choices
-- **a**: [13, 18, 23, 25] <-- correct
-- **b**: [8, 13, 18, 23, 25]
+- **a**: [13, 18, 23]
+- **b**: [13, 18, 23, 25] <-- correct
 - **c**: [10, 15, 20, 25]
-- **d**: [13, 18, 23]
+- **d**: [8, 13, 18, 23, 25]
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: '[13, 18, 23, 25]'
 
 #### Explanation
@@ -1830,21 +1712,24 @@ What does this code print?
 - principle: Python list slicing is end-exclusive: x[:-1] excludes the last element, and x[1:] starts from the second element.
 - mismatch_flagged: False
 - why_wrong:
-  - **b**: Assumes the surcharge is applied to every bracket, not realizing the last bracket is excluded from the surcharge and appended unchanged.
+  - **d**: Assumes the surcharge is applied to every bracket, not realizing the last bracket is excluded from the surcharge and appended unchanged.
   - **c**: Ignores the initial removal of the first bracket (5), resulting in the original list minus one element instead of the correct transformation.
-  - **d**: Thinks both the first and last elements are removed due to misunderstanding how slicing works, omitting the final bracket entirely.
+  - **a**: Thinks both the first and last elements are removed due to misunderstanding how slicing works, omitting the final bracket entirely.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='[13, 18, 23, 25]' expected_stdout='[13, 18, 23, 25]'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `17c52ad1-6f96-4715-a017-98c6d26daf7e` v1
 status=in_review difficulty=10 concepts=['mutable-default-arg'] created_at=2026-07-12T02:27:49.077702+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -1899,12 +1784,12 @@ What does this code print?
 25
 15 <-- correct
 - **b**: [('alice', 20), ('alice', 5), ('alice', -3)]
-[('bob', 10)]
+[('bob', 25)]
 22
 10
 15
 - **c**: [('alice', 20), ('alice', 5), ('alice', -3)]
-[('bob', 25)]
+[('bob', 10)]
 22
 10
 15
@@ -1923,21 +1808,24 @@ What does this code print?
 - principle: Mutable objects (like lists) passed as arguments are mutated in place, and default mutable arguments can be dangerous if not handled with care.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "[('alice', 20), ('alice', 5), ('alice', -3)]\n[('bob', 25)]\n22\n25\n15"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes each default argument gets a new list and that hist_b remains with a single entry; misses that hist_b is mutated in place and ignores the last revoke.
-  - **c**: Assumes revoke_last(hist_b) undoes all bob's transactions (clears list) rather than just popping the last; so bob's points stay at 10 instead of 25.
+  - **c**: Assumes each default argument gets a new list and that hist_b remains with a single entry; misses that hist_b is mutated in place and ignores the last revoke.
+  - **b**: Assumes revoke_last(hist_b) undoes all bob's transactions (clears list) rather than just popping the last; so bob's points stay at 10 instead of 25.
   - **d**: Assumes passing hist_a2 to award does not mutate hist_a (i.e., that lists aren't aliased), so hist_a misses the -3 transaction and alice's total is not decreased.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="[('alice', 20), ('alice', 5), ('alice', -3)]\n[('bob', 25)]\n22\n25\n15" expected_stdout="[('alice', 20), ('alice', 5), ('alice', -3)]\n[('bob', 25)]\n22\n25\n15"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `d8541a90-4ced-446d-831c-d4d5336dd594` v1
 status=in_review difficulty=10 concepts=['early-return-skipped-path'] created_at=2026-07-12T02:28:56.711402+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -1984,13 +1872,13 @@ context: A worker script tries to recover carts for users flagged as abandoned a
 #### Question
 What does this code print?
 #### Choices
-- **a**: {} <-- correct
-- **b**: {'carol': ['EE', 'FF']}
+- **a**: {'carol': ['EE', 'FF']}
+- **b**: {'bob': ['CC', 'DD'], 'carol': ['EE', 'FF']}
 - **c**: {'alice': ['AA', 'BB']}
-- **d**: {'bob': ['CC', 'DD'], 'carol': ['EE', 'FF']}
+- **d**: {} <-- correct
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: d
 - captured_stdout: '{}'
 
 #### Explanation
@@ -1998,299 +1886,18 @@ What does this code print?
 - principle: A for...else block only executes the else if the for loop is not exited via break; the break on any out-of-stock item prevents recovery for that user.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output '{}'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes for...else runs if at least one item has qty>0, missing that break on any qty==0 skips else entirely for carol.
+  - **a**: Assumes for...else runs if at least one item has qty>0, missing that break on any qty==0 skips else entirely for carol.
   - **c**: Ignores that alice's BB was updated to qty=0 before the function, so alice is not recovered.
-  - **d**: Thinks break only skips the item, not the entire user's recovery logic; actually, any break prevents recovery of that user.
+  - **b**: Thinks break only skips the item, not the entire user's recovery logic; actually, any break prevents recovery of that user.
 
 #### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### spot_the_bug -- `6117f5d6-09e6-482b-aaba-8c219d5bc95b` v1
-status=in_review difficulty=3 concepts=['mutable-default-arg'] created_at=2026-07-12T03:15:48.083709+00:00
-quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
-
-#### Code
-```python
-def record_event(name, payload, history=[]):
-    entry = {"name": name, "payload": payload}
-    history.append(entry)
-    if len(history) > 100:
-        history.pop(0)
-    return history
-
-
-def summarize(history):
-    return [item["name"] for item in history]
-
-```
-context: Records events for an audit trail. Called once per request.
-
-#### Reason options
-- **a**: The default list is created once at definition time and shared by every call <-- correct
-- **b**: append() returns None, so the value handed back is not the list
-- **c**: The history is copied on each call, so earlier entries are discarded
-- **d**: The parameter shadows a module-level name of the same spelling
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [1]
-- correct_reason_id: a
-
-#### Failing-test proof
-```python
-record_event("login", {"user": 1})
-result = summarize(record_event("logout", {"user": 1}))
-print(repr(result))
-assert result == ["logout"], "a call without a history should start empty"
-
-```
-
-#### Explanation
-- summary: Default argument values are evaluated once, when the function object is created. The empty list therefore belongs to the function, not to the call, so every call that omits the argument appends to the same list.
-- principle: Default arguments are evaluated at definition time. Never default to a mutable object.
-- mismatch_flagged: False
-
-#### Sandbox checks
-- [x] buggy_fails_test -- Traceback (most recent call last):
-  File "<stdin>", line 14, in <module>
-AssertionError: a call without a history should start empty
-
-- [x] fixed_passes_test
-- [x] buggy_runs_clean
+- [x] code_runs_clean
 - [x] deterministic_double_run
-- [x] fix_diff_real_and_minimal -- verified bug_lines [1] (diff-derived); generator claimed [1]
-- [x] stb_claim_matches_execution -- buggy: claimed "['login', 'logout']" executed "['login', 'logout']"; fixed: claimed "['logout']" executed "['logout']"
+- [x] captured_output_matches_claim -- captured='{}' expected_stdout='{}'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
 - **solver**: pass -- solver matched the answer key
-- **reasons**: pass -- exactly one correct option, matching the key
-
----
-
-### predict_the_fix -- `37e01c83-ecde-4302-ad56-d49bc14449d3` v1
-status=in_review difficulty=2 concepts=['off-by-one'] created_at=2026-07-12T03:16:24.639710+00:00
-quality: clean
-
-#### Code
-```python
-def select_top_scores(scores, limit):
-    ordered = sorted(scores, reverse=True)
-    selected = []
-    for index in range(len(ordered)):
-        if index > limit:
-            break
-        selected.append(ordered[index])
-    return selected
-
-```
-context: Selects the leaderboard entries shown on the results page.
-
-#### Question
-The test below fails on this code. Which change makes the test pass?
-#### Choices
-- **a**: def select_top_scores(scores, limit):
-    ordered = sorted(scores, reverse=True)
-    selected = []
-    count = 0
-    for score in ordered:
-        if count > limit:
-            break
-        selected.append(score)
-        count += 1
-    return selected
-
-- **b**: def select_top_scores(scores, limit):
-    ordered = sorted(scores, reverse=True)
-    selected = []
-    for index in range(limit + 1):
-        if index >= len(ordered):
-            break
-        selected.append(ordered[index])
-    return selected
-
-- **c**: def select_top_scores(scores, limit):
-    ordered = sorted(scores, reverse=True)
-    selected = ordered[:limit+1]
-    return selected
-
-- **d**: def select_top_scores(scores, limit):
-    ordered = sorted(scores, reverse=True)
-    selected = []
-    for index in range(len(ordered)):
-        if index >= limit:
-            break
-        selected.append(ordered[index])
-    return selected
- <-- correct
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: d
-- captured_stdout: None
-
-#### Explanation
-- summary: The loop breaks only after the index has passed the limit, so the entry at index equal to the limit is appended before the break fires. The result holds one entry more than requested.
-- principle: When a loop guard uses a count, decide whether the boundary index is inside or outside the range, and test at exactly that boundary.
-- mismatch_flagged: False
-- why_wrong:
-  - **a**: Switches to counting items but keeps the original '>' comparison, so still selects one too many scores.
-  - **b**: Shifts loop to iterate up to limit+1, which selects one too many items, so the test still fails.
-  - **c**: Uses slicing but mistakenly takes limit+1 items instead of limit, so the result still includes too many scores.
-
-#### Sandbox checks
-- [x] correct_fix_passes_test
-- [x] buggy_fails_test -- Traceback (most recent call last):
-  File "<stdin>", line 11, in <module>
-AssertionError: the limit caps how many scores are selected
-
-- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
-  File "<stdin>", line 11, in <module>
-AssertionError: the limit caps how many scores are selected
-
-- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
-  File "<stdin>", line 13, in <module>
-AssertionError: the limit caps how many scores are selected
-
-- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
-  File "<stdin>", line 7, in <module>
-AssertionError: the limit caps how many scores are selected
-
-- [x] deterministic_double_run
-- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
-
-#### Semantic gate verdicts
-(no semantic gate receipts for this type)
-
----
-
-### spot_the_bug -- `950a22c1-e157-4532-8de1-22b028595937` v1
-status=in_review difficulty=2 concepts=['off-by-one'] created_at=2026-07-12T03:16:24.639710+00:00
-quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
-
-#### Code
-```python
-def select_top_scores(scores, limit):
-    ordered = sorted(scores, reverse=True)
-    selected = []
-    for index in range(len(ordered)):
-        if index > limit:
-            break
-        selected.append(ordered[index])
-    return selected
-
-```
-context: Selects the leaderboard entries shown on the results page.
-
-#### Reason options
-- **a**: sorted() with reverse=True is not stable, so the order is unpredictable
-- **b**: The comparison lets the entry at index == limit through, returning one entry too many <-- correct
-- **c**: range(len(ordered)) skips the final index
-- **d**: The list is sorted ascending, so the lowest scores are selected
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [5]
-- correct_reason_id: b
-
-#### Failing-test proof
-```python
-result = select_top_scores([10, 50, 30, 20, 40], 2)
-print(repr(result))
-assert result == [50, 40], "the limit caps how many scores are selected"
-
-```
-
-#### Explanation
-- summary: The loop breaks only after the index has passed the limit, so the entry at index equal to the limit is appended before the break fires. The result holds one entry more than requested.
-- principle: When a loop guard uses a count, decide whether the boundary index is inside or outside the range, and test at exactly that boundary.
-- mismatch_flagged: False
-
-#### Sandbox checks
-- [x] buggy_fails_test -- Traceback (most recent call last):
-  File "<stdin>", line 11, in <module>
-AssertionError: the limit caps how many scores are selected
-
-- [x] fixed_passes_test
-- [x] buggy_runs_clean
-- [x] deterministic_double_run
-- [x] fix_diff_real_and_minimal -- verified bug_lines [5] (diff-derived); generator claimed [5]
-- [x] stb_claim_matches_execution -- buggy: claimed '[50, 40, 30]' executed '[50, 40, 30]'; fixed: claimed '[50, 40]' executed '[50, 40]'
-
-#### Semantic gate verdicts
-- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
-- **solver**: pass -- solver matched the answer key
-- **reasons**: pass -- exactly one correct option, matching the key
-
----
-
-### spot_the_bug -- `79463928-f9c3-490a-86b4-0c246f2b3017` v1
-status=in_review difficulty=6 concepts=['shallow-vs-deep-copy'] created_at=2026-07-12T03:16:41.648070+00:00
-quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
-
-#### Code
-```python
-class TemplateStore:
-    def __init__(self, defaults):
-        self.defaults = defaults
-
-    def clone(self):
-        return dict(self.defaults)
-
-    def customize(self, overrides):
-        draft = self.clone()
-        for key, value in overrides.items():
-            if isinstance(value, dict):
-                draft[key].update(value)
-            else:
-                draft[key] = value
-        return draft
-
-```
-context: Builds a per-tenant report template from a shared set of defaults.
-
-#### Reason options
-- **a**: dict() copies only the top level, so the nested dict is updated in place and the defaults change <-- correct
-- **b**: isinstance() returns False for dict literals, so the branch is never taken
-- **c**: The defaults are re-read on every call, so the first customization is lost
-- **d**: Dict unpacking preserves insertion order, so the keys come back in the wrong order
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [12]
-- correct_reason_id: a
-
-#### Failing-test proof
-```python
-store = TemplateStore({"header": {"color": "blue"}, "title": "Report"})
-store.customize({"header": {"color": "red"}})
-result = store.customize({"title": "Q3"})
-print(repr(result))
-assert result == {"header": {"color": "blue"}, "title": "Q3"}, "defaults survive an earlier customization"
-
-```
-
-#### Explanation
-- summary: dict(self.defaults) copies the outer mapping but not the values inside it, so the nested header dict is the very same object held by the defaults. Updating it in place mutates the defaults, and every later call inherits that change.
-- principle: A shallow copy duplicates the container, not the objects inside it. Rebuild nested values before mutating them.
-- mismatch_flagged: False
-
-#### Sandbox checks
-- [x] buggy_fails_test -- Traceback (most recent call last):
-  File "<stdin>", line 20, in <module>
-AssertionError: defaults survive an earlier customization
-
-- [x] fixed_passes_test
-- [x] buggy_runs_clean
-- [x] deterministic_double_run
-- [x] fix_diff_real_and_minimal -- verified bug_lines [12] (diff-derived); generator claimed [12]
-- [x] stb_claim_matches_execution -- buggy: claimed "{'header': {'color': 'red'}, 'title': 'Q3'}" executed "{'header': {'color': 'red'}, 'title': 'Q3'}"; fixed: claimed "{'header': {'color': 'blue'}, 'title': 'Q3'}" executed "{'header': {'color': 'blue'}, 'title': 'Q3'}"
-
-#### Semantic gate verdicts
-- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
-- **solver**: pass -- solver matched the answer key
-- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
@@ -2421,7 +2028,7 @@ AssertionError: a parsed identifier matches by value
 
 ### spot_the_bug -- `778fd26c-3714-4ff1-9218-7804580ec519` v1
 status=in_review difficulty=3 concepts=['truthy-falsy-empty-check'] created_at=2026-07-12T11:29:37.631244+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -2472,149 +2079,26 @@ assert result == {"retries": 0, "timeout": 30, "verbose": False}, "an explicit z
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: an explicit zero should survive
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [10] (diff-derived); generator claimed [10]
+- [x] stb_claim_matches_execution -- buggy: claimed "{'retries': 3, 'timeout': 30, 'verbose': True}" executed "{'retries': 3, 'timeout': 30, 'verbose': True}"; fixed: claimed "{'retries': 0, 'timeout': 30, 'verbose': False}" executed "{'retries': 0, 'timeout': 30, 'verbose': False}"
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### predict_the_fix -- `a0c8ba51-a8cf-4cce-9d31-74495706ae41` v1
-status=in_review difficulty=3 concepts=['truthy-falsy-empty-check'] created_at=2026-07-12T11:29:37.631244+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-DEFAULT_SETTINGS = {
-    "retries": 3,
-    "timeout": 30,
-    "verbose": True,
-}
-
-
-def resolve(overrides, key):
-    value = overrides.get(key)
-    if not value:
-        return DEFAULT_SETTINGS[key]
-    return value
-
-
-def resolve_all(overrides):
-    resolved = {}
-    for key in DEFAULT_SETTINGS:
-        resolved[key] = resolve(overrides, key)
-    return resolved
-
-```
-context: Merges a caller's overrides onto the service defaults.
-
-#### Question
-The test below fails on this code. Which change makes the test pass?
-#### Choices
-- **a**: DEFAULT_SETTINGS = {
-    "retries": 3,
-    "timeout": 30,
-    "verbose": True,
-}
-
-
-def resolve(overrides, key):
-    value = overrides.get(key, DEFAULT_SETTINGS[key])
-    if not value:
-        return DEFAULT_SETTINGS[key]
-    return value
-
-
-def resolve_all(overrides):
-    resolved = {}
-    for key in DEFAULT_SETTINGS:
-        resolved[key] = resolve(overrides, key)
-    return resolved
-
-- **b**: DEFAULT_SETTINGS = {
-    "retries": 3,
-    "timeout": 30,
-    "verbose": True,
-}
-
-
-def resolve(overrides, key):
-    value = overrides.get(key)
-    if value is None:
-        return DEFAULT_SETTINGS[key]
-    return value
-
-
-def resolve_all(overrides):
-    resolved = {}
-    for key in DEFAULT_SETTINGS:
-        resolved[key] = resolve(overrides, key)
-    return resolved
- <-- correct
-- **c**: DEFAULT_SETTINGS = {
-    "retries": 3,
-    "timeout": 30,
-    "verbose": True,
-}
-
-
-def resolve(overrides, key):
-    value = overrides.get(key, None)
-    if not value:
-        return DEFAULT_SETTINGS[key]
-    return value
-
-
-def resolve_all(overrides):
-    resolved = {}
-    for key in DEFAULT_SETTINGS:
-        resolved[key] = resolve(overrides, key)
-    return resolved
-
-- **d**: DEFAULT_SETTINGS = {
-    "retries": 3,
-    "timeout": 30,
-    "verbose": True,
-}
-
-
-def resolve(overrides, key):
-    if key in overrides and overrides[key]:
-        return overrides[key]
-    return DEFAULT_SETTINGS[key]
-
-
-def resolve_all(overrides):
-    resolved = {}
-    for key in DEFAULT_SETTINGS:
-        resolved[key] = resolve(overrides, key)
-    return resolved
-
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: b
-- captured_stdout: None
-
-#### Explanation
-- summary: An override of 0 or False is a legitimate value, but both are falsy. Testing the value for truthiness cannot tell 'the caller said zero' apart from 'the caller said nothing', so a deliberate override is silently overwritten by the default.
-- principle: To ask whether a value was supplied, compare against None. Truthiness answers a different question.
-- mismatch_flagged: False
-- why_wrong:
-  - **a**: Uses get() with a default but still applies a falsy check, so it ignores explicit 0/False values in overrides.
-  - **c**: Adds an explicit default to get(), but still uses a falsy check so 0/False are not handled correctly.
-  - **d**: Checks that key is present and value is truthy, but still excludes explicit 0/False override values.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### predict_the_fix -- `21feb161-7469-4f66-b49a-7375c8090105` v1
 status=in_review difficulty=3 concepts=['string-immutability-misuse'] created_at=2026-07-12T11:29:56.169809+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -2746,16 +2230,34 @@ def build_index(labels):
   - **c**: Tries to remove only one leading and one trailing space instead of all, failing when there are multiple surrounding spaces.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: surrounding whitespace should be removed
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: surrounding whitespace should be removed
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 26, in <module>
+AssertionError: surrounding whitespace should be removed
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: surrounding whitespace should be removed
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### spot_the_bug -- `5f6bee89-3387-4339-9c8e-781500dd6cc2` v1
 status=in_review difficulty=3 concepts=['string-immutability-misuse'] created_at=2026-07-12T11:29:56.169809+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -2806,84 +2308,26 @@ assert result == {"alpha-one": 0}, "surrounding whitespace should be removed"
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: surrounding whitespace should be removed
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [2] (diff-derived); generator claimed [2]
+- [x] stb_claim_matches_execution -- buggy: claimed "{'--alpha-one--': 0}" executed "{'--alpha-one--': 0}"; fixed: claimed "{'alpha-one': 0}" executed "{'alpha-one': 0}"
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### spot_the_bug -- `d1d1ed31-d667-4ce2-ae92-56e0bb6f2a7e` v1
-status=in_review difficulty=4 concepts=['key-function-misuse'] created_at=2026-07-12T11:30:14.705411+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def tally(events):
-    counts = {}
-    for event in events:
-        name = event["endpoint"]
-        counts[name] = counts.get(name, 0) + 1
-    return counts
-
-
-def busiest_endpoint(events):
-    counts = tally(events)
-    if not counts:
-        return None
-    ranked = sorted(counts.items(), key=lambda pair: pair[0], reverse=True)
-    return ranked[0][0]
-
-
-def summary(events):
-    return {
-        "counts": tally(events),
-        "busiest": busiest_endpoint(events),
-    }
-
-```
-context: Picks the hottest endpoint from a window of access-log entries.
-
-#### Reason options
-- **a**: reverse=True sorts ascending, so the smallest count ends up first
-- **b**: dict.items() yields keys only, so the lambda receives a string
-- **c**: The sort key reads the endpoint name instead of the hit count, so the ranking is alphabetical <-- correct
-- **d**: counts.get(name, 0) resets the running count on every hit
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [13]
-- correct_reason_id: c
-
-#### Failing-test proof
-```python
-events = [
-    {"endpoint": "/alpha"},
-    {"endpoint": "/alpha"},
-    {"endpoint": "/alpha"},
-    {"endpoint": "/zulu"},
-]
-result = summary(events)["busiest"]
-print(repr(result))
-assert result == "/alpha", "the endpoint with the most hits should win"
-
-```
-
-#### Explanation
-- summary: items() yields (endpoint, count) pairs. Indexing the pair at 0 selects the endpoint, so the descending sort ranks the endpoints alphabetically and the winner is whichever name sorts last, not whichever endpoint was hit most.
-- principle: A sort key must return the quantity you are ranking by, not merely something derived from the same record.
-- mismatch_flagged: False
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `64ead3a0-3682-4e8e-a73f-8451d33e56a9` v1
 status=in_review difficulty=4 concepts=['float-precision'] created_at=2026-07-12T11:30:27.093684+00:00
-quality: no validation report on disk
+quality: defect_audit=flag solver=pass reasons=pass | solver_confidence=1.0 | FLAGS: defect_audit=flag
 
 #### Code
 ```python
@@ -2938,16 +2382,26 @@ assert result is True, "the line items should reconcile against the quoted total
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 26, in <module>
+AssertionError: the line items should reconcile against the quoted total
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [16] (diff-derived); generator claimed [16]
+- [x] stb_claim_matches_execution -- buggy: claimed 'False' executed 'False'; fixed: claimed 'True' executed 'True'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: flag -- defect_audit found zero defects on a has_bug=true candidate
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `bed3af5f-8e18-4893-bd9a-126ef560f718` v1
 status=in_review difficulty=4 concepts=['is-vs-equality'] created_at=2026-07-12T11:30:45.032679+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -2999,16 +2453,26 @@ assert result == 1, "the matching row should be found by value"
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 23, in <module>
+AssertionError: the matching row should be found by value
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [3] (diff-derived); generator claimed [3]
+- [x] stb_claim_matches_execution -- buggy: claimed '-1' executed '-1'; fixed: claimed '1' executed '1'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `4e41ec9e-fff9-445e-940c-b8fd4344e2b7` v1
 status=in_review difficulty=4 concepts=['global-state-mutation'] created_at=2026-07-12T11:31:02.014219+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -3062,84 +2526,26 @@ assert result == "retries=3 timeout=30", "a later call should not inherit an ear
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: a later call should not inherit an earlier override
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [8] (diff-derived); generator claimed [8]
+- [x] stb_claim_matches_execution -- buggy: claimed "'retries=9 timeout=30'" executed "'retries=9 timeout=30'"; fixed: claimed "'retries=3 timeout=30'" executed "'retries=3 timeout=30'"
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### spot_the_bug -- `4c3f7c40-e0f7-410c-98a1-11aabab3ba22` v1
-status=in_review difficulty=5 concepts=['dataclass-mutable-default'] created_at=2026-07-12T11:31:27.733007+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-import dataclasses
-
-
-class Ledger:
-    def __init__(self):
-        self.entries = []
-
-    def add(self, amount):
-        self.entries.append(amount)
-
-    def balance(self):
-        return sum(self.entries)
-
-
-@dataclasses.dataclass
-class Account:
-    owner: str
-    ledger: Ledger = Ledger()
-
-
-def open_accounts(owners):
-    accounts = []
-    for owner in owners:
-        accounts.append(Account(owner))
-    return accounts
-
-```
-context: Opens ledger-backed accounts for a batch of new customers.
-
-#### Reason options
-- **a**: sum() on an empty list raises TypeError, so balance() never returns a number
-- **b**: A dataclass copies each default value for every instance, so the two ledgers are already independent
-- **c**: The default is a single Ledger object built once when the class body is executed, so every account shares it <-- correct
-- **d**: open_accounts() appends the same Account object twice because the loop variable is rebound
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [18]
-- correct_reason_id: c
-
-#### Failing-test proof
-```python
-accounts = open_accounts(["ada", "linus"])
-accounts[0].ledger.add(50)
-result = accounts[1].ledger.balance()
-print(repr(result))
-assert result == 0, "a freshly opened account should start empty"
-
-```
-
-#### Explanation
-- summary: A dataclass field default is an ordinary expression, evaluated once while the class body runs. One Ledger is built at import time and handed to every Account that does not supply its own, so all accounts share a single balance.
-- principle: A default value is created once, at definition time. For anything mutable, use default_factory so each instance gets its own.
-- mismatch_flagged: False
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### predict_the_fix -- `e0a08ca9-1b0c-4d47-9e44-c9736eee40c8` v1
 status=in_review difficulty=5 concepts=['dataclass-mutable-default'] created_at=2026-07-12T11:31:27.733007+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -3294,16 +2700,34 @@ def open_accounts(owners):
   - **d**: Adds a method to reset the ledger but does not actually use it, so accounts still share the same Ledger instance.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 30, in <module>
+AssertionError: a freshly opened account should start empty
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 30, in <module>
+AssertionError: a freshly opened account should start empty
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 31, in <module>
+AssertionError: a freshly opened account should start empty
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 29, in <module>
+AssertionError: a freshly opened account should start empty
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### spot_the_bug -- `2fe2b7c2-3979-4088-9e4c-878f25826c77` v1
 status=in_review difficulty=3 concepts=['off-by-one-slicing'] created_at=2026-07-12T11:31:47.695141+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -3356,16 +2780,26 @@ assert result == [["a", "b", "c"], ["d", "e", "f"]], "every item should appear o
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 24, in <module>
+AssertionError: every item should appear on exactly one page
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [6] (diff-derived); generator claimed [6]
+- [x] stb_claim_matches_execution -- buggy: claimed "[['a', 'b'], ['d', 'e']]" executed "[['a', 'b'], ['d', 'e']]"; fixed: claimed "[['a', 'b', 'c'], ['d', 'e', 'f']]" executed "[['a', 'b', 'c'], ['d', 'e', 'f']]"
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `b3567247-a647-4269-a925-8789aab6338f` v1
 status=in_review difficulty=4 concepts=['list-mutation-during-iteration'] created_at=2026-07-12T11:52:27.974167+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -3421,136 +2855,26 @@ assert result == [[1], [2], [3]], "no populated row should be lost"
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 27, in <module>
+AssertionError: no populated row should be lost
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [5] (diff-derived); generator claimed [5]
+- [x] stb_claim_matches_execution -- buggy: claimed '[[1], [3]]' executed '[[1], [3]]'; fixed: claimed '[[1], [2], [3]]' executed '[[1], [2], [3]]'
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### spot_the_bug -- `17d4aceb-adeb-46f1-a38f-2c9969705c75` v1
-status=in_review difficulty=4 concepts=['dict-mutation-during-iteration'] created_at=2026-07-12T11:53:03.525208+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def tally(words):
-    counts = {}
-    for word in words:
-        counts[word] = counts.get(word, 0) + 1
-    return counts
-
-
-def prune(counts, floor):
-    kept = {}
-    for key in counts:
-        if counts[key] < floor:
-            del counts[key]
-            continue
-        kept[key] = counts[key]
-    return kept
-
-
-def frequent(words, floor):
-    return prune(tally(words), floor)
-
-```
-context: Keeps only the words that appear often enough to be worth reporting.
-
-#### Reason options
-- **a**: The dictionary is resized while it is being walked, and the iterator refuses to continue over a container that changed size underneath it <-- correct
-- **b**: dict.get(word, 0) returns None for a word that has not been seen, so the addition raises TypeError
-- **c**: Iterating a dictionary yields its values, so counts[key] is a lookup by count rather than by word
-- **d**: continue exits the loop entirely, so only the first word is ever counted
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [12]
-- correct_reason_id: a
-
-#### Failing-test proof
-```python
-try:
-    result = frequent(["a", "a", "b", "c", "c", "c"], 2)
-except RuntimeError:
-    result = "iteration_failed"
-print(repr(result))
-assert result == {"a": 2, "c": 3}, "rare words should be pruned without disturbing the walk"
-
-```
-
-#### Explanation
-- summary: The rare entries are already excluded by the continue, so the deletion achieves nothing except to change the size of the dictionary mid-walk. CPython detects that and raises RuntimeError on the next step, so the whole call dies rather than returning a slightly wrong answer.
-- principle: Never add to or delete from a dictionary you are iterating. Walk a snapshot of the keys, or build a new dictionary.
-- mismatch_flagged: False
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### spot_the_bug -- `878953f9-64ef-4abd-9dc1-4680c601ead3` v1
-status=in_review difficulty=3 concepts=['string-formatting-mismatch'] created_at=2026-07-12T11:53:19.797973+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def render(row):
-    return "%s scored %d" % (row["name"], row["score"])
-
-
-def render_all(rows):
-    lines = []
-    for row in rows:
-        lines.append(render(row))
-    return lines
-
-
-def scoreboard(rows):
-    return {
-        "lines": render_all(rows),
-        "entries": len(rows),
-    }
-
-```
-context: Renders a leaderboard line for each competitor. Scores carry one decimal place.
-
-#### Reason options
-- **a**: The integer conversion truncates the fractional part of a score that is not whole <-- correct
-- **b**: The percent operator needs a list, not a tuple, so the arguments are never substituted
-- **c**: A dictionary lookup inside a format expression is evaluated lazily, so both fields hold the last row
-- **d**: len(rows) counts characters rather than entries, so the entry count is inflated
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [2]
-- correct_reason_id: a
-
-#### Failing-test proof
-```python
-result = scoreboard([{"name": "ada", "score": 91.5}])["lines"]
-print(repr(result))
-assert result == ["ada scored 91.5"], "a half point should survive rendering"
-
-```
-
-#### Explanation
-- summary: The %d conversion asks for an integer. Handed a float it does not complain; it quietly truncates towards zero. Every half point in the competition disappears from the board and nothing anywhere reports an error.
-- principle: A conversion specifier is a coercion, not an assertion. Match it to the type you actually hold.
-- mismatch_flagged: False
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `4f1eb607-79ea-409b-85ce-3a03fb690cbb` v1
 status=in_review difficulty=4 concepts=['memoization-cache-staleness'] created_at=2026-07-12T11:53:45.482047+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -3600,16 +2924,26 @@ assert result == [10, 20], "a different multiplier should be priced, not served 
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 21, in <module>
+AssertionError: a different multiplier should be priced, not served from cache
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [5] (diff-derived); generator claimed [5]
+- [x] stb_claim_matches_execution -- buggy: claimed '[10, 10]' executed '[10, 10]'; fixed: claimed '[10, 20]' executed '[10, 20]'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `8b2a18e6-54f2-4168-b86f-9ffa5374181f` v1
 status=in_review difficulty=4 concepts=['encoding-decoding-mismatch'] created_at=2026-07-12T11:54:03.514748+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -3658,73 +2992,26 @@ assert result == [4], "a round trip should hand back what it was given"
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: a round trip should hand back what it was given
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [6] (diff-derived); generator claimed [6]
+- [x] stb_claim_matches_execution -- buggy: claimed '[5]' executed '[5]'; fixed: claimed '[4]' executed '[4]'
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### spot_the_bug -- `3d0fd9e2-3c91-43a6-8e5c-7e4d2651a607` v1
-status=in_review difficulty=3 concepts=['integer-division-truncation'] created_at=2026-07-12T11:54:25.728845+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def mean(values):
-    return sum(values) // len(values)
-
-
-def spread(values):
-    return max(values) - min(values)
-
-
-def latency_report(values):
-    if not values:
-        return None
-    return {
-        "mean": mean(values),
-        "spread": spread(values),
-        "samples": len(values),
-    }
-
-```
-context: Summarises a window of request latencies in milliseconds.
-
-#### Reason options
-- **a**: The floor operator throws away the fractional part, so a mean that is not whole is reported low <-- correct
-- **b**: sum() on a list of integers returns a float, so the division is already exact
-- **c**: max() and min() are evaluated in the wrong order, so the spread comes back negative
-- **d**: Dividing an integer by an integer in Python always truncates, whichever operator is used
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [2]
-- correct_reason_id: a
-
-#### Failing-test proof
-```python
-result = latency_report([10, 11])["mean"]
-print(repr(result))
-assert result == 10.5, "the mean of ten and eleven is ten and a half"
-
-```
-
-#### Explanation
-- summary: Two slashes is floor division: it discards the remainder and returns the whole part. Averaging ten and eleven gives ten and a half, and the report says ten. Every mean in the system is biased downward and nothing announces it.
-- principle: Two slashes floors. One slash divides. Choose the one that matches the quantity you are reporting.
-- mismatch_flagged: False
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### predict_the_fix -- `e2ad0217-11bb-4dfe-87db-aa105c45920e` v1
 status=in_review difficulty=3 concepts=['integer-division-truncation'] created_at=2026-07-12T11:54:25.728845+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -3836,16 +3123,101 @@ def latency_report(values):
   - **d**: Adds a zero-length guard to mean, but still uses integer division, so truncated mean persists.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the mean of ten and eleven is ten and a half
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the mean of ten and eleven is ten and a half
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 21, in <module>
+AssertionError: the mean of ten and eleven is ten and a half
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the mean of ten and eleven is ten and a half
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
+
+---
+
+### spot_the_bug -- `3d0fd9e2-3c91-43a6-8e5c-7e4d2651a607` v1
+status=in_review difficulty=3 concepts=['integer-division-truncation'] created_at=2026-07-12T11:54:25.728845+00:00
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+
+#### Code
+```python
+def mean(values):
+    return sum(values) // len(values)
+
+
+def spread(values):
+    return max(values) - min(values)
+
+
+def latency_report(values):
+    if not values:
+        return None
+    return {
+        "mean": mean(values),
+        "spread": spread(values),
+        "samples": len(values),
+    }
+
+```
+context: Summarises a window of request latencies in milliseconds.
+
+#### Reason options
+- **a**: The floor operator throws away the fractional part, so a mean that is not whole is reported low <-- correct
+- **b**: sum() on a list of integers returns a float, so the division is already exact
+- **c**: max() and min() are evaluated in the wrong order, so the spread comes back negative
+- **d**: Dividing an integer by an integer in Python always truncates, whichever operator is used
+
+#### Verified answer key (sandbox-derived, D-49)
+- correct_lines: [2]
+- correct_reason_id: a
+
+#### Failing-test proof
+```python
+result = latency_report([10, 11])["mean"]
+print(repr(result))
+assert result == 10.5, "the mean of ten and eleven is ten and a half"
+
+```
+
+#### Explanation
+- summary: Two slashes is floor division: it discards the remainder and returns the whole part. Averaging ten and eleven gives ten and a half, and the report says ten. Every mean in the system is biased downward and nothing announces it.
+- principle: Two slashes floors. One slash divides. Choose the one that matches the quantity you are reporting.
+- mismatch_flagged: False
+
+#### Sandbox checks
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the mean of ten and eleven is ten and a half
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [2] (diff-derived); generator claimed [2]
+- [x] stb_claim_matches_execution -- buggy: claimed '10' executed '10'; fixed: claimed '10.5' executed '10.5'
+
+#### Semantic gate verdicts
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `6c542755-4a3d-4134-97d3-6dbe5b744707` v1
 status=in_review difficulty=4 concepts=['closure-late-binding'] created_at=2026-07-12T11:54:42.540247+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -3893,16 +3265,96 @@ assert result == [1, 10], "each step should carry the offset it was built with"
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: each step should carry the offset it was built with
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [4] (diff-derived); generator claimed [4]
+- [x] stb_claim_matches_execution -- buggy: claimed '[10, 10]' executed '[10, 10]'; fixed: claimed '[1, 10]' executed '[1, 10]'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
+
+---
+
+### spot_the_bug -- `546ba9d6-124b-4c35-a478-b2e1ce713a19` v1
+status=in_review difficulty=4 concepts=['shallow-vs-deep-copy'] created_at=2026-07-12T11:54:59.658039+00:00
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+
+#### Code
+```python
+import copy
+
+TEMPLATE = {
+    "name": "unnamed",
+    "tags": ["draft"],
+}
+
+
+def instantiate(template, name):
+    made = copy.copy(template)
+    made["name"] = name
+    return made
+
+
+def tag(record, label):
+    record["tags"].append(label)
+    return record
+
+```
+context: Stamps out records from a shared template, then lets callers tag them.
+
+#### Reason options
+- **a**: A shallow copy duplicates the outer dictionary but not the list inside it, so both records point at one list of tags <-- correct
+- **b**: copy.copy() returns the original object unchanged, so instantiate() hands back the template itself
+- **c**: Assigning to made["name"] rebinds the template's name as well, because strings are mutable
+- **d**: append() returns a new list, so tag() discards its own result
+
+#### Verified answer key (sandbox-derived, D-49)
+- correct_lines: [10]
+- correct_reason_id: a
+
+#### Failing-test proof
+```python
+first = tag(instantiate(TEMPLATE, "alpha"), "urgent")
+second = instantiate(TEMPLATE, "beta")
+result = second["tags"]
+print(repr(result))
+assert result == ["draft"], "a fresh record should carry only the template tags"
+
+```
+
+#### Explanation
+- summary: A shallow copy is one level deep. The new dictionary is genuinely new, so writing the name is safe, but every value inside it is the same object as before. The tags list is shared with the template, so tagging one record edits the template every later record is stamped from.
+- principle: A shallow copy duplicates the container, not what it contains. For nested mutable structures, copy deeply.
+- mismatch_flagged: False
+
+#### Sandbox checks
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a fresh record should carry only the template tags
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [10] (diff-derived); generator claimed [10]
+- [x] stb_claim_matches_execution -- buggy: claimed "['draft', 'urgent']" executed "['draft', 'urgent']"; fixed: claimed "['draft']" executed "['draft']"
+
+#### Semantic gate verdicts
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### predict_the_fix -- `33635266-e3fe-4942-8f02-72c0e84784cc` v1
 status=in_review difficulty=4 concepts=['shallow-vs-deep-copy'] created_at=2026-07-12T11:54:59.658039+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -4014,76 +3466,34 @@ def tag(record, label):
   - **c**: It tries to ensure 'name' is a string, but does not address the shallow copy of the 'tags' list, so template mutation still leaks.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a fresh record should carry only the template tags
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: a fresh record should carry only the template tags
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a fresh record should carry only the template tags
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 21, in <module>
+AssertionError: a fresh record should carry only the template tags
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### spot_the_bug -- `546ba9d6-124b-4c35-a478-b2e1ce713a19` v1
-status=in_review difficulty=4 concepts=['shallow-vs-deep-copy'] created_at=2026-07-12T11:54:59.658039+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-import copy
-
-TEMPLATE = {
-    "name": "unnamed",
-    "tags": ["draft"],
-}
-
-
-def instantiate(template, name):
-    made = copy.copy(template)
-    made["name"] = name
-    return made
-
-
-def tag(record, label):
-    record["tags"].append(label)
-    return record
-
-```
-context: Stamps out records from a shared template, then lets callers tag them.
-
-#### Reason options
-- **a**: A shallow copy duplicates the outer dictionary but not the list inside it, so both records point at one list of tags <-- correct
-- **b**: copy.copy() returns the original object unchanged, so instantiate() hands back the template itself
-- **c**: Assigning to made["name"] rebinds the template's name as well, because strings are mutable
-- **d**: append() returns a new list, so tag() discards its own result
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [10]
-- correct_reason_id: a
-
-#### Failing-test proof
-```python
-first = tag(instantiate(TEMPLATE, "alpha"), "urgent")
-second = instantiate(TEMPLATE, "beta")
-result = second["tags"]
-print(repr(result))
-assert result == ["draft"], "a fresh record should carry only the template tags"
-
-```
-
-#### Explanation
-- summary: A shallow copy is one level deep. The new dictionary is genuinely new, so writing the name is safe, but every value inside it is the same object as before. The tags list is shared with the template, so tagging one record edits the template every later record is stamped from.
-- principle: A shallow copy duplicates the container, not what it contains. For nested mutable structures, copy deeply.
-- mismatch_flagged: False
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### spot_the_bug -- `a1a8833a-7f39-4cd9-a526-9a844f3e2219` v1
 status=in_review difficulty=4 concepts=['mutable-default-arg'] created_at=2026-07-12T11:55:21.459377+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -4134,16 +3544,96 @@ assert result == {"db": 5}, "a new request should start with no spans"
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a new request should start with no spans
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [1] (diff-derived); generator claimed [1]
+- [x] stb_claim_matches_execution -- buggy: claimed "{'warmup': 99, 'db': 5}" executed "{'warmup': 99, 'db': 5}"; fixed: claimed "{'db': 5}" executed "{'db': 5}"
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
+
+---
+
+### spot_the_bug -- `2e4c2d75-4ee3-4b3e-8ce2-4713c00e99f7` v1
+status=in_review difficulty=3 concepts=['off-by-one'] created_at=2026-07-12T11:55:39.355710+00:00
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
+
+#### Code
+```python
+def window_days(first, last):
+    days = []
+    for day in range(first, last):
+        days.append(day)
+    return days
+
+
+def retained(events, first, last):
+    days = window_days(first, last)
+    kept = []
+    for event in events:
+        if event["day"] in days:
+            kept.append(event["id"])
+    return kept
+
+
+def summary(events, first, last):
+    return {"kept": retained(events, first, last), "span": len(window_days(first, last))}
+
+```
+context: Selects the events that fall inside an inclusive retention window, first day to last day.
+
+#### Reason options
+- **a**: range() stops before its second argument, so the last day of an inclusive window is never in the list <-- correct
+- **b**: range() starts at zero regardless of its first argument, so the window is shifted
+- **c**: Membership testing with in on a list raises TypeError when the list holds integers
+- **d**: append() inside the loop overwrites the previous entry, so days only ever holds one value
+
+#### Verified answer key (sandbox-derived, D-49)
+- correct_lines: [3]
+- correct_reason_id: a
+
+#### Failing-test proof
+```python
+events = [{"id": "a", "day": 1}, {"id": "b", "day": 3}]
+result = summary(events, 1, 3)["kept"]
+print(repr(result))
+assert result == ["a", "b"], "a window from day one to day three includes day three"
+
+```
+
+#### Explanation
+- summary: The window is documented as inclusive of both ends, but range() stops one short of its upper argument. The final day is quietly outside the window, so every event on the last day of every window is dropped.
+- principle: range(a, b) stops before b. An inclusive upper bound needs b plus one.
+- mismatch_flagged: False
+
+#### Sandbox checks
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a window from day one to day three includes day three
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [3] (diff-derived); generator claimed [3]
+- [x] stb_claim_matches_execution -- buggy: claimed "['a']" executed "['a']"; fixed: claimed "['a', 'b']" executed "['a', 'b']"
+
+#### Semantic gate verdicts
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### predict_the_fix -- `0774a668-33fd-4c01-a1b3-8636359f0c12` v1
 status=in_review difficulty=3 concepts=['off-by-one'] created_at=2026-07-12T11:55:39.355710+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -4270,76 +3760,34 @@ def summary(events, first, last):
   - **d**: Attempts to fix by appending last-1, which is already included by range, so last is still not included, and the test still fails.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a window from day one to day three includes day three
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: a window from day one to day three includes day three
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 24, in <module>
+AssertionError: a window from day one to day three includes day three
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 24, in <module>
+AssertionError: a window from day one to day three includes day three
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### spot_the_bug -- `2e4c2d75-4ee3-4b3e-8ce2-4713c00e99f7` v1
-status=in_review difficulty=3 concepts=['off-by-one'] created_at=2026-07-12T11:55:39.355710+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def window_days(first, last):
-    days = []
-    for day in range(first, last):
-        days.append(day)
-    return days
-
-
-def retained(events, first, last):
-    days = window_days(first, last)
-    kept = []
-    for event in events:
-        if event["day"] in days:
-            kept.append(event["id"])
-    return kept
-
-
-def summary(events, first, last):
-    return {"kept": retained(events, first, last), "span": len(window_days(first, last))}
-
-```
-context: Selects the events that fall inside an inclusive retention window, first day to last day.
-
-#### Reason options
-- **a**: range() stops before its second argument, so the last day of an inclusive window is never in the list <-- correct
-- **b**: range() starts at zero regardless of its first argument, so the window is shifted
-- **c**: Membership testing with in on a list raises TypeError when the list holds integers
-- **d**: append() inside the loop overwrites the previous entry, so days only ever holds one value
-
-#### Verified answer key (sandbox-derived, D-49)
-- correct_lines: [3]
-- correct_reason_id: a
-
-#### Failing-test proof
-```python
-events = [{"id": "a", "day": 1}, {"id": "b", "day": 3}]
-result = summary(events, 1, 3)["kept"]
-print(repr(result))
-assert result == ["a", "b"], "a window from day one to day three includes day three"
-
-```
-
-#### Explanation
-- summary: The window is documented as inclusive of both ends, but range() stops one short of its upper argument. The final day is quietly outside the window, so every event on the last day of every window is dropped.
-- principle: range(a, b) stops before b. An inclusive upper bound needs b plus one.
-- mismatch_flagged: False
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### spot_the_bug -- `5876c089-5e1a-4988-a490-264964a2bde6` v1
 status=in_review difficulty=4 concepts=['string-vs-bytes-confusion'] created_at=2026-07-12T12:07:10.509226+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -4387,16 +3835,26 @@ assert result is None, "the label overruns a ten-byte field"
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the label overruns a ten-byte field
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [6] (diff-derived); generator claimed [6]
+- [x] stb_claim_matches_execution -- buggy: claimed "b'caf\\xc3\\xa9-latte'" executed "b'caf\\xc3\\xa9-latte'"; fixed: claimed 'None' executed 'None'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `20c12e7a-9a8a-4070-ba31-25b1be99da8e` v1
 status=in_review difficulty=4 concepts=['injection-string-concat'] created_at=2026-07-12T12:07:42.956819+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -4445,16 +3903,26 @@ assert result == "SELECT * FROM users WHERE name = 'O''Brien'", "the caller valu
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: the caller value must be quoted
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [6] (diff-derived); generator claimed [6]
+- [x] stb_claim_matches_execution -- buggy: claimed '"SELECT * FROM users WHERE name = \'O\'Brien\'"' executed '"SELECT * FROM users WHERE name = \'O\'Brien\'"'; fixed: claimed '"SELECT * FROM users WHERE name = \'O\'\'Brien\'"' executed '"SELECT * FROM users WHERE name = \'O\'\'Brien\'"'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### predict_the_fix -- `b8141641-db53-4982-a5bf-1386bac144a6` v1
 status=in_review difficulty=4 concepts=['injection-string-concat'] created_at=2026-07-12T12:07:42.956819+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -4571,16 +4039,34 @@ def describe(queries):
   - **d**: It replaces single quotes with spaces instead of escaping them, altering the data rather than safely quoting it, so the query is still wrong.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: the caller value must be quoted
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: the caller value must be quoted
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: the caller value must be quoted
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: the caller value must be quoted
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `5207abba-151d-4d33-b3da-9343891beda6` v1
 status=in_review difficulty=4 concepts=['aliasing-vs-copy'] created_at=2026-07-12T12:08:01.900268+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -4691,16 +4177,34 @@ def run(rows, extra):
   - **d**: Attempts to use copy() but assigns 'before' correctly and then overwrites it by returning 'rows', so 'before' still reflects the mutated list.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the record of what came before should not show the later row
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the record of what came before should not show the later row
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the record of what came before should not show the later row
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: the record of what came before should not show the later row
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### spot_the_bug -- `4a6ae494-205c-4dca-b97d-c631dee08e50` v1
 status=in_review difficulty=4 concepts=['aliasing-vs-copy'] created_at=2026-07-12T12:08:01.900268+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -4748,16 +4252,26 @@ assert result == ["a", "b"], "the record of what came before should not show the
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the record of what came before should not show the later row
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [8] (diff-derived); generator claimed [8]
+- [x] stb_claim_matches_execution -- buggy: claimed "['a', 'b', 'late']" executed "['a', 'b', 'late']"; fixed: claimed "['a', 'b']" executed "['a', 'b']"
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### spot_the_bug -- `f4fb97c6-3d86-40e3-bb49-77fd8c00e0cf` v1
 status=in_review difficulty=4 concepts=['timezone-naive-vs-aware'] created_at=2026-07-12T12:08:18.973772+00:00
-quality: no validation report on disk
+quality: defect_audit=pass solver=pass reasons=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -4808,16 +4322,26 @@ assert result == [60], "noon in a plus-five zone is 07:00 UTC, one hour before t
 - mismatch_flagged: False
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: noon in a plus-five zone is 07:00 UTC, one hour before the deadline
+
+- [x] fixed_passes_test
+- [x] buggy_runs_clean
+- [x] deterministic_double_run
+- [x] fix_diff_real_and_minimal -- verified bug_lines [7] (diff-derived); generator claimed [7]
+- [x] stb_claim_matches_execution -- buggy: claimed '[-240]' executed '[-240]'; fixed: claimed '[60]' executed '[60]'
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **defect_audit**: pass -- exactly one defect, overlapping the verified bug region
+- **solver**: pass -- solver matched the answer key
+- **reasons**: pass -- exactly one correct option, matching the key
 
 ---
 
 ### trace -- `13d21d87-a378-4aa0-ae32-c807026e0d1d` v1
 status=in_review difficulty=7 concepts=['string-formatting-mismatch'] created_at=2026-07-12T12:20:00.847496+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -4852,13 +4376,13 @@ What does this code print?
 Error formatting Toaster: ValueError
 Error formatting Microwave: ValueError <-- correct
 - **b**: 1. Blender (score: 10)
-2. Toaster (score: Error formatting Toaster: ValueError)
+2. Toaster (score: 8.9)
 3. Microwave (score: Error formatting Microwave: ValueError)
 - **c**: 1. Blender (score: 10.0)
 2. Toaster (score: 8.9)
 3. Microwave (score: 8.0)
 - **d**: 1. Blender (score: 10)
-2. Toaster (score: 8.9)
+2. Toaster (score: Error formatting Toaster: ValueError)
 3. Microwave (score: Error formatting Microwave: ValueError)
 
 #### Verified answer key (sandbox-captured stdout)
@@ -4870,103 +4394,24 @@ Error formatting Microwave: ValueError <-- correct
 - principle: The {:d} format code expects an integer; passing any float (even 10.0) to it raises ValueError.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Error formatting Blender: ValueError\nError formatting Toaster: ValueError\nError formatting Microwave: ValueError'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: This assumes {:d} will accept 10.0, but {:d} rejects all floats (even those whose value is integral), so all lines produce error messages.
+  - **d**: This assumes {:d} will accept 10.0, but {:d} rejects all floats (even those whose value is integral), so all lines produce error messages.
   - **c**: This assumes the format code accepts any type or defaults to string, but {:d} only works for ints; floats always raise.
-  - **d**: This assumes {:d} only fails if the float has a fractional part, but any float (even 8.0) fails with ValueError.
+  - **b**: This assumes {:d} only fails if the float has a fractional part, but any float (even 8.0) fails with ValueError.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='Error formatting Blender: ValueError\nError formatting Toaster: ValueError\nError formatting Microwave: ValueError' expected_stdout='Error formatting Blender: ValueError\nError formatting Toaster: ValueError\nError formatting Microwave: ValueError'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### trace -- `f065c31a-bda3-4fc0-8c84-6f32d0829c6b` v1
-status=in_review difficulty=7 concepts=['shared-class-attribute'] created_at=2026-07-12T12:21:21.534992+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-class TokenCounter:
-    total_counts = {}
-
-    def __init__(self, doc_id):
-        self.doc_id = doc_id
-        self.local_counts = {}
-
-    def add_tokens(self, tokens):
-        for tok in tokens:
-            # Update local count
-            self.local_counts[tok] = self.local_counts.get(tok, 0) + 1
-            # Update shared class count
-            TokenCounter.total_counts[tok] = TokenCounter.total_counts.get(tok, 0) + 1
-
-    def reset_local(self):
-        self.local_counts = {}
-
-    def reset_total(self):
-        TokenCounter.total_counts = {}
-
-# Simulate indexing step for 2 docs
-counter1 = TokenCounter('docA')
-counter2 = TokenCounter('docB')
-
-counter1.add_tokens(['apple', 'banana', 'apple'])
-counter2.add_tokens(['banana', 'carrot'])
-
-print('step1', counter1.local_counts, counter2.local_counts, TokenCounter.total_counts)
-
-counter1.reset_local()
-counter2.add_tokens(['banana', 'banana'])
-print('step2', counter1.local_counts, counter2.local_counts, TokenCounter.total_counts)
-
-counter2.reset_total()
-counter1.add_tokens(['apple'])
-print('step3', counter1.local_counts, counter2.local_counts, TokenCounter.total_counts)
-```
-context: A pipeline uses a reusable class to track term frequencies across multiple documents.
-
-#### Question
-What does this code print?
-#### Choices
-- **a**: step1 {'apple': 2, 'banana': 1} {'banana': 1, 'carrot': 1} {'apple': 2, 'banana': 2, 'carrot': 1}
-step2 {} {'banana': 3, 'carrot': 1} {'apple': 2, 'banana': 4, 'carrot': 1}
-step3 {'apple': 1} {'banana': 3, 'carrot': 1} {'apple': 1} <-- correct
-- **b**: step1 {'apple': 2, 'banana': 1} {'banana': 1, 'carrot': 1} {'apple': 2, 'banana': 2, 'carrot': 1}
-step2 {} {'banana': 3, 'carrot': 1} {'apple': 2, 'banana': 3, 'carrot': 1}
-step3 {'apple': 1} {'banana': 3, 'carrot': 1} {'apple': 3, 'banana': 3, 'carrot': 1}
-- **c**: step1 {'apple': 2, 'banana': 1} {'banana': 1, 'carrot': 1} {'apple': 2, 'banana': 2, 'carrot': 1}
-step2 {} {'banana': 2, 'carrot': 1} {'apple': 2, 'banana': 3, 'carrot': 1}
-step3 {'apple': 1} {'banana': 2, 'carrot': 1} {'apple': 1, 'banana': 2, 'carrot': 1}
-- **d**: step1 {'apple': 2, 'banana': 1} {'banana': 1, 'carrot': 1} {'apple': 2, 'banana': 2, 'carrot': 1}
-step2 {} {'banana': 3, 'carrot': 1} {'apple': 2, 'banana': 4, 'carrot': 1}
-step3 {'apple': 1} {'banana': 3, 'carrot': 1} {'apple': 1, 'banana': 4, 'carrot': 1}
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: "step1 {'apple': 2, 'banana': 1} {'banana': 1, 'carrot': 1} {'apple': 2, 'banana': 2, 'carrot': 1}\nstep2 {} {'banana': 3, 'carrot': 1} {'apple': 2, 'banana': 4, 'carrot': 1}\nstep3 {'apple': 1} {'banana': 3, 'carrot': 1} {'apple': 1}"
-
-#### Explanation
-- summary: After both counters add their tokens, local_counts and the shared total_counts reflect all increments. counter1.reset_local only clears its own local_counts, not the class attribute. counter2 adds two more bananas, updating both its local and the shared class dictionary. reset_total (called from counter2) clears the shared dictionary, so after that, only tokens newly added are present in total_counts; previous keys are gone.
-- principle: Class attributes are shared among all instances unless shadowed by an instance attribute; mutations to a shared mutable class attribute affect all instances.
-- mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "step1 {'apple': 2, 'banana': 1} {'banana': 1, 'carrot': 1} {'apple': 2, 'banana': 2, 'carrot': 1}\nstep2 {} {'banana': 3, 'carrot': 1} {'apple': 2, 'banana': 4, 'carrot': 1}\nstep3 {'apple': 1} {'banana': 3, 'carrot': 1} {'apple': 1}"; the verified output is authoritative regardless)
-- why_wrong:
-  - **b**: Misses that add_tokens in line 20 adds two more to total_counts, not just one; also, after reset_total, the shared dict is empty, so only the new key is present, not the previous cumulative state.
-  - **c**: Confuses local_counts mutation with class attribute: the reset_total clears the entire class dict, not just what's in counter2.local_counts.
-  - **d**: Forgets that reset_total wipes out all keys in total_counts, so banana and carrot are only present if explicitly added after step3.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `87e4d8b2-7507-4ce8-819b-eb232d049f75` v1
 status=in_review difficulty=1 concepts=['string-formatting-mismatch'] created_at=2026-07-12T12:21:38.271278+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -4992,11 +4437,11 @@ What does this code print?
 #### Choices
 - **a**: Current rate: 1.45 req/s
 Remaining: 13 <-- correct
-- **b**: Current rate: 1.0 req/s
-Remaining: 13
-- **c**: Current rate: 1.45 req/s
+- **b**: Current rate: 1.45 req/s
 Remaining: 13
 Next window resets in 120s
+- **c**: Current rate: 1.0 req/s
+Remaining: 13
 - **d**: Current rate: 1.45 req/s
 Remaining: 100
 
@@ -5009,101 +4454,24 @@ Remaining: 100
 - principle: String formatting with f-strings prints the floating point division result to two decimals; the conditional block only prints if its guard condition is met.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Current rate: 1.45 req/s\nRemaining: 13'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Used integer division in rate calculation, yielding 1 instead of 1.45.
-  - **c**: Assumed the 'next window resets' line always prints, but the conditional was false.
+  - **c**: Used integer division in rate calculation, yielding 1 instead of 1.45.
+  - **b**: Assumed the 'next window resets' line always prints, but the conditional was false.
   - **d**: Mistook the remaining quota as unchanged or reset, not decremented by usage.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='Current rate: 1.45 req/s\nRemaining: 13' expected_stdout='Current rate: 1.45 req/s\nRemaining: 13'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### trace -- `083bed4b-2781-4334-88f5-12239e25831c` v1
-status=in_review difficulty=5 concepts=['variable-shadowing'] created_at=2026-07-12T12:22:03.716215+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def calculate_total(items):
-    total = 0
-    for item in items:
-        price = item['price']
-        quantity = item['quantity']
-        total += price * quantity
-    return total
-
-invoice_total = 0
-items = [
-    {'name': 'Gadget', 'price': 40, 'quantity': 2},
-    {'name': 'Widget', 'price': 15, 'quantity': 3},
-]
-
-def apply_discount(total):
-    discount = 10
-    if total > 100:
-        total = total - discount
-    return total
-
-def generate_invoice(items):
-    total = calculate_total(items)
-    for item in items:
-        print(f"{item['name']}: {item['quantity']} x {item['price']}")
-    total = apply_discount(total)
-    print(f"Total: {total}")
-    return total
-
-invoice_total = generate_invoice(items)
-print(f"invoice_total: {invoice_total}")
-```
-context: This code simulates a basic invoice generator that calculates totals and applies a discount.
-
-#### Question
-What does this code print?
-#### Choices
-- **a**: Gadget: 2 x 40
-Widget: 3 x 15
-Total: 115
-invoice_total: 115 <-- correct
-- **b**: Gadget: 2 x 40
-Widget: 3 x 15
-Total: 135
-invoice_total: 135
-- **c**: Gadget: 2 x 40
-Widget: 3 x 15
-Total: 135
-invoice_total: 115
-- **d**: Gadget: 2 x 40
-Widget: 3 x 15
-Total: 115
-invoice_total: 135
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: 'Gadget: 2 x 40\nWidget: 3 x 15\nTotal: 115\ninvoice_total: 115'
-
-#### Explanation
-- summary: The function calculate_total computes the total as 2*40 + 3*15 = 80 + 45 = 125. In generate_invoice, 'total' is set to this value, and apply_discount finds total > 100, so it subtracts 10, resulting in 115. Both the print and return use this discounted value (115). The global variable invoice_total is then updated with this result.
-- principle: Variable shadowing means that assignments to 'total' inside generate_invoice do not affect the global invoice_total unless explicitly returned and assigned.
-- mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Gadget: 2 x 40\nWidget: 3 x 15\nTotal: 115\ninvoice_total: 115'; the verified output is authoritative regardless)
-- why_wrong:
-  - **b**: This ignores the effect of apply_discount and believes the original total stays.
-  - **c**: Thinks the print uses the pre-discount total, not realizing total is reassigned before printing.
-  - **d**: Confuses the local 'total' in generate_invoice with the global invoice_total, so prints the discounted total but retains the original total in invoice_total.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `f5045866-9a31-4a5d-9306-16db39c62c04` v1
 status=in_review difficulty=5 concepts=['truthy-falsy-empty-check'] created_at=2026-07-12T12:22:21.221014+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5141,17 +4509,17 @@ What does this code print?
 Welcome, Sanjay!
 Welcome, Li Zhang!
 Please provide your email.
-Welcome! <-- correct
+Welcome, Chris!
 - **b**: Verify your email: tina@example.com
 Welcome, Sanjay!
 Welcome, Li Zhang!
 Please provide your email.
-Welcome, chris@example.com!
+Welcome! <-- correct
 - **c**: Verify your email: tina@example.com
 Welcome, Sanjay!
 Welcome, Li Zhang!
 Please provide your email.
-Welcome, Chris!
+Welcome, chris@example.com!
 - **d**: Verify your email: tina@example.com
 Welcome, Sanjay!
 Verify your email: li@example.com
@@ -5159,7 +4527,7 @@ Please provide your email.
 Welcome, chris@example.com!
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: 'Verify your email: tina@example.com\nWelcome, Sanjay!\nWelcome, Li Zhang!\nPlease provide your email.\nWelcome!'
 
 #### Explanation
@@ -5167,21 +4535,24 @@ Welcome, chris@example.com!
 - principle: In Python, empty containers (dicts, lists, strings) are falsy, so checks like 'if not user.get("email")' distinguish between missing/empty values and those that are present and nonempty.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Verify your email: tina@example.com\nWelcome, Sanjay!\nWelcome, Li Zhang!\nPlease provide your email.\nWelcome!'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes having an email means you get a personalized welcome, but the code only uses email for verification and profile for names.
-  - **c**: Invents extracting first_name from the email, which the code never does.
+  - **c**: Assumes having an email means you get a personalized welcome, but the code only uses email for verification and profile for names.
+  - **a**: Invents extracting first_name from the email, which the code never does.
   - **d**: Thinks the 'Verify' path runs for any user with an email, missing the True check on email_verified, and misapplies that to later users.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='Verify your email: tina@example.com\nWelcome, Sanjay!\nWelcome, Li Zhang!\nPlease provide your email.\nWelcome!' expected_stdout='Verify your email: tina@example.com\nWelcome, Sanjay!\nWelcome, Li Zhang!\nPlease provide your email.\nWelcome!'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `886a7841-e709-44cf-8230-af92ffc38017` v1
 status=in_review difficulty=3 concepts=['dict-mutation-during-iteration'] created_at=2026-07-12T12:22:38.670608+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5213,19 +4584,19 @@ What does this code print?
 #### Choices
 - **a**: INV-001: 0.1
 INV-002: 0.05
-INV-003: 0.1 <-- correct
+INV-003: 0.05
 - **b**: INV-001: 0.2
 INV-002: 0.05
 INV-003: 0.1
 - **c**: INV-001: 0.1
 INV-002: 0.05
-INV-003: 0.05
+INV-003: 0.1 <-- correct
 - **d**: INV-001: 0.05
 INV-002: 0.05
 INV-003: 0.05
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: c
 - captured_stdout: 'INV-001: 0.1\nINV-002: 0.05\nINV-003: 0.1'
 
 #### Explanation
@@ -5234,20 +4605,23 @@ INV-003: 0.05
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'INV-001: 0.1\nINV-002: 0.05\nINV-003: 0.1'; the verified output is authoritative regardless)
 - why_wrong:
   - **b**: Assumed the 'VIP' customer branch added a new or updated dict entry with 0.2, but the if condition `invoice_id not in invoices` is never true for already-present invoices.
-  - **c**: Forgot that total > 1000 gives a 0.1 discount for 'INV-003', even though the customer is 'Regular'.
+  - **a**: Forgot that total > 1000 gives a 0.1 discount for 'INV-003', even though the customer is 'Regular'.
   - **d**: Ignored the > 1000 condition, applying only the else 0.05 to all invoices.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='INV-001: 0.1\nINV-002: 0.05\nINV-003: 0.1' expected_stdout='INV-001: 0.1\nINV-002: 0.05\nINV-003: 0.1'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `1d1bb4d1-36dc-4062-a9bc-fa9ae2a84dc3` v1
 status=in_review difficulty=2 concepts=['float-precision'] created_at=2026-07-12T12:22:56.445862+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5270,17 +4644,17 @@ context: This computes per-window event rates and then averages them, typical fo
 #### Question
 What does this code print?
 #### Choices
-- **a**: [10.0, 10.0, 10.0]
-10.00 <-- correct
-- **b**: [10, 10, 10]
+- **a**: [10, 10, 10]
+10
+- **b**: [10.0, 10.0, 10.0]
+10
+- **c**: [10, 10, 10]
 10.00
-- **c**: [10.0, 10.0, 10.0]
-10
-- **d**: [10, 10, 10]
-10
+- **d**: [10.0, 10.0, 10.0]
+10.00 <-- correct
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: d
 - captured_stdout: '[10.0, 10.0, 10.0]\n10.00'
 
 #### Explanation
@@ -5288,21 +4662,24 @@ What does this code print?
 - principle: In Python 3, dividing two ints with / always yields a float, and f-strings with .2f format float output with two decimal places.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output '[10.0, 10.0, 10.0]\n10.00'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes Python 3 division of ints gives ints, but it gives floats.
-  - **c**: Assumes .2f formatting omits decimals, but it always shows two decimals.
-  - **d**: Combines both: expects integer division and no decimals in the mean output.
+  - **c**: Assumes Python 3 division of ints gives ints, but it gives floats.
+  - **b**: Assumes .2f formatting omits decimals, but it always shows two decimals.
+  - **a**: Combines both: expects integer division and no decimals in the mean output.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='[10.0, 10.0, 10.0]\n10.00' expected_stdout='[10.0, 10.0, 10.0]\n10.00'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `f7255949-1cde-4d12-95b6-0629d45fc3a8` v1
 status=in_review difficulty=5 concepts=['sorting-stability-assumption'] created_at=2026-07-12T12:23:17.721064+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5335,13 +4712,13 @@ charlie login
 bob logout
 alice purchase
 bob login <-- correct
-- **b**: alice login
-bob logout
+- **b**: bob logout
+alice login
 charlie login
 alice purchase
 bob login
-- **c**: bob logout
-alice login
+- **c**: alice login
+bob logout
 charlie login
 alice purchase
 bob login
@@ -5360,21 +4737,24 @@ alice purchase
 - principle: Python's sorted() is a stable sort: equal-key items retain their previous relative order.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'alice login\ncharlie login\nbob logout\nalice purchase\nbob login'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumed all 'login' events group before others, ignoring that second (timestamp) sort determines order except ties; here, 'charlie login' (9:02) and 'bob logout' (9:02) order is stable from the first sort.
-  - **c**: Presumed the 'bob logout' would come first because of its 'type', missing that timestamp sort keeps equal times in their type order.
+  - **c**: Assumed all 'login' events group before others, ignoring that second (timestamp) sort determines order except ties; here, 'charlie login' (9:02) and 'bob logout' (9:02) order is stable from the first sort.
+  - **b**: Presumed the 'bob logout' would come first because of its 'type', missing that timestamp sort keeps equal times in their type order.
   - **d**: Thought timestamp sort would fully regroup by time, ignoring that only items with equal timestamps retain type-based order (making 'charlie login' precede 'bob logout' at 09:02).
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='alice login\ncharlie login\nbob logout\nalice purchase\nbob login' expected_stdout='alice login\ncharlie login\nbob logout\nalice purchase\nbob login'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `7e371553-e385-4d22-9768-ed8e7de2a4e1` v1
 status=in_review difficulty=1 concepts=['float-precision'] created_at=2026-07-12T12:23:46.029219+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | clean
 
 #### Code
 ```python
@@ -5399,10 +4779,10 @@ context: A developer is verifying that the sum of payments matches the invoice a
 What does this code print?
 #### Choices
 - **a**: Payments match invoice <-- correct
-- **b**: Discrepancy: 0.00
-- **c**: Discrepancy: 0.01
-- **d**: Payments match invoice
+- **b**: Payments match invoice
 Discrepancy: 0.00
+- **c**: Discrepancy: 0.01
+- **d**: Discrepancy: 0.00
 
 #### Verified answer key (sandbox-captured stdout)
 - correct_choice_id: a
@@ -5413,21 +4793,24 @@ Discrepancy: 0.00
 - principle: Some decimal fractions (like 19.50, 10.00, 9.50) are exactly representable as binary floating point, so float equality is reliable in this case.
 - mismatch_flagged: False
 - why_wrong:
-  - **b**: The misconception is that float == always fails, but here the values are exactly equal, so the else branch does not run.
+  - **d**: The misconception is that float == always fails, but here the values are exactly equal, so the else branch does not run.
   - **c**: Assumes a visible floating-point error occurs, but with these values the sum is exact.
-  - **d**: Believes both print statements could run, which is impossible in an if-else block.
+  - **b**: Believes both print statements could run, which is impossible in an if-else block.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='Payments match invoice' expected_stdout='Payments match invoice'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `75c67371-17ae-4b9c-861e-88d18820a14e` v1
 status=in_review difficulty=2 concepts=['global-state-mutation'] created_at=2026-07-12T12:24:01.217912+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5448,20 +4831,20 @@ context: A minimal checkout service tracks the running total in a global variabl
 What does this code print?
 #### Choices
 - **a**: Added: 15, Total: 15
-Added: 10, Total: 25
-Final total: 25 <-- correct
+Added: 10, Total: 10
+Final total: 25
 - **b**: Added: 15, Total: 15
 Added: 10, Total: 10
 Final total: 10
 - **c**: Added: 15, Total: 15
-Added: 10, Total: 10
-Final total: 25
-- **d**: Added: 15, Total: 15
 Added: 10, Total: 25
 Final total: 10
+- **d**: Added: 15, Total: 15
+Added: 10, Total: 25
+Final total: 25 <-- correct
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: d
 - captured_stdout: 'Added: 15, Total: 15\nAdded: 10, Total: 25\nFinal total: 25'
 
 #### Explanation
@@ -5470,149 +4853,23 @@ Final total: 10
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Added: 15, Total: 15\nAdded: 10, Total: 25\nFinal total: 25'; the verified output is authoritative regardless)
 - why_wrong:
   - **b**: Misses the effect of 'global', as if cart_total were local in the function.
-  - **c**: Assumes function doesn't update the global, but the outer variable is updated after both calls.
-  - **d**: Assumes the final total only reflects the last added price, not the running sum.
+  - **a**: Assumes function doesn't update the global, but the outer variable is updated after both calls.
+  - **c**: Assumes the final total only reflects the last added price, not the running sum.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='Added: 15, Total: 15\nAdded: 10, Total: 25\nFinal total: 25' expected_stdout='Added: 15, Total: 15\nAdded: 10, Total: 25\nFinal total: 25'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### trace -- `98be7d5b-24d3-4ee2-825d-ac55f569a2b7` v1
-status=in_review difficulty=1 concepts=['integer-division-truncation'] created_at=2026-07-12T12:24:15.562999+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-limit = 100
-used = 33
-window_minutes = 5
-
-remaining = limit - used
-rate_per_minute = remaining // window_minutes
-
-print("Remaining:", remaining)
-print("Rate per minute:", rate_per_minute)
-
-# If there's leftover, show how many minutes until the next allowed action
-if remaining % window_minutes != 0:
-    print("Extra in", window_minutes - (remaining % window_minutes), "minutes")
-```
-context: A simple rate limiter distributes remaining actions over the next N minutes.
-
-#### Question
-What does this code print?
-#### Choices
-- **a**: Remaining: 67
-Rate per minute: 13
-Extra in 3 minutes <-- correct
-- **b**: Remaining: 67
-Rate per minute: 13
-Extra in 2 minutes
-- **c**: Remaining: 67
-Rate per minute: 13
-- **d**: Remaining: 67
-Rate per minute: 13
-Extra in 2.6 minutes
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: 'Remaining: 67\nRate per minute: 13\nExtra in 3 minutes'
-
-#### Explanation
-- summary: The program computes the remaining actions (67) and the integer rate per minute (13), since 67 // 5 is 13 (integer division truncates). Since 67 % 5 is 2, there are 2 extra actions, and the code prints how many minutes until the next allowed action: 5 - 2 = 3 minutes.
-- principle: Python's // integer division operator always truncates toward negative infinity and % gives the remainder.
-- mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Remaining: 67\nRate per minute: 13\nExtra in 3 minutes'; the verified output is authoritative regardless)
-- why_wrong:
-  - **b**: Miscomputes the time until next extra, using an off-by-one error in modulus math.
-  - **c**: Wrongly assumes the 'Extra in' line is skipped since rate_per_minute is set, but it's not.
-  - **d**: Incorrectly computes extra time by dividing as float instead of using integer modulus.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### trace -- `3988798a-5c3d-456e-bdf8-e617ccd04753` v1
-status=in_review difficulty=3 concepts=['boolean-short-circuit-side-effect'] created_at=2026-07-12T12:24:33.954280+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def is_feature_enabled(user, features):
-    return features.get(user, False)
-
-def log_and_check(user, features):
-    print(f"Checking feature for {user}")
-    return is_feature_enabled(user, features)
-
-def main():
-    features = {'alice': True, 'bob': False}
-    users = ['alice', 'bob', 'charlie']
-    for user in users:
-        # Only check if not known to be disabled
-        if features.get(user) is not False and log_and_check(user, features):
-            print(f"{user}: ENABLED")
-        else:
-            print(f"{user}: DISABLED")
-
-main()
-```
-context: Feature flags are checked with logging, but logging may not run due to boolean short-circuit.
-
-#### Question
-What does this code print?
-#### Choices
-- **a**: Checking feature for alice
-alice: ENABLED
-bob: DISABLED
-Checking feature for charlie
-charlie: DISABLED <-- correct
-- **b**: Checking feature for alice
-alice: ENABLED
-Checking feature for bob
-bob: DISABLED
-Checking feature for charlie
-charlie: DISABLED
-- **c**: Checking feature for alice
-alice: ENABLED
-bob: DISABLED
-charlie: DISABLED
-- **d**: alice: ENABLED
-bob: DISABLED
-Checking feature for charlie
-charlie: DISABLED
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: 'Checking feature for alice\nalice: ENABLED\nbob: DISABLED\nChecking feature for charlie\ncharlie: DISABLED'
-
-#### Explanation
-- summary: For 'alice', features.get returns True, so both conditions are checked and log_and_check prints. For 'bob', features.get returns False, so the second condition is not evaluated and log_and_check is skipped. For 'charlie', features.get returns None (not False), so log_and_check runs and prints. The ENABLED/DISABLED messages follow accordingly.
-- principle: In a boolean 'and' expression, the right side is only evaluated if the left side is truthy; thus, side effects like print in a function only occur if the left condition does not short-circuit evaluation.
-- mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Checking feature for alice\nalice: ENABLED\nbob: DISABLED\nChecking feature for charlie\ncharlie: DISABLED'; the verified output is authoritative regardless)
-- why_wrong:
-  - **b**: Assumes log_and_check always runs, but for 'bob', features.get(user) is False, so the second condition is not evaluated, and log_and_check is not called.
-  - **c**: Misses the log_and_check print for 'charlie', who is not present in features, so log_and_check is called and prints.
-  - **d**: Assumes log_and_check only runs for 'charlie', forgetting that the first user, 'alice', also meets the condition for log_and_check to be called (features.get('alice') is True).
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `a2d3bf03-e388-48b8-be6d-64f4ccf9913c` v1
 status=in_review difficulty=5 concepts=['unpacking-order-assumption'] created_at=2026-07-12T12:25:12.906978+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5654,16 +4911,16 @@ context: Processing a list of result tuples from an API call and summarizing.
 What does this code print?
 #### Choices
 - **a**: 2
-['A', 'B', 'C', 'D'] <-- correct
-- **b**: 2
-['A', 'B', 'C', 'D', 'Y', 'Z']
-- **c**: 4
-['A', 'B', 'C', 'D']
-- **d**: 2
 ['A', 'C']
+- **b**: 2
+['A', 'B', 'C', 'D'] <-- correct
+- **c**: 2
+['A', 'B', 'C', 'D', 'Y', 'Z']
+- **d**: 4
+['A', 'B', 'C', 'D']
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: "2\n['A', 'B', 'C', 'D']"
 
 #### Explanation
@@ -5671,21 +4928,24 @@ What does this code print?
 - principle: Tuple unpacking uses positional order, not named semantics; incorrect assumptions about order yield misassigned variables.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "2\n['A', 'B', 'C', 'D']"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: This includes meta['extra'] values as sources, misunderstanding tuple unpacking and the processing logic.
-  - **c**: Counts all results as ok, ignoring that 'error' replaces data in failed cases.
-  - **d**: Filters sources to only those for 'ok' results, but the code appends all sources regardless of status.
+  - **c**: This includes meta['extra'] values as sources, misunderstanding tuple unpacking and the processing logic.
+  - **d**: Counts all results as ok, ignoring that 'error' replaces data in failed cases.
+  - **a**: Filters sources to only those for 'ok' results, but the code appends all sources regardless of status.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="2\n['A', 'B', 'C', 'D']" expected_stdout="2\n['A', 'B', 'C', 'D']"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `f073a006-c7c5-47e6-9f3a-b14b49532d88` v1
 status=in_review difficulty=1 concepts=['sorting-stability-assumption'] created_at=2026-07-12T12:25:42.760011+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5703,21 +4963,21 @@ context: A feature flag service is displaying features by priority.
 #### Question
 What does this code print?
 #### Choices
-- **a**: beta_search
+- **a**: ads
+dark_mode
+beta_search
+- **b**: beta_search
 dark_mode
 ads <-- correct
-- **b**: dark_mode
-beta_search
-ads
 - **c**: beta_search
 ads
 dark_mode
-- **d**: ads
-dark_mode
+- **d**: dark_mode
 beta_search
+ads
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: 'beta_search\ndark_mode\nads'
 
 #### Explanation
@@ -5725,21 +4985,24 @@ beta_search
 - principle: Python's list.sort() is stable: the relative order of equal keys is preserved.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'beta_search\ndark_mode\nads'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes sorting is not stable and reorders 'dark_mode' and 'ads'.
+  - **d**: Assumes sorting is not stable and reorders 'dark_mode' and 'ads'.
   - **c**: Assumes sorting is stable but thinks the two priority=2 items reverse order when sorted.
-  - **d**: Assumes sorting is in descending order, so highest priority shown first.
+  - **a**: Assumes sorting is in descending order, so highest priority shown first.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='beta_search\ndark_mode\nads' expected_stdout='beta_search\ndark_mode\nads'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `ce8e41c6-19c7-4cca-a59c-aff2c93eca30` v1
 status=in_review difficulty=6 concepts=['string-immutability-misuse'] created_at=2026-07-12T12:26:26.948140+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5803,16 +5066,19 @@ What does this code print?
   - **d**: Mixes up in-place versus non-in-place string operations and fails to remove trailing space from the first item, but rstrip() is indeed called and trailing whitespace is removed for names ending with a space.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="['  Widget-SKU-124 ', 'Gadget-SKU-233', ' SparePart ']\n['Widget SKU 124', 'Gadget SKU 233', 'SparePart']" expected_stdout="['  Widget-SKU-124 ', 'Gadget-SKU-233', ' SparePart ']\n['Widget SKU 124', 'Gadget SKU 233', 'SparePart']"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `e1fbb620-45e0-4b4b-8fb7-358374591171` v1
 status=in_review difficulty=2 concepts=['early-return-skipped-path'] created_at=2026-07-12T12:26:42.084434+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5833,21 +5099,21 @@ context: A loyalty program adds points to a user's ledger, but blocks zero or ne
 #### Question
 What does this code print?
 #### Choices
-- **a**: Invalid points
-New balance: 150
-Final: 150 <-- correct
-- **b**: New balance: 120
+- **a**: New balance: 120
 New balance: 150
 Final: 150
+- **b**: Invalid points
+New balance: 150
+Final: 120
 - **c**: Invalid points
 New balance: 150
 Final: 180
 - **d**: Invalid points
 New balance: 150
-Final: 120
+Final: 150 <-- correct
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: d
 - captured_stdout: 'Invalid points\nNew balance: 150\nFinal: 150'
 
 #### Explanation
@@ -5855,21 +5121,24 @@ Final: 120
 - principle: When a function returns early, any code after 'return' is not executed.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'Invalid points\nNew balance: 150\nFinal: 150'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes no early return, so the balance change also occurs for invalid points.
+  - **a**: Assumes no early return, so the balance change also occurs for invalid points.
   - **c**: Thinks the valid add_points call runs twice, likely from ignoring early return or double-adding.
-  - **d**: Missed that the account dict is mutated inside the function, so final points are still 120.
+  - **b**: Missed that the account dict is mutated inside the function, so final points are still 120.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='Invalid points\nNew balance: 150\nFinal: 150' expected_stdout='Invalid points\nNew balance: 150\nFinal: 150'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `cd585008-47f9-4c71-baf7-08e5c03ed583` v1
 status=in_review difficulty=7 concepts=['shallow-vs-deep-copy'] created_at=2026-07-12T12:27:09.768034+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -5920,24 +5189,24 @@ context: A background worker processes abandoned shopping carts and logs their c
 What does this code print?
 #### Choices
 - **a**: ['apple', 'banana']
-[]
-['promo']
-['promo', 'abandoned'] <-- correct
+['apple', 'banana']
+['promo', 'abandoned']
+['promo', 'abandoned']
 - **b**: ['apple', 'banana']
 ['apple', 'banana']
 ['promo']
 ['promo', 'abandoned']
 - **c**: ['apple', 'banana']
 []
-['promo', 'abandoned']
-['promo', 'abandoned']
+['promo']
+['promo', 'abandoned'] <-- correct
 - **d**: ['apple', 'banana']
-['apple', 'banana']
+[]
 ['promo', 'abandoned']
 ['promo', 'abandoned']
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: c
 - captured_stdout: "['apple', 'banana']\n[]\n['promo']\n['promo', 'abandoned']"
 
 #### Explanation
@@ -5946,20 +5215,23 @@ What does this code print?
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "['apple', 'banana']\n[]\n['promo']\n['promo', 'abandoned']"; the verified output is authoritative regardless)
 - why_wrong:
   - **b**: Assumes that clearing cart1['items'] does not affect cart1 because it was copied, but only the log (orders[0]['items']) is a copy; the original list is cleared.
-  - **c**: Assumes that log['tags'] is still aliased to cart1['tags'], but slicing creates a new list, so only cart1['tags'] gets 'abandoned' appended.
-  - **d**: Assumes both items and tags in both log and cart1 are separated by deep copy, but only shallow copies are made; log['items'] and log['tags'] are new lists, but the original cart's lists are changed by clear and append.
+  - **d**: Assumes that log['tags'] is still aliased to cart1['tags'], but slicing creates a new list, so only cart1['tags'] gets 'abandoned' appended.
+  - **a**: Assumes both items and tags in both log and cart1 are separated by deep copy, but only shallow copies are made; log['items'] and log['tags'] are new lists, but the original cart's lists are changed by clear and append.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="['apple', 'banana']\n[]\n['promo']\n['promo', 'abandoned']" expected_stdout="['apple', 'banana']\n[]\n['promo']\n['promo', 'abandoned']"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `56d6854c-83e7-49ef-8ede-69c42dfacdae` v1
 status=in_review difficulty=8 concepts=['unpacking-order-assumption'] created_at=2026-07-12T12:27:41.679080+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -6013,17 +5285,17 @@ actor=bob, action=delete, resource=file.txt
 actor=carol, action=logout
 actor=dave, action=update, resource=table <-- correct
 - **b**: actor=alice, action=login, ip=10.0.0.1
-actor=delete, action=bob, resource=file.txt
-actor=carol, action=logout
-actor=update, action=dave, resource=table
-- **c**: actor=alice, action=login, ip=10.0.0.1
 action=delete, resource=file.txt, actor=bob
 actor=carol, action=logout
 resource=table, action=update, actor=dave
-- **d**: actor=alice, action=login, ip=10.0.0.1
+- **c**: actor=alice, action=login, ip=10.0.0.1
 actor=bob, resource=file.txt, action=delete
 actor=carol, action=logout
 actor=dave, resource=table, action=update
+- **d**: actor=alice, action=login, ip=10.0.0.1
+actor=delete, action=bob, resource=file.txt
+actor=carol, action=logout
+actor=update, action=dave, resource=table
 
 #### Verified answer key (sandbox-captured stdout)
 - correct_choice_id: a
@@ -6034,21 +5306,24 @@ actor=dave, resource=table, action=update
 - principle: Unpacking with isinstance checks allows safe disambiguation of tuple element roles, and **kwargs preserves insertion order when iterating over dicts in Python 3.7+.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output 'actor=alice, action=login, ip=10.0.0.1\nactor=bob, action=delete, resource=file.txt\nactor=carol, action=logout\nactor=dave, action=update, resource=table'; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes positional unpacking always puts the first tuple item into actor, leading to dicts as actor and strings as data in those cases, so field labels are mismatched.
-  - **c**: Incorrectly assumes dict unpacking with **kwargs does not preserve insertion order, so field order is jumbled.
-  - **d**: Assumes **kwargs keys are always sorted alphabetically, so output field order is actor, resource, action.
+  - **d**: Assumes positional unpacking always puts the first tuple item into actor, leading to dicts as actor and strings as data in those cases, so field labels are mismatched.
+  - **b**: Incorrectly assumes dict unpacking with **kwargs does not preserve insertion order, so field order is jumbled.
+  - **c**: Assumes **kwargs keys are always sorted alphabetically, so output field order is actor, resource, action.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured='actor=alice, action=login, ip=10.0.0.1\nactor=bob, action=delete, resource=file.txt\nactor=carol, action=logout\nactor=dave, action=update, resource=table' expected_stdout='actor=alice, action=login, ip=10.0.0.1\nactor=bob, action=delete, resource=file.txt\nactor=carol, action=logout\nactor=dave, action=update, resource=table'
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `6ecc1d0e-c944-43d9-9748-fd5ad5403ecf` v1
 status=in_review difficulty=10 concepts=['shallow-vs-deep-copy'] created_at=2026-07-12T12:28:37.821031+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -6099,11 +5374,11 @@ What does this code print?
 - **a**: items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}
 items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity': 2}], discounts={'WELCOME': 5, 'SPRINGSALE': 10} <-- correct
 - **b**: items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}
-items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity': 2}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'SPRINGSALE': 10, 'BONUS': 15}
-- **c**: items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}
 items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity': 2}], discounts={'WELCOME': 5, 'BONUS': 15, 'SPRINGSALE': 10}
-- **d**: items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}
+- **c**: items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}
 items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity': 2}], discounts={'WELCOME': 5, 'BONUS': 15}
+- **d**: items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}
+items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity': 2}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'SPRINGSALE': 10, 'BONUS': 15}
 
 #### Verified answer key (sandbox-captured stdout)
 - correct_choice_id: a
@@ -6114,21 +5389,24 @@ items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity'
 - principle: deepcopy makes items independent between the original and copied cart, while dict.copy() makes discounts independent at the first level.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}\nitems=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity': 2}], discounts={'WELCOME': 5, 'SPRINGSALE': 10}"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Assumes items were shallow-copied, so 'Mouse' is added to both carts and discounts are merged, but items is a deep copy so only cart gets 'Mouse'.
-  - **c**: Assumes discount dicts are not independent at all, so all keys appear in both; actually dict.copy() makes separate dicts for future mutations.
-  - **d**: Assumes discounts are only updated on cart, not the session, so session_cart misses 'SPRINGSALE'; but session_cart gets its own discounts copy and is updated inside the session.
+  - **d**: Assumes items were shallow-copied, so 'Mouse' is added to both carts and discounts are merged, but items is a deep copy so only cart gets 'Mouse'.
+  - **b**: Assumes discount dicts are not independent at all, so all keys appear in both; actually dict.copy() makes separate dicts for future mutations.
+  - **c**: Assumes discounts are only updated on cart, not the session, so session_cart misses 'SPRINGSALE'; but session_cart gets its own discounts copy and is updated inside the session.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}\nitems=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity': 2}], discounts={'WELCOME': 5, 'SPRINGSALE': 10}" expected_stdout="items=[{'product': 'Laptop', 'quantity': 1}, {'product': 'Mouse', 'quantity': 1}], discounts={'WELCOME': 5, 'BONUS': 15}\nitems=[{'product': 'Laptop', 'quantity': 1}, {'product': 'USB Cable', 'quantity': 2}], discounts={'WELCOME': 5, 'SPRINGSALE': 10}"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### trace -- `b6626824-8b0b-4287-9d4b-19a7c4b8da36` v1
 status=in_review difficulty=6 concepts=['list-mutation-during-iteration'] created_at=2026-07-12T12:29:18.667369+00:00
-quality: no validation report on disk
+quality: solver=pass | solver_confidence=1.0 | FLAGS: explanation_mismatch
 
 #### Code
 ```python
@@ -6163,13 +5441,13 @@ context: This checks which users are considered onboarded after simulating email
 #### Question
 What does this code print?
 #### Choices
-- **a**: ['bob@example.org', 'dan@example.com', 'alice@example.com', 'carol@example.com'] <-- correct
-- **b**: ['bob@example.org', 'dan@example.com']
+- **a**: ['bob@example.org', 'dan@example.com']
+- **b**: ['bob@example.org', 'dan@example.com', 'alice@example.com', 'carol@example.com'] <-- correct
 - **c**: ['bob@example.org', 'dan@example.com', 'carol@example.com']
 - **d**: ['bob@example.org', 'dan@example.com', 'alice@example.com']
 
 #### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
+- correct_choice_id: b
 - captured_stdout: "['bob@example.org', 'dan@example.com', 'alice@example.com', 'carol@example.com']"
 
 #### Explanation
@@ -6177,21 +5455,24 @@ What does this code print?
 - principle: Mutating objects in a list while iterating over a copy or different list (not the one being iterated) is safe and all intended objects are processed.
 - mismatch_flagged: True (draft_explanation.summary does not literally reference the sandbox-captured output "['bob@example.org', 'dan@example.com', 'alice@example.com', 'carol@example.com']"; the verified output is authoritative regardless)
 - why_wrong:
-  - **b**: Misses that the second loop can successfully verify and append both alice@example.com and carol@example.com.
+  - **a**: Misses that the second loop can successfully verify and append both alice@example.com and carol@example.com.
   - **c**: Overlooks that both alice and carol are unverified and match the domain, not just carol.
   - **d**: Assumes only alice@example.com passes second-loop verification, ignoring carol@example.com.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] code_runs_clean
+- [x] deterministic_double_run
+- [x] captured_output_matches_claim -- captured="['bob@example.org', 'dan@example.com', 'alice@example.com', 'carol@example.com']" expected_stdout="['bob@example.org', 'dan@example.com', 'alice@example.com', 'carol@example.com']"
+- [x] captured_output_distinct_from_distractors
 
 #### Semantic gate verdicts
-(no validation report on disk)
+- **solver**: pass -- solver matched the answer key
 
 ---
 
 ### predict_the_fix -- `e28cc1a5-bb8a-46cc-9960-312e21c765f8` v1
 status=in_review difficulty=3 concepts=['mutable-default-arg'] created_at=2026-07-12T14:20:28.610443+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -6275,16 +5556,34 @@ def summarize(history):
   - **d**: Tightens the trim boundary, which has nothing to do with the history surviving between calls.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 14, in <module>
+AssertionError: a call without a history should start empty
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 16, in <module>
+AssertionError: a call without a history should start empty
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 14, in <module>
+AssertionError: a call without a history should start empty
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 14, in <module>
+AssertionError: a call without a history should start empty
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `df68ea78-f178-4a0c-941d-e5fcbca10b77` v1
 status=in_review difficulty=6 concepts=['shallow-vs-deep-copy'] created_at=2026-07-12T14:20:35.352059+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -6389,16 +5688,34 @@ The test below fails on this code. Which change makes the test pass?
   - **d**: Copies the incoming override rather than the nested default it is about to write into.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: defaults survive an earlier customization
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: defaults survive an earlier customization
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: defaults survive an earlier customization
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: defaults survive an earlier customization
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `9537ac46-2432-4894-a688-37727fc08442` v1
 status=in_review difficulty=5 concepts=['truthy-falsy-empty-check'] created_at=2026-07-12T14:20:41.358581+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -6488,100 +5805,34 @@ The test below fails on this code. Which change makes the test pass?
   - **d**: Uses or to supply the default, which is the same falsy test written a different way.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 16, in <module>
+AssertionError: an explicit zero is honoured
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 16, in <module>
+AssertionError: an explicit zero is honoured
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 16, in <module>
+AssertionError: an explicit zero is honoured
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 16, in <module>
+AssertionError: an explicit zero is honoured
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### predict_the_fix -- `c022cdbd-8fc1-468a-81f3-7e9e30718e3c` v1
-status=in_review difficulty=5 concepts=['is-vs-equality'] created_at=2026-07-12T14:20:47.354773+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def find_matching_order(orders, target_id):
-    for order in orders:
-        if order["id"] is target_id:
-            return order
-    return None
-
-
-def lookup_from_request(orders, raw_id):
-    return find_matching_order(orders, int(raw_id))
-
-```
-context: Looks up an order by the identifier supplied in a request path.
-
-#### Question
-The test below fails on this code. Which change makes the test pass?
-#### Choices
-- **a**: def find_matching_order(orders, target_id):
-    for order in orders:
-        if order["id"] == target_id:
-            return order
-    return None
-
-
-def lookup_from_request(orders, raw_id):
-    return find_matching_order(orders, int(raw_id))
- <-- correct
-- **b**: def find_matching_order(orders, target_id):
-    for order in orders:
-        if order.get("id") is target_id:
-            return order
-    return None
-
-
-def lookup_from_request(orders, raw_id):
-    return find_matching_order(orders, int(raw_id))
-
-- **c**: def find_matching_order(orders, target_id):
-    for order in orders:
-        if order["id"] is target_id:
-            return order
-    return None
-
-
-def lookup_from_request(orders, raw_id):
-    return find_matching_order(orders, raw_id)
-
-- **d**: def find_matching_order(orders, target_id):
-    for order in orders:
-        if order["id"] is not None and order["id"] is target_id:
-            return order
-    return None
-
-
-def lookup_from_request(orders, raw_id):
-    return find_matching_order(orders, int(raw_id))
-
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: None
-
-#### Explanation
-- summary: `is` asks whether two names refer to the same object, not whether they are equal. The identifier parsed from the request is a newly built integer, so it is a different object from the equal one stored in the order, and the lookup misses. It would appear to work for small identifiers, which CPython keeps interned.
-- principle: Use `is` only for identity (None, sentinels). Use `==` to compare values.
-- mismatch_flagged: False
-- why_wrong:
-  - **b**: Reaches the field through get(), which returns the same object the identity test was already failing on.
-  - **c**: Stops converting the raw identifier, which changes what is compared but not how it is compared.
-  - **d**: Guards against a missing identifier; the identity comparison underneath is unchanged.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `13c269b8-a496-4a1f-8ddf-3d1d5689f3d6` v1
 status=in_review difficulty=4 concepts=['key-function-misuse'] created_at=2026-07-12T14:20:53.378868+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -6715,170 +5966,34 @@ def summary(events):
   - **c**: Sorts the keys directly, which is the same alphabetical ordering with the counts thrown away.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 30, in <module>
+AssertionError: the endpoint with the most hits should win
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 30, in <module>
+AssertionError: the endpoint with the most hits should win
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 30, in <module>
+AssertionError: the endpoint with the most hits should win
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 29, in <module>
+AssertionError: the endpoint with the most hits should win
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### predict_the_fix -- `ba4d64d0-05ef-457e-94fb-9a6bfd94a69e` v1
-status=in_review difficulty=4 concepts=['float-precision'] created_at=2026-07-12T14:20:59.492880+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-LINE_ITEMS = (
-    ("shipping", 0.1),
-    ("handling", 0.2),
-)
-
-
-def line_total(items):
-    total = 0.0
-    for _name, amount in items:
-        total += amount
-    return total
-
-
-def reconciles(items, expected):
-    total = line_total(items)
-    return total == expected
-
-
-def audit(items, expected):
-    return {
-        "total": line_total(items),
-        "reconciles": reconciles(items, expected),
-    }
-
-```
-context: Checks a generated invoice against the total the customer was quoted.
-
-#### Question
-The test below fails on this code. Which change makes the test pass?
-#### Choices
-- **a**: LINE_ITEMS = (
-    ("shipping", 0.1),
-    ("handling", 0.2),
-)
-
-
-def line_total(items):
-    total = 0.0
-    for _name, amount in items:
-        total += amount
-    return total
-
-
-def reconciles(items, expected):
-    total = line_total(items)
-    return abs(total - expected) < 0.005
-
-
-def audit(items, expected):
-    return {
-        "total": line_total(items),
-        "reconciles": reconciles(items, expected),
-    }
- <-- correct
-- **b**: LINE_ITEMS = (
-    ("shipping", 0.1),
-    ("handling", 0.2),
-)
-
-
-def line_total(items):
-    total = 0.0
-    for _name, amount in items:
-        total += amount
-    return total
-
-
-def reconciles(items, expected):
-    total = line_total(items)
-    return abs(total - expected) == 0
-
-
-def audit(items, expected):
-    return {
-        "total": line_total(items),
-        "reconciles": reconciles(items, expected),
-    }
-
-- **c**: LINE_ITEMS = (
-    ("shipping", 0.1),
-    ("handling", 0.2),
-)
-
-
-def line_total(items):
-    total = 0
-    for _name, amount in items:
-        total += amount
-    return total
-
-
-def reconciles(items, expected):
-    total = line_total(items)
-    return total == expected
-
-
-def audit(items, expected):
-    return {
-        "total": line_total(items),
-        "reconciles": reconciles(items, expected),
-    }
-
-- **d**: LINE_ITEMS = (
-    ("shipping", 0.1),
-    ("handling", 0.2),
-)
-
-
-def line_total(items):
-    total = 0.0
-    for _name, amount in items:
-        total += amount
-    return total
-
-
-def reconciles(items, expected):
-    total = line_total(items)
-    return str(total) == str(expected)
-
-
-def audit(items, expected):
-    return {
-        "total": line_total(items),
-        "reconciles": reconciles(items, expected),
-    }
-
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: None
-
-#### Explanation
-- summary: 0.1 and 0.2 have no exact binary representation, so adding them yields 0.30000000000000004 rather than 0.3. Exact equality between two floats that were arrived at by different arithmetic almost never holds, even when the decimal maths agrees.
-- principle: Compare floats within a tolerance chosen from the domain, never with equality.
-- mismatch_flagged: False
-- why_wrong:
-  - **b**: Introduces abs() but keeps an exact comparison, so any drift at all still reports a mismatch.
-  - **c**: Starts the accumulator as an integer; the first addition makes it a float again and the drift is identical.
-  - **d**: Compares the printed forms, which differ for exactly the reason the numbers do.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `7307f9c7-a83a-45af-943c-819107bdd1d0` v1
 status=in_review difficulty=4 concepts=['is-vs-equality'] created_at=2026-07-12T14:21:05.473571+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -7008,16 +6123,34 @@ def locate(raw, target):
   - **d**: Converts both sides to tuples, which builds two new objects that are still not the same object.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 23, in <module>
+AssertionError: the matching row should be found by value
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 23, in <module>
+AssertionError: the matching row should be found by value
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 23, in <module>
+AssertionError: the matching row should be found by value
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 23, in <module>
+AssertionError: the matching row should be found by value
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `138177ad-9d73-4c35-8734-b34b719c4762` v1
 status=in_review difficulty=4 concepts=['global-state-mutation'] created_at=2026-07-12T14:21:11.424722+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -7157,160 +6290,34 @@ def run_twice(first, second):
   - **d**: Copies on the way out, long after the module-level dictionary has already been overwritten in place.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: a later call should not inherit an earlier override
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: a later call should not inherit an earlier override
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: a later call should not inherit an earlier override
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: a later call should not inherit an earlier override
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### predict_the_fix -- `245ba6b9-6430-48da-bcb3-7838cf7d930f` v1
-status=in_review difficulty=3 concepts=['off-by-one-slicing'] created_at=2026-07-12T14:21:18.675722+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-PAGE_SIZE = 3
-
-
-def page(items, number):
-    start = number * PAGE_SIZE
-    end = start + PAGE_SIZE - 1
-    return items[start:end]
-
-
-def page_count(items):
-    full, remainder = divmod(len(items), PAGE_SIZE)
-    if remainder:
-        return full + 1
-    return full
-
-
-def paginate(items):
-    pages = []
-    for number in range(page_count(items)):
-        pages.append(page(items, number))
-    return pages
-
-```
-context: Splits a result set into equal-size pages for the API response.
-
-#### Question
-The test below fails on this code. Which change makes the test pass?
-#### Choices
-- **a**: PAGE_SIZE = 3
-
-
-def page(items, number):
-    start = number * PAGE_SIZE
-    end = min(start + PAGE_SIZE - 1, len(items))
-    return items[start:end]
-
-
-def page_count(items):
-    full, remainder = divmod(len(items), PAGE_SIZE)
-    if remainder:
-        return full + 1
-    return full
-
-
-def paginate(items):
-    pages = []
-    for number in range(page_count(items)):
-        pages.append(page(items, number))
-    return pages
-
-- **b**: PAGE_SIZE = 3
-
-
-def page(items, number):
-    start = number * PAGE_SIZE
-    end = start + PAGE_SIZE
-    return items[start:end]
-
-
-def page_count(items):
-    full, remainder = divmod(len(items), PAGE_SIZE)
-    if remainder:
-        return full + 1
-    return full
-
-
-def paginate(items):
-    pages = []
-    for number in range(page_count(items)):
-        pages.append(page(items, number))
-    return pages
- <-- correct
-- **c**: PAGE_SIZE = 3
-
-
-def page(items, number):
-    start = number * (PAGE_SIZE - 1)
-    end = start + PAGE_SIZE - 1
-    return items[start:end]
-
-
-def page_count(items):
-    full, remainder = divmod(len(items), PAGE_SIZE)
-    if remainder:
-        return full + 1
-    return full
-
-
-def paginate(items):
-    pages = []
-    for number in range(page_count(items)):
-        pages.append(page(items, number))
-    return pages
-
-- **d**: PAGE_SIZE = 4
-
-
-def page(items, number):
-    start = number * PAGE_SIZE
-    end = start + PAGE_SIZE - 1
-    return items[start:end]
-
-
-def page_count(items):
-    full, remainder = divmod(len(items), PAGE_SIZE)
-    if remainder:
-        return full + 1
-    return full
-
-
-def paginate(items):
-    pages = []
-    for number in range(page_count(items)):
-        pages.append(page(items, number))
-    return pages
-
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: b
-- captured_stdout: None
-
-#### Explanation
-- summary: A slice is already half-open: items[0:3] yields three items and stops before index 3. Subtracting one from the end index therefore takes PAGE_SIZE minus one items per page, and one record per page never reaches the caller.
-- principle: Python slices exclude their upper bound. The end index is a stop, not a last index.
-- mismatch_flagged: False
-- why_wrong:
-  - **a**: Clamps the end against the length of the list, which was never the reason a row was missing.
-  - **c**: Narrows the stride to match the shortened window, so the pages no longer overlap but each is still short.
-  - **d**: Widens the page size to make up the missing row, which shifts the window instead of restoring it.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `8692c4aa-9239-44d1-919d-3754d7d20486` v1
 status=in_review difficulty=4 concepts=['list-mutation-during-iteration'] created_at=2026-07-12T14:21:26.354963+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -7454,16 +6461,34 @@ def report(rows):
   - **d**: Copies each row on the way into the result, which does nothing about the list being shortened underneath the walk.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 27, in <module>
+AssertionError: no populated row should be lost
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 27, in <module>
+AssertionError: no populated row should be lost
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 27, in <module>
+AssertionError: no populated row should be lost
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 27, in <module>
+AssertionError: no populated row should be lost
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `c78d7841-f812-4c18-95b7-87321c7fa3ab` v1
 status=in_review difficulty=4 concepts=['dict-mutation-during-iteration'] created_at=2026-07-12T14:21:32.717224+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -7587,16 +6612,34 @@ def frequent(words, floor):
   - **c**: Iterates keys() explicitly, which is the same live view over the dictionary being resized.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: rare words should be pruned without disturbing the walk
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: rare words should be pruned without disturbing the walk
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: rare words should be pruned without disturbing the walk
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 25, in <module>
+AssertionError: rare words should be pruned without disturbing the walk
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `f52e284c-d5aa-4229-8f33-c29dca9946e5` v1
 status=in_review difficulty=3 concepts=['string-formatting-mismatch'] created_at=2026-07-12T14:21:39.921648+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -7706,16 +6749,34 @@ def scoreboard(rows):
   - **d**: Uses the other integer conversion, which truncates the score in precisely the same way.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: a half point should survive rendering
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: a half point should survive rendering
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: a half point should survive rendering
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: a half point should survive rendering
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `241f86cd-c6e5-45f0-a5dd-bc92a4f52f63` v1
 status=in_review difficulty=4 concepts=['memoization-cache-staleness'] created_at=2026-07-12T14:21:46.196016+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -7835,16 +6896,34 @@ def quote(item, multipliers):
   - **d**: Keys on the whole item, which is also identical across the two tiers being priced.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 21, in <module>
+AssertionError: a different multiplier should be priced, not served from cache
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 21, in <module>
+AssertionError: a different multiplier should be priced, not served from cache
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 21, in <module>
+AssertionError: a different multiplier should be priced, not served from cache
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 21, in <module>
+AssertionError: a different multiplier should be priced, not served from cache
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `10900108-ac59-4861-83d2-372920a5c88e` v1
 status=in_review difficulty=4 concepts=['encoding-decoding-mismatch'] created_at=2026-07-12T14:21:52.473284+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -7959,136 +7038,34 @@ def audit(messages):
   - **c**: Adds a replacement policy on the writing side; the reader is still using a different codec.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: a round trip should hand back what it was given
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: a round trip should hand back what it was given
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: a round trip should hand back what it was given
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 20, in <module>
+AssertionError: a round trip should hand back what it was given
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### predict_the_fix -- `b074fa02-d459-4b04-8d66-5cedaf2652d8` v1
-status=in_review difficulty=4 concepts=['closure-late-binding'] created_at=2026-07-12T14:21:59.908736+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-def make_steps(offsets):
-    steps = []
-    for offset in offsets:
-        steps.append(lambda value: value + offset)
-    return steps
-
-
-def apply_steps(steps, seed):
-    results = []
-    for step in steps:
-        results.append(step(seed))
-    return results
-
-
-def run_pipeline(offsets, seed):
-    return apply_steps(make_steps(offsets), seed)
-
-```
-context: Builds one transform per configured offset, then runs them all against a seed value.
-
-#### Question
-The test below fails on this code. Which change makes the test pass?
-#### Choices
-- **a**: def make_steps(offsets):
-    steps = []
-    for offset in offsets:
-        steps.append(lambda value, offset=offsets[0]: value + offset)
-    return steps
-
-
-def apply_steps(steps, seed):
-    results = []
-    for step in steps:
-        results.append(step(seed))
-    return results
-
-
-def run_pipeline(offsets, seed):
-    return apply_steps(make_steps(offsets), seed)
-
-- **b**: def make_steps(offsets):
-    steps = []
-    for index in range(len(offsets)):
-        steps.append(lambda value: value + offsets[index])
-    return steps
-
-
-def apply_steps(steps, seed):
-    results = []
-    for step in steps:
-        results.append(step(seed))
-    return results
-
-
-def run_pipeline(offsets, seed):
-    return apply_steps(make_steps(offsets), seed)
-
-- **c**: def make_steps(offsets):
-    steps = []
-    for offset in offsets:
-        step = lambda value: value + offset
-        steps.append(step)
-    return steps
-
-
-def apply_steps(steps, seed):
-    results = []
-    for step in steps:
-        results.append(step(seed))
-    return results
-
-
-def run_pipeline(offsets, seed):
-    return apply_steps(make_steps(offsets), seed)
-
-- **d**: def make_steps(offsets):
-    steps = []
-    for offset in offsets:
-        steps.append(lambda value, offset=offset: value + offset)
-    return steps
-
-
-def apply_steps(steps, seed):
-    results = []
-    for step in steps:
-        results.append(step(seed))
-    return results
-
-
-def run_pipeline(offsets, seed):
-    return apply_steps(make_steps(offsets), seed)
- <-- correct
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: d
-- captured_stdout: None
-
-#### Explanation
-- summary: A closure captures the variable, not a snapshot of it. All the lambdas share the single loop variable, and by the time any of them runs the loop has finished and left the last offset behind. Every step applies that one.
-- principle: Closures capture names, not values. Bind the value at definition time, with a default argument or a factory.
-- mismatch_flagged: False
-- why_wrong:
-  - **a**: Binds a default argument, which is the right shape, but binds the first offset to every step.
-  - **b**: Closes over an index instead of the value, which is late-bound in exactly the same way.
-  - **c**: Names the lambda before storing it, which changes nothing about when the loop variable is read.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `53c81087-ebe8-4712-bfda-488fac2e79f8` v1
 status=in_review difficulty=4 concepts=['mutable-default-arg'] created_at=2026-07-12T14:22:06.286260+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -8212,16 +7189,34 @@ def handle(name, duration):
   - **d**: Uses setdefault so an existing span is never overwritten, which was never how the earlier request's span got in.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a new request should start with no spans
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 24, in <module>
+AssertionError: a new request should start with no spans
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a new request should start with no spans
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 22, in <module>
+AssertionError: a new request should start with no spans
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)
 
 ---
 
 ### predict_the_fix -- `23b69b00-043c-4a8a-a9af-786803b84ead` v1
 status=in_review difficulty=4 concepts=['string-vs-bytes-confusion'] created_at=2026-07-12T14:22:11.863774+00:00
-quality: no validation report on disk
+quality: clean
 
 #### Code
 ```python
@@ -8331,127 +7326,25 @@ def pack(records):
   - **d**: Measures the ASCII-only encoding, which drops the very character that made the label overrun.
 
 #### Sandbox checks
-(no sandbox report on disk)
+- [x] correct_fix_passes_test
+- [x] buggy_fails_test -- Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the label overruns a ten-byte field
+
+- [x] distractor_0_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the label overruns a ten-byte field
+
+- [x] distractor_1_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the label overruns a ten-byte field
+
+- [x] distractor_2_still_fails_test -- exit=1 Traceback (most recent call last):
+  File "<stdin>", line 19, in <module>
+AssertionError: the label overruns a ten-byte field
+
+- [x] deterministic_double_run
+- [x] distractors_distinct -- each wrong fix must differ from buggy_code, fixed_code, and the others
 
 #### Semantic gate verdicts
-(no validation report on disk)
-
----
-
-### predict_the_fix -- `e31cf425-bbe5-423b-ae46-a2c7a93df10d` v1
-status=in_review difficulty=4 concepts=['timezone-naive-vs-aware'] created_at=2026-07-12T14:22:18.308254+00:00
-quality: no validation report on disk
-
-#### Code
-```python
-import datetime
-
-UTC = datetime.timezone.utc
-
-
-def minutes_left(start_local, end_utc):
-    start_utc = start_local.replace(tzinfo=UTC)
-    gap = end_utc - start_utc
-    return int(gap.total_seconds() // 60)
-
-
-def schedule(jobs, end_utc):
-    remaining = []
-    for job in jobs:
-        remaining.append(minutes_left(job["start"], end_utc))
-    return remaining
-
-```
-context: Reports how many minutes each job has left, given a start in the operator's zone and a deadline in UTC.
-
-#### Question
-The test below fails on this code. Which change makes the test pass?
-#### Choices
-- **a**: import datetime
-
-UTC = datetime.timezone.utc
-
-
-def minutes_left(start_local, end_utc):
-    start_utc = start_local.astimezone(UTC)
-    gap = end_utc - start_utc
-    return int(gap.total_seconds() // 60)
-
-
-def schedule(jobs, end_utc):
-    remaining = []
-    for job in jobs:
-        remaining.append(minutes_left(job["start"], end_utc))
-    return remaining
- <-- correct
-- **b**: import datetime
-
-UTC = datetime.timezone.utc
-
-
-def minutes_left(start_local, end_utc):
-    start_utc = start_local.replace(tzinfo=UTC)
-    gap = end_utc - start_utc
-    return int(gap.total_seconds() / 60)
-
-
-def schedule(jobs, end_utc):
-    remaining = []
-    for job in jobs:
-        remaining.append(minutes_left(job["start"], end_utc))
-    return remaining
-
-- **c**: import datetime
-
-UTC = datetime.timezone.utc
-
-
-def minutes_left(start_local, end_utc):
-    start_utc = start_local.replace(tzinfo=UTC)
-    end_utc = end_utc.replace(tzinfo=UTC)
-    gap = end_utc - start_utc
-    return int(gap.total_seconds() // 60)
-
-
-def schedule(jobs, end_utc):
-    remaining = []
-    for job in jobs:
-        remaining.append(minutes_left(job["start"], end_utc))
-    return remaining
-
-- **d**: import datetime
-
-UTC = datetime.timezone.utc
-
-
-def minutes_left(start_local, end_utc):
-    start_utc = start_local.replace(tzinfo=UTC)
-    gap = start_utc - end_utc
-    return int(gap.total_seconds() // 60)
-
-
-def schedule(jobs, end_utc):
-    remaining = []
-    for job in jobs:
-        remaining.append(minutes_left(job["start"], end_utc))
-    return remaining
-
-
-#### Verified answer key (sandbox-captured stdout)
-- correct_choice_id: a
-- captured_stdout: None
-
-#### Explanation
-- summary: replace() edits the label on the reading and leaves the digits alone: noon in a plus-five zone becomes noon UTC, an instant five hours earlier than the operator meant. astimezone() moves the digits so the instant survives the conversion.
-- principle: replace(tzinfo=...) relabels. astimezone() converts. Only one of them preserves the instant.
-- mismatch_flagged: False
-- why_wrong:
-  - **b**: Divides instead of flooring, which changes nothing for a gap that is a whole number of minutes.
-  - **c**: Relabels the deadline as well, which is already in UTC, so only the start remains shifted.
-  - **d**: Flips the subtraction, which turns the sign around without moving the instant that was mislabelled.
-
-#### Sandbox checks
-(no sandbox report on disk)
-
-#### Semantic gate verdicts
-(no validation report on disk)
+(no semantic gate receipts for this type)

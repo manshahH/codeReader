@@ -2384,3 +2384,62 @@ D-108 Smoke-suite repair (red-team FIX-B): the M6 Playwright smoke
      "Could not reach the server" is an environment artifact (Windows/docker/
      vite dev networking; curl to the API always succeeds), now with a far
      smaller blast radius after (b).
+
+D-109 Review-gate defect: validation_report_url stored an ABSOLUTE path rooted
+     at the WRITER's view of the repo, so the human review packet showed "no
+     validation report on disk" for 92 of 98 exercises while every report sat
+     on disk in pipeline/validation_reports/.
+     ROOT CAUSE: `publish.write_validation_report` returned `str(path)`, where
+     path = `settings.validation_reports_dir / f"{id}_v{n}.json"` and
+     `validation_reports_dir` absolutizes against
+     `REPO_ROOT = Path(__file__).resolve().parent.parent` -- i.e. the repo root
+     AS THE WRITING PROCESS SEES IT. The pipeline runs containerised with the
+     repo bind-mounted at /work, so it persisted
+     `/work/pipeline/validation_reports/<uuid>_v1.json`, while
+     `review_cli.load_validation_report` did a literal `Path(url).exists()` on
+     the HOST, where /work does not exist. Confirmed in the DB: the 99
+     container-written rows all carry a /work path; the 6 that resolved carry
+     `D:\projects\codereader\...` and were published from a host-side run. Not
+     missing data -- a pointer that was only ever valid on the machine that
+     wrote it.
+     WHY IT HID: the reader degrades gracefully (returns None on a missing
+     file, by design, so review never crashes on a moved report), and the
+     packet renders that None as the same "no validation report on disk" text
+     it would use for a genuinely absent report. A container/host path mismatch
+     was therefore indistinguishable from "the pipeline never wrote receipts".
+     A write-then-read-back test on ONE machine passes even with this bug,
+     which is exactly why it shipped.
+     FIX: store a REPO-RELATIVE POSIX path (`pipeline/validation_reports/
+     <uuid>_v<n>.json`), which resolves identically inside and outside the
+     container. `pipeline/config.py` gains the pair `repo_relative_str` (writer)
+     and `resolve_repo_path` (reader); publish.py stores the former, review_cli
+     resolves via the latter. `resolve_repo_path` asks is_absolute() of BOTH
+     PurePosixPath and PureWindowsPath, because a POSIX-absolute string like
+     /work/x is NOT absolute to pathlib on Windows (it is drive-relative), and
+     joining it onto the repo root would silently manufacture D:/work/x and
+     make a missing report look present. Legacy absolute pointers are honoured
+     as-is rather than rewritten at read time; the backfill owns that.
+     BACKFILL: migration 0008_validation_report_relpath rewrites the absolute
+     rows to the relative form. Idempotent (rows already canonical are excluded)
+     and scoped to the `pipeline/validation_reports` segment so a reports dir
+     deliberately configured outside the repo is left alone. It touches ONLY
+     validation_report_url; no exercise status is changed. downgrade() is a
+     deliberate no-op: the original values encoded the writer machine's root,
+     which is not recoverable from the stored string, and restoring it would
+     just restore the bug.
+     TESTS (the property that actually broke, not a same-machine round trip):
+     the stored pointer is rooted under NEITHER PurePosixPath nor
+     PureWindowsPath; a freshly published exercise's pointer resolves to a
+     readable file whose JSON equals the report that was written (a path that
+     has never been read back is not a path); and a NEGATIVE test that a legacy
+     /work pointer is never grafted onto the repo root.
+     VERIFIED: 105 of 105 exercises with a pointer now resolve to a readable
+     report (0 unresolved, was 6 of 105). The regenerated packet's 77 in_review
+     exercises ALL carry a real quality line; zero "no validation report on
+     disk". The remaining 5 rows have a NULL pointer and are hand-authored
+     seeds (origin=seed_handauthored) that never ran the pipeline, so they have
+     no receipts to point at -- correct, not a path failure. None are in_review.
+     ALSO FIXED (same file, cosmetic but actively misleading): the `packet`
+     command counted sections with `packet.count('### ')`, which also matches
+     every '#### Code' sub-heading, reporting "616 exercise(s)" for a
+     77-exercise packet. Now counts section headings only.

@@ -9,11 +9,45 @@ its own copies of the env vars it needs instead of importing app.config.
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def repo_relative_str(path: Path) -> str:
+    """The storable form of a path inside the repo tree (D-109).
+
+    A validation report is written by the pipeline (often in a container that
+    bind-mounts the repo at /work) and read back by review tooling on the
+    host. An absolute path is therefore only valid on the machine that wrote
+    it: /work/pipeline/... resolves to nothing on the host, and the reader
+    silently degrades to "no validation report on disk". Store the path
+    relative to the repo root, POSIX-style, so the SAME string resolves in
+    both contexts.
+
+    A reports dir configured outside the repo has no relative form; keep it
+    absolute rather than inventing one.
+    """
+    try:
+        return path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def resolve_repo_path(stored: str) -> Path:
+    """Inverse of `repo_relative_str`: a stored pointer -> a real path here.
+
+    Absolute pointers (legacy rows written before D-109, or a reports dir
+    configured outside the repo) are honoured as-is. `is_absolute()` is asked
+    of both flavours because a POSIX-absolute string like /work/x is NOT
+    absolute to pathlib on Windows -- it is drive-relative, and joining it
+    onto the repo root would silently manufacture D:/work/x.
+    """
+    if PurePosixPath(stored).is_absolute() or PureWindowsPath(stored).is_absolute():
+        return Path(stored)
+    return REPO_ROOT / stored
 
 
 class GateModelConflictError(RuntimeError):
