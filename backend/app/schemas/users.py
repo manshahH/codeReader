@@ -1,4 +1,4 @@
-"""PATCH /me request shape (docs/05 section 3)."""
+"""PATCH /me request shape, GET /me/activity response shape (docs/05 section 3)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,17 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, field_validator
 
 _STRICT = ConfigDict(extra="forbid")
+
+
+class ActivityDay(BaseModel):
+    """One row of the contribution-grid data (D-94). `completed` distinguishes
+    a day the user opened the app but didn't finish from one they finished --
+    a date with no entry at all means they never opened the app that day."""
+
+    model_config = _STRICT
+
+    session_date: dt.date
+    completed: bool
 
 
 class UpdateMeRequest(BaseModel):
