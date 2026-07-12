@@ -16,10 +16,20 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.attempts.grading import DETERMINISTIC_TYPES as GRADED_DETERMINISTIC_TYPES
+from app.attempts.grading import build_reveal
+from app.attempts.rubric import build_summarize_reveal
 from app.core import grader_health
+from app.core.metrics import record_outcome
 from app.core.timezones import local_date_for, local_day_end_utc
 from app.models import Attempt, DailySession, Exercise, User, UserConceptState
-from app.schemas.session import SessionExercise, SessionExercisePayload, SessionResponse
+from app.schemas.session import (
+    SessionExercise,
+    SessionExercisePayload,
+    SessionResponse,
+    SessionReviewExercise,
+    SessionReviewResponse,
+)
 from app.sessions.sampler import (
     ALL_CANDIDATE_TYPES,
     DEFAULT_LEVEL_BAND,
@@ -118,7 +128,14 @@ async def _build_and_persist_session(
         # caching) [] would lock the user into an empty "completed" day for
         # up to 36h even after content is restored; returning without
         # persisting means the very next fetch retries the build.
+        # M8 beta readiness: this is exactly "empty-session occurrences",
+        # one of the things to watch during the beta week -- recorded here
+        # (the only place a build is attempted) via the same total/error
+        # counter shape as the other golden signals, surfaced as
+        # empty_session_rate on GET /admin/metrics.
+        await record_outcome(redis, "session_build", is_error=True)
         return []
+    await record_outcome(redis, "session_build", is_error=False)
 
     daily_session = DailySession(
         user_id=user.id,
@@ -229,6 +246,17 @@ def _serialize_payload(exercise: Exercise) -> SessionExercisePayload:
         fields["choices"] = [
             {"id": choice["id"], "text": choice["text"]} for choice in payload.get("choices", [])
         ]
+    elif exercise.type == "predict_the_fix":
+        # D-80: buggy code + the failing test and its output; choices are the
+        # candidate fixes (id + code). No answer-key field is ever copied --
+        # correct_choice_id lives only in exercise.grading.
+        fields["answer_mode"] = payload.get("answer_mode")
+        fields["question"] = payload.get("question")
+        fields["failing_test"] = payload.get("failing_test")
+        fields["test_output"] = payload.get("test_output")
+        fields["choices"] = [
+            {"id": choice["id"], "text": choice["text"]} for choice in payload.get("choices", [])
+        ]
     elif exercise.type == "summarize":
         fields["max_words"] = payload.get("max_words")
     return SessionExercisePayload(**fields)
@@ -268,6 +296,7 @@ async def get_today_session(db: AsyncSession, redis: Redis, user: User) -> dict:
                 exercise_id=exercise.id,
                 version=exercise.version,
                 type=exercise.type,
+                concepts=list(exercise.concepts),
                 language=exercise.language,
                 difficulty_band=difficulty_band(exercise.difficulty_authored, is_boss=slot.is_boss),
                 est_time_s=exercise.est_time_s,
@@ -284,3 +313,67 @@ async def get_today_session(db: AsyncSession, redis: Redis, user: User) -> dict:
         completed=completed,
         exercises=exercises,
     ).model_dump(mode="json")
+
+
+def _review_verdict(attempt: Attempt) -> str:
+    if attempt.status == "graded":
+        return "correct" if attempt.is_correct else "incorrect"
+    return attempt.status  # 'skipped' | 'grading_pending' | 'grading_failed'
+
+
+def _review_reveal(exercise: Exercise, attempt: Attempt):
+    # D-93d: reused verbatim from the same builders POST /attempts and
+    # GET /attempts/{id} call -- never reimplemented here. A skip gets a
+    # reveal too (it's terminal, same as graded); pending/failed do not.
+    if attempt.status not in ("graded", "skipped"):
+        return None
+    if exercise.type in GRADED_DETERMINISTIC_TYPES:
+        return build_reveal(exercise)
+    return build_summarize_reveal(exercise)
+
+
+async def get_today_review(db: AsyncSession, redis: Redis, user: User) -> dict:
+    """GET /session/today/review (D-93d): every exercise from today's
+    session the user has actually submitted an answer for, with their
+    answer, the verdict, and the full reveal -- the teaching moment for a
+    session already played. Exercises not yet attempted are omitted; there
+    is nothing to review about them yet.
+    """
+    today, slots = await get_today_slots(db, redis, user)
+    if not slots:
+        return SessionReviewResponse(session_date=today, exercises=[]).model_dump(mode="json")
+
+    exercise_ids = {s.exercise_id for s in slots}
+    exercise_rows = await db.execute(select(Exercise).where(Exercise.id.in_(exercise_ids)))
+    exercise_by_key = {(row.id, row.version): row for row in exercise_rows.scalars().all()}
+
+    attempt_rows = await db.execute(
+        select(Attempt).where(Attempt.user_id == user.id, Attempt.session_date == today),
+    )
+    attempt_by_exercise = {a.exercise_id: a for a in attempt_rows.scalars().all()}
+
+    exercises: list[SessionReviewExercise] = []
+    for slot in slots:
+        attempt = attempt_by_exercise.get(slot.exercise_id)
+        if attempt is None:
+            continue
+        exercise = exercise_by_key.get((slot.exercise_id, slot.version))
+        if exercise is None:
+            continue
+
+        exercises.append(
+            SessionReviewExercise(
+                slot=slot.slot,
+                exercise_id=exercise.id,
+                version=exercise.version,
+                type=exercise.type,
+                concepts=list(exercise.concepts),
+                code=exercise.payload.get("code", ""),
+                context_note=exercise.payload.get("context_note", ""),
+                answer=attempt.answer,
+                verdict=_review_verdict(attempt),
+                reveal=_review_reveal(exercise, attempt),
+            ),
+        )
+
+    return SessionReviewResponse(session_date=today, exercises=exercises).model_dump(mode="json")

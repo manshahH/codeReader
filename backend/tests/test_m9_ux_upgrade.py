@@ -578,3 +578,26 @@ async def test_accuracy_history_respects_explicit_from_to(
     )
     assert response.status_code == 200
     assert response.json() == []
+
+
+# --- GET /session/today: concepts -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_session_today_exercises_carry_concepts(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The dashboard's "what today's session covers" panel needs this --
+    SessionExercise used to omit concepts entirely (only SessionReviewExercise
+    had it), so a not-yet-attempted session had no honest way to preview its
+    own topics."""
+    user = await make_user(db_session)
+    await make_stb_exercise(db_session, concepts=["mutable-default-arg"])
+
+    response = await client.get("/v1/session/today", headers=auth_headers(user))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["exercises"]) >= 1
+    assert all("concepts" in exercise and exercise["concepts"] for exercise in body["exercises"])
