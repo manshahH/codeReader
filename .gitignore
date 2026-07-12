@@ -36,3 +36,9 @@ pipeline/validation_reports/
 data/events/
 backend/data/
 frontend/.env.local
+# Full pg_dump output (users, exercises, attempts). A stray `git add .` would
+# put real user data into git history permanently, where deleting it later does
+# not remove it. Never track this.
+.backups/
+# One-off frontend verification artifacts (screenshots + throwaway scripts).
+frontend/_final-*
