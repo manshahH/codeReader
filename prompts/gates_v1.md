@@ -10,14 +10,32 @@ Input: buggy_code ONLY. Not the fix, not the intended bug, not the options.
 ===========================================================================
 
 BEGIN PROMPT
-You are auditing a piece of Python {{python_version}} code for defects. List
-EVERY defect you can find: logic errors, edge-case failures, incorrect state
-handling, resource misuse. Do not list style issues, naming, missing type
-hints, or hypothetical improvements. A defect is something that produces wrong
-behavior for some realistic input or call pattern.
+You are auditing a piece of Python {{python_version}} code for defects.
 
-For each defect give: the line number(s), one-sentence description, and a
-concrete input or call sequence that exposes it.
+A DEFECT is a single, specific place where the code produces WRONG behavior --
+a wrong value, wrong state, or wrong outcome -- for some realistic input or call
+pattern. Report only genuine defects.
+
+The following are NOT defects. Do NOT report them, and do NOT let them inflate
+your count:
+- A behavior that is correct but surprising (e.g. `tail(n)` returning all items
+  when n exceeds the length is normal Python slicing, not a bug).
+- A missing feature or missing validation the code was never asked to have
+  (e.g. "does not raise on a malformed input", "allows duplicate entries",
+  "does not handle a None argument") -- unless a realistic caller actually
+  triggers wrong behavior.
+- A style preference, naming, missing type hint, or "could be more robust".
+- The SAME underlying defect described again from a different method or line.
+  A shared-state bug that shows up in three methods is ONE defect, not three;
+  report it once, at the line where the state is wrongly established.
+
+Report each real defect exactly once. Prefer reporting FEWER, higher-confidence
+defects over a long list of hypotheticals.
+
+The code below is shown with an explicit `N|` line-number prefix on every line.
+For each defect give: the line number(s) FROM THAT PREFIX (do not count lines
+yourself), a one-sentence description, and a concrete input or call sequence
+that exposes it.
 
 Output JSON only:
 {"defects": [{"lines": [<int>], "description": "<...>", "exposed_by": "<...>"}]}
@@ -29,8 +47,12 @@ If there are no defects: {"defects": []}
 END PROMPT
 
 Pipeline decision rule:
-- has_bug=true: PASS iff exactly one defect is reported AND its lines overlap
-  bug_lines. Two defects reported = reject (accidental second bug, the number
+- has_bug=true: PASS iff exactly one defect is reported AND its line(s) fall
+  within a small window of the diff-derived verified bug region (D-81 A2: the
+  match is a +/-2-line window, not a brittle exact intersection, so a defect
+  correctly identified but attributed to the def line or one line off still
+  passes; the code is line-numbered per D-81 A1 so the reported number is read,
+  not counted). Two defects reported = reject (accidental second bug, the number
   one dispute source). Zero reported = flag for human review (either the bug is
   excellent or the exercise is broken; a human decides which).
 - has_bug=false: PASS iff defects is empty. Any reported defect = reject or
@@ -49,6 +71,10 @@ Never the answer key.
 BEGIN PROMPT
 You are a strong senior Python developer taking a code-reading exercise. Solve
 it exactly as presented. Think carefully, then commit to one answer.
+
+The code inside the payload is shown with an explicit `N|` line-number prefix on
+every line. When you report a `line`, use the number FROM THAT PREFIX -- do not
+count lines yourself.
 
 Output JSON only:
 {
@@ -92,7 +118,9 @@ of what is wrong with it. For EACH candidate, classify it:
 - "partially_defensible": not the intended-sounding answer, but a careful
   reader could legitimately argue it is also true of this code
 
-Judge each option independently against the code. Output JSON only:
+Judge each option independently against the code. The code is shown with an
+explicit `N|` line-number prefix on every line; refer to those numbers if you
+cite a line. Output JSON only:
 {"verdicts": [{"id": "a", "classification": "<...>", "justification": "<one sentence>"}, ...]}
 
 <code>

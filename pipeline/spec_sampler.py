@@ -61,7 +61,10 @@ _DIFFICULTY_LINE_BUDGETS: tuple[tuple[range, tuple[int, int]], ...] = (
 )
 
 
-def _line_budget_for_difficulty(difficulty: int) -> tuple[int, int]:
+def line_budget_for_difficulty(difficulty: int) -> tuple[int, int]:
+    """Public (D-87): pipeline/ingest.py needs the same difficulty -> line-budget
+    mapping to build an ExerciseSpec for a hand-authored candidate, which has no
+    sampler run to derive it from."""
     for band, budget in _DIFFICULTY_LINE_BUDGETS:
         if difficulty in band:
             return budget
@@ -80,11 +83,31 @@ class ExerciseSpec:
     avoid_patterns: tuple[str, ...]
 
 
+def _choose_concept(
+    rng: random.Random,
+    concepts: tuple[Concept, ...],
+    exercise_type: str,
+    concept_coverage: dict[tuple[str, str], int] | None,
+) -> Concept:
+    """Uniform by default; coverage-driven when `concept_coverage` is given
+    (CLAUDE.md M8: prefer concepts with FEW OR ZERO live exercises so a
+    200-exercise corpus covers the curriculum instead of clustering on
+    whatever samples easiest). Weight is inverse to live count + 1, so a
+    zero-coverage concept is weighted equally to a just-barely-covered one
+    but always outweighs anything with existing coverage.
+    """
+    if not concept_coverage:
+        return rng.choice(concepts)
+    weights = [1.0 / (1 + concept_coverage.get((exercise_type, c.slug), 0)) for c in concepts]
+    return rng.choices(concepts, weights=weights, k=1)[0]
+
+
 def sample_spec(
     rng: random.Random,
     exercise_type: str,
     *,
     recent_bug_mechanisms: dict[str, list[str]] | None = None,
+    concept_coverage: dict[tuple[str, str], int] | None = None,
 ) -> ExerciseSpec:
     if exercise_type not in ("spot_the_bug", "trace"):
         raise ValueError(f"unknown exercise type: {exercise_type!r}")
@@ -92,11 +115,11 @@ def sample_spec(
     concepts = concepts_for_type(exercise_type)
     if not concepts:
         raise ValueError(f"no taxonomy concepts apply to type {exercise_type!r}")
-    concept: Concept = rng.choice(concepts)
+    concept: Concept = _choose_concept(rng, concepts, exercise_type, concept_coverage)
 
     difficulty = rng.randint(1, 10)
     domain = rng.choice(DOMAINS)
-    line_budget_min, line_budget_max = _line_budget_for_difficulty(difficulty)
+    line_budget_min, line_budget_max = line_budget_for_difficulty(difficulty)
 
     has_bug: bool | None = None
     if exercise_type == "spot_the_bug":

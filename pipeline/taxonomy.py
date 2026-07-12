@@ -30,6 +30,23 @@ class Concept:
     # narrow allowance (e.g. permitting open() for the resource-leak concept
     # specifically) re-enables it by clearing this field.
     requires_forbidden: str | None = None
+    # D-80: names why this concept's canonical spot_the_bug realization cannot
+    # yield a valid twin-snippet with a diff-derived answer key, so it is
+    # excluded from spot_the_bug (and, transitively, predict_the_fix -- which
+    # is derived from verified spot_the_bug candidates) while remaining valid
+    # for trace where it applies. Two structural failure modes, both proven
+    # 100%-deterministic in the reject reports: (a) OMISSION bugs, whose fix is
+    # a pure INSERTION (a missing @wraps, a missing idempotency guard) -- D-49
+    # correctly rejects the empty diff (nothing for the exercise to point at);
+    # (b) NO-DIVERGENCE bugs, where buggy and fixed produce identical output so
+    # no test can discriminate them (a conceptual race with no real threads, an
+    # N+1 whose only difference is a side-effect count). This is the same class
+    # as D-54 (the gate is right, the concept/type pairing is wrong); per-type,
+    # not global, precisely because these often remain fine for trace. Flagged,
+    # not deleted: get_concept still resolves the slug for already-published
+    # exercises, and a future STB realization that dodges the failure mode
+    # re-enables it by clearing this field.
+    stb_unsamplable: str | None = None
 
 
 CONCEPTS: tuple[Concept, ...] = (
@@ -67,6 +84,12 @@ CONCEPTS: tuple[Concept, ...] = (
         "Catching a broader exception type than intended",
         "error-handling",
         _BOTH,
+        stb_unsamplable=(
+            "the canonical fix narrows an over-broad except by ADDING a "
+            "specific handler / re-raise (a pure insertion, D-49 rejects the "
+            "empty diff); confirmed 100%-deterministic sandbox reject. Still "
+            "valid for trace (what does the broad catch print?)"
+        ),
     ),
     Concept(
         "resource-leak-unclosed-file",
@@ -131,6 +154,11 @@ CONCEPTS: tuple[Concept, ...] = (
         "Decorator loses function metadata/behavior",
         "functions",
         _STB_ONLY,
+        stb_unsamplable=(
+            "omission bug: the fix INSERTS @functools.wraps(func) on the "
+            "wrapper -- a pure insertion, so the diff-derived key is empty and "
+            "D-49 rejects it. Confirmed 3/3 deterministic reject"
+        ),
     ),
     Concept(
         "recursion-missing-base-case",
@@ -156,7 +184,19 @@ CONCEPTS: tuple[Concept, ...] = (
         "control-flow",
         _TRACE_ONLY,
     ),
-    Concept("n-plus-one-pattern", "N+1 query pattern (conceptual)", "performance", _STB_ONLY),
+    Concept(
+        "n-plus-one-pattern",
+        "N+1 query pattern (conceptual)",
+        "performance",
+        _STB_ONLY,
+        stb_unsamplable=(
+            "no-divergence bug: batching an N+1 changes only a side-effect "
+            "count (queries issued), not the returned value, so buggy and "
+            "fixed produce identical output and no twin-snippet test can "
+            "discriminate them; the fix is also a whole-loop restructure, not "
+            "a minimal diff"
+        ),
+    ),
     Concept(
         "retry-without-backoff",
         "Retry logic without backoff/limit (conceptual)",
@@ -172,6 +212,11 @@ CONCEPTS: tuple[Concept, ...] = (
         "Missing idempotency guard (conceptual)",
         "reliability",
         _STB_ONLY,
+        stb_unsamplable=(
+            "omission bug: the fix INSERTS a guard clause (if key in seen: "
+            "return) -- a pure insertion with an empty diff, rejected by D-49. "
+            "Confirmed 3/3 deterministic reject"
+        ),
     ),
     Concept(
         "injection-string-concat",
@@ -184,6 +229,12 @@ CONCEPTS: tuple[Concept, ...] = (
         "Shared-state race condition (conceptual, no real threads)",
         "concurrency",
         _STB_ONLY,
+        stb_unsamplable=(
+            "no-divergence AND omission: with threading forbidden the race "
+            "never triggers in deterministic single-threaded execution (buggy "
+            "and fixed print the same thing), and the conceptual fix is an "
+            "INSERTED lock/guard; no discriminating twin-snippet exists"
+        ),
     ),
 )
 
@@ -192,12 +243,24 @@ if len({c.slug for c in CONCEPTS}) != len(CONCEPTS):
 
 
 def concepts_for_type(exercise_type: str) -> tuple[Concept, ...]:
-    """Samplable concepts only: a concept whose natural vehicle is a forbidden
-    construct (requires_forbidden, D-54) is excluded, so the spec sampler
-    never burns a generate+gate round on a spec that cannot yield.
+    """Samplable concepts only, so the spec sampler never burns a generate+gate
+    round on a spec that cannot yield. Two exclusions:
+
+    * requires_forbidden (D-54): the concept's natural vehicle is a forbidden
+      construct, for every type it applies to.
+    * stb_unsamplable (D-80): the concept's canonical spot_the_bug bug cannot
+      produce a discriminating twin-snippet with a diff-derived key (an
+      omission bug or a no-output-divergence bug). This one is spot_the_bug-
+      specific -- the concept usually stays valid for trace -- and covers
+      predict_the_fix transitively, since predict_the_fix candidates are
+      derived from verified spot_the_bug candidates, never sampled directly.
     """
     return tuple(
-        c for c in CONCEPTS if exercise_type in c.applies_to and c.requires_forbidden is None
+        c
+        for c in CONCEPTS
+        if exercise_type in c.applies_to
+        and c.requires_forbidden is None
+        and not (exercise_type == "spot_the_bug" and c.stb_unsamplable is not None)
     )
 
 

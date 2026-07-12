@@ -44,6 +44,9 @@ class SandboxGateResult:
     # spot_the_bug only: the generator's claim disagreed with the diff. A
     # template-quality metric (D-11 style), never a reject by itself.
     bug_lines_claim_mismatch: bool = False
+    # predict_the_fix only (D-80): the buggy_code+test failure output, captured
+    # so the exercise payload can show the user the failing test's real output.
+    captured_test_output: str | None = None
 
     def as_report(self) -> dict:
         return {
@@ -52,6 +55,7 @@ class SandboxGateResult:
             "captured_stdout": self.captured_stdout,
             "verified_bug_lines": self.verified_bug_lines,
             "bug_lines_claim_mismatch": self.bug_lines_claim_mismatch,
+            "captured_test_output": self.captured_test_output,
         }
 
 
@@ -183,12 +187,121 @@ def validate_spot_the_bug(candidate: STBCandidate, *, has_bug: bool) -> SandboxG
         detail = f"diff says {changed}, candidate says {candidate.bug_lines}"
     checks.append(GateCheck("fix_diff_real_and_minimal", ok5, detail))
 
+    # 6. STB claim-check (D-82, B4): the D-11 pattern trace has always had, now
+    #    for spot_the_bug. A v4 candidate (has_bug) carries the model's CLAIMED
+    #    buggy/fixed results on its divergence input; its test is required to
+    #    print(repr(result)) before asserting, so the buggy+test and fixed+test
+    #    runs above already captured the two ACTUAL results on stdout -- zero
+    #    extra runs. If the model mis-predicted its own code's behavior, the
+    #    claim disagrees with execution and the candidate is rejected (an
+    #    unreliable exercise), exactly as trace's captured_output_matches_claim
+    #    does. Skipped entirely for v2/v3 candidates and has_bug=false (no
+    #    divergence fields), so it can never false-reject older content.
+    if has_bug and candidate.buggy_result_on_divergence_input is not None:
+        buggy_actual = _normalize_stdout(run1a.stdout)
+        fixed_actual = _normalize_stdout(run2a.stdout)
+        buggy_claim = candidate.buggy_result_on_divergence_input.strip()
+        fixed_claim = candidate.fixed_result_on_divergence_input.strip()
+        ok6 = buggy_actual == buggy_claim and fixed_actual == fixed_claim
+        checks.append(
+            GateCheck(
+                "stb_claim_matches_execution",
+                ok6,
+                f"buggy: claimed {buggy_claim!r} executed {buggy_actual!r}; "
+                f"fixed: claimed {fixed_claim!r} executed {fixed_actual!r}",
+            ),
+        )
+
     accepted = all(c.passed for c in checks)
     return SandboxGateResult(
         accepted=accepted,
         checks=checks,
         verified_bug_lines=verified_bug_lines if accepted else None,
         bug_lines_claim_mismatch=claim_mismatch,
+    )
+
+
+def validate_predict_the_fix(
+    *,
+    buggy_code: str,
+    fixed_code: str,
+    test_code: str,
+    wrong_fixes: list[str],
+) -> SandboxGateResult:
+    """predict_the_fix gate (D-80). The correct choice is the upstream STB's
+    execution-verified fixed_code; this proves, by execution, that (a) that fix
+    really does pass the test, (b) the buggy code really does fail it (its
+    output becomes the payload's failing-test output), and (c) every wrong-fix
+    distractor STILL FAILS the test -- the new invariant. A distractor that
+    PASSES is a second correct answer and rejects the candidate; a distractor
+    that fails with anything other than AssertionError is broken code, not a
+    plausible fix, and also rejects. Distractors must be textually distinct
+    from buggy_code, fixed_code, and each other, so no choice is a duplicate or
+    the unchanged original.
+    """
+    checks: list[GateCheck] = []
+
+    # 1. Correct choice: fixed_code + test PASSES (re-affirmed here so the gate
+    #    is self-contained; the STB gate already proved it upstream).
+    fixed_run_a = run_python(_concat_snippets(fixed_code, test_code))
+    fixed_run_b = run_python(_concat_snippets(fixed_code, test_code))
+    ok_fixed = fixed_run_a.exit_code == 0
+    checks.append(GateCheck("correct_fix_passes_test", ok_fixed, fixed_run_a.stderr[-500:]))
+
+    # 2. buggy_code + test FAILS with AssertionError; capture the failure output
+    #    for the payload's "failing test output".
+    buggy_run_a = run_python(_concat_snippets(buggy_code, test_code))
+    buggy_run_b = run_python(_concat_snippets(buggy_code, test_code))
+    ok_buggy = buggy_run_a.exit_code != 0 and "AssertionError" in buggy_run_a.stderr
+    checks.append(GateCheck("buggy_fails_test", ok_buggy, buggy_run_a.stderr[-500:]))
+    captured_test_output = buggy_run_a.stderr if ok_buggy else None
+
+    det = (
+        (fixed_run_a.exit_code, fixed_run_a.stdout, fixed_run_a.stderr)
+        == (fixed_run_b.exit_code, fixed_run_b.stdout, fixed_run_b.stderr)
+        and (buggy_run_a.exit_code, buggy_run_a.stdout, buggy_run_a.stderr)
+        == (buggy_run_b.exit_code, buggy_run_b.stdout, buggy_run_b.stderr)
+    )
+
+    # 3. Each wrong fix must STILL FAIL the test (AssertionError), deterministically.
+    for i, wrong in enumerate(wrong_fixes):
+        run_a = run_python(_concat_snippets(wrong, test_code))
+        run_b = run_python(_concat_snippets(wrong, test_code))
+        still_fails = run_a.exit_code != 0 and "AssertionError" in run_a.stderr
+        checks.append(
+            GateCheck(
+                f"distractor_{i}_still_fails_test",
+                still_fails,
+                # A passing distractor (exit 0) is the failure this gate exists
+                # to catch: it is not wrong, so it cannot be a distractor.
+                f"exit={run_a.exit_code} {run_a.stderr[-300:]}",
+            ),
+        )
+        det = det and (run_a.exit_code, run_a.stdout, run_a.stderr) == (
+            run_b.exit_code,
+            run_b.stdout,
+            run_b.stderr,
+        )
+
+    checks.append(GateCheck("deterministic_double_run", det))
+
+    # 4. Distractors distinct from each other, from buggy_code, and from fixed_code.
+    normalized = [w.strip() for w in wrong_fixes]
+    reference = {buggy_code.strip(), fixed_code.strip()}
+    distinct = len(set(normalized)) == len(normalized) and not (set(normalized) & reference)
+    checks.append(
+        GateCheck(
+            "distractors_distinct",
+            distinct,
+            "each wrong fix must differ from buggy_code, fixed_code, and the others",
+        ),
+    )
+
+    accepted = all(c.passed for c in checks)
+    return SandboxGateResult(
+        accepted=accepted,
+        checks=checks,
+        captured_test_output=captured_test_output if accepted else None,
     )
 
 

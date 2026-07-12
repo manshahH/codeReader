@@ -1,0 +1,926 @@
+[
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "list-mutation-during-iteration",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "spreadsheet ingestion"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def drop_blank_rows(rows):\n    kept = []\n    for row in rows:\n        if not row:\n            rows.remove(row)\n            continue\n        kept.append(row)\n    return kept\n\n\ndef label_rows(rows):\n    labels = []\n    for index, row in enumerate(rows):\n        labels.append(\"row-\" + str(index) + \"-\" + str(len(row)))\n    return labels\n\n\ndef report(rows):\n    kept = drop_blank_rows(rows)\n    return {\n        \"kept\": kept,\n        \"labels\": label_rows(kept),\n    }\n",
+      "fixed_code": "def drop_blank_rows(rows):\n    kept = []\n    for row in rows:\n        if not row:\n            continue\n        kept.append(row)\n    return kept\n\n\ndef label_rows(rows):\n    labels = []\n    for index, row in enumerate(rows):\n        labels.append(\"row-\" + str(index) + \"-\" + str(len(row)))\n    return labels\n\n\ndef report(rows):\n    kept = drop_blank_rows(rows)\n    return {\n        \"kept\": kept,\n        \"labels\": label_rows(kept),\n    }\n",
+      "bug_lines": [
+        5
+      ],
+      "test_code": "rows = [[1], [], [2], [3]]\nresult = report(rows)[\"kept\"]\nprint(repr(result))\nassert result == [[1], [2], [3]], \"no populated row should be lost\"\n",
+      "context_note": "Cleans a batch of parsed spreadsheet rows before they are rendered.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The loop deletes from the very list it is walking, so everything after the deletion shifts down one place and the element that lands in the vacated index is never seen"
+        },
+        {
+          "id": "b",
+          "text": "remove() deletes every matching element, not just the first one"
+        },
+        {
+          "id": "c",
+          "text": "continue skips the rest of the function, so kept is never appended to again"
+        },
+        {
+          "id": "d",
+          "text": "An empty list is truthy, so the guard inside the loop never runs"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "The blank rows are already excluded by the continue, so nothing needs deleting. The deletion is pure damage: it shortens the list the for-loop is walking, every later element slides down one index, and the loop's counter marches straight past whatever landed in the gap.",
+        "principle": "Never delete from a sequence you are iterating. If you are building a new list anyway, you do not need to.",
+        "line_notes": [
+          {
+            "line": 5,
+            "note": "This shortens the list the loop is walking, and the loop counter does not notice."
+          }
+        ]
+      },
+      "concepts": [
+        "list-mutation-during-iteration"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A populated row sits immediately after a blank one.",
+      "divergence_input": "rows = [[1], [], [2], [3]] passed to report(), reading the kept entry.",
+      "buggy_result_on_divergence_input": "[[1], [3]]",
+      "fixed_result_on_divergence_input": "[[1], [2], [3]]",
+      "divergence_justification": "Deleting the blank row at index 1 slides [2] down into index 1, which the loop has already passed, so [2] is never appended to kept and vanishes from the output."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "string-vs-bytes-confusion",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "binary record packing"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "FIELD_BYTES = 10\n\n\ndef pack_field(text, limit):\n    encoded = text.encode(\"utf-8\")\n    if len(text) > limit:\n        return None\n    return encoded\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(pack_field(label, FIELD_BYTES))\n    return packed\n",
+      "fixed_code": "FIELD_BYTES = 10\n\n\ndef pack_field(text, limit):\n    encoded = text.encode(\"utf-8\")\n    if len(encoded) > limit:\n        return None\n    return encoded\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(pack_field(label, FIELD_BYTES))\n    return packed\n",
+      "bug_lines": [
+        6
+      ],
+      "test_code": "result = pack([{\"label\": \"caf\\u00e9-latte\"}])[0]\nprint(repr(result))\nassert result is None, \"the label overruns a ten-byte field\"\n",
+      "context_note": "Prepares labels for a binary record format that budgets ten bytes per field.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The length is taken from the unencoded string, so a character that costs more than one byte in UTF-8 slips past a budget that is measured in bytes"
+        },
+        {
+          "id": "b",
+          "text": "encode() rewrites the string in place, so len() already sees the encoded form"
+        },
+        {
+          "id": "c",
+          "text": "UTF-8 spends exactly two bytes on every character, so the count is always double what len() reports"
+        },
+        {
+          "id": "d",
+          "text": "Returning None from pack_field is what breaks the caller, which cannot handle a missing entry"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "The line above produces the bytes that will actually be written, but the guard measures the string those bytes came from. A str counts characters; the field counts bytes. UTF-8 spends one byte on ASCII and two or more on anything else, so an over-long label sails through the check and is silently written past the end of its field.",
+        "principle": "Measure the thing you are about to store, in the unit the destination counts.",
+        "line_notes": [
+          {
+            "line": 6,
+            "note": "The encoded bytes are sitting right above; this measures the string instead."
+          }
+        ]
+      },
+      "concepts": [
+        "string-vs-bytes-confusion"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A label whose character count fits the budget but whose UTF-8 byte count does not.",
+      "divergence_input": "A single record whose label is a ten-character string containing one accented character, eleven bytes once encoded.",
+      "buggy_result_on_divergence_input": "b'caf\\xc3\\xa9-latte'",
+      "fixed_result_on_divergence_input": "None",
+      "divergence_justification": "The label is ten characters, so the character count clears a ten-unit budget and the bytes are handed back for writing. It is eleven bytes encoded, so the corrected guard rejects it."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "dict-mutation-during-iteration",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "log frequency analysis"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def tally(words):\n    counts = {}\n    for word in words:\n        counts[word] = counts.get(word, 0) + 1\n    return counts\n\n\ndef prune(counts, floor):\n    kept = {}\n    for key in counts:\n        if counts[key] < floor:\n            del counts[key]\n            continue\n        kept[key] = counts[key]\n    return kept\n\n\ndef frequent(words, floor):\n    return prune(tally(words), floor)\n",
+      "fixed_code": "def tally(words):\n    counts = {}\n    for word in words:\n        counts[word] = counts.get(word, 0) + 1\n    return counts\n\n\ndef prune(counts, floor):\n    kept = {}\n    for key in counts:\n        if counts[key] < floor:\n            continue\n        kept[key] = counts[key]\n    return kept\n\n\ndef frequent(words, floor):\n    return prune(tally(words), floor)\n",
+      "bug_lines": [
+        12
+      ],
+      "test_code": "try:\n    result = frequent([\"a\", \"a\", \"b\", \"c\", \"c\", \"c\"], 2)\nexcept RuntimeError:\n    result = \"iteration_failed\"\nprint(repr(result))\nassert result == {\"a\": 2, \"c\": 3}, \"rare words should be pruned without disturbing the walk\"\n",
+      "context_note": "Keeps only the words that appear often enough to be worth reporting.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The dictionary is resized while it is being walked, and the iterator refuses to continue over a container that changed size underneath it"
+        },
+        {
+          "id": "b",
+          "text": "dict.get(word, 0) returns None for a word that has not been seen, so the addition raises TypeError"
+        },
+        {
+          "id": "c",
+          "text": "Iterating a dictionary yields its values, so counts[key] is a lookup by count rather than by word"
+        },
+        {
+          "id": "d",
+          "text": "continue exits the loop entirely, so only the first word is ever counted"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "The rare entries are already excluded by the continue, so the deletion achieves nothing except to change the size of the dictionary mid-walk. CPython detects that and raises RuntimeError on the next step, so the whole call dies rather than returning a slightly wrong answer.",
+        "principle": "Never add to or delete from a dictionary you are iterating. Walk a snapshot of the keys, or build a new dictionary.",
+        "line_notes": [
+          {
+            "line": 12,
+            "note": "This resizes the dictionary that the loop above is walking."
+          }
+        ]
+      },
+      "concepts": [
+        "dict-mutation-during-iteration"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "Any word whose count falls below the floor while other words remain to be visited.",
+      "divergence_input": "frequent([\"a\", \"a\", \"b\", \"c\", \"c\", \"c\"], 2) - the word \"b\" falls below the floor.",
+      "buggy_result_on_divergence_input": "'iteration_failed'",
+      "fixed_result_on_divergence_input": "{'a': 2, 'c': 3}",
+      "divergence_justification": "Deleting the entry for b changes the size of counts, so the next step of the walk raises RuntimeError and the caller never receives a result."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "string-formatting-mismatch",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python",
+      "domain": "scoreboard rendering"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def render(row):\n    return \"%s scored %d\" % (row[\"name\"], row[\"score\"])\n\n\ndef render_all(rows):\n    lines = []\n    for row in rows:\n        lines.append(render(row))\n    return lines\n\n\ndef scoreboard(rows):\n    return {\n        \"lines\": render_all(rows),\n        \"entries\": len(rows),\n    }\n",
+      "fixed_code": "def render(row):\n    return \"%s scored %.1f\" % (row[\"name\"], row[\"score\"])\n\n\ndef render_all(rows):\n    lines = []\n    for row in rows:\n        lines.append(render(row))\n    return lines\n\n\ndef scoreboard(rows):\n    return {\n        \"lines\": render_all(rows),\n        \"entries\": len(rows),\n    }\n",
+      "bug_lines": [
+        2
+      ],
+      "test_code": "result = scoreboard([{\"name\": \"ada\", \"score\": 91.5}])[\"lines\"]\nprint(repr(result))\nassert result == [\"ada scored 91.5\"], \"a half point should survive rendering\"\n",
+      "context_note": "Renders a leaderboard line for each competitor. Scores carry one decimal place.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The integer conversion truncates the fractional part of a score that is not whole"
+        },
+        {
+          "id": "b",
+          "text": "The percent operator needs a list, not a tuple, so the arguments are never substituted"
+        },
+        {
+          "id": "c",
+          "text": "A dictionary lookup inside a format expression is evaluated lazily, so both fields hold the last row"
+        },
+        {
+          "id": "d",
+          "text": "len(rows) counts characters rather than entries, so the entry count is inflated"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "The %d conversion asks for an integer. Handed a float it does not complain; it quietly truncates towards zero. Every half point in the competition disappears from the board and nothing anywhere reports an error.",
+        "principle": "A conversion specifier is a coercion, not an assertion. Match it to the type you actually hold.",
+        "line_notes": [
+          {
+            "line": 2,
+            "note": "This conversion takes the whole part of the score and discards the rest."
+          }
+        ]
+      },
+      "concepts": [
+        "string-formatting-mismatch"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "Any score that is not a whole number.",
+      "divergence_input": "A single row scoring 91.5.",
+      "buggy_result_on_divergence_input": "['ada scored 91']",
+      "fixed_result_on_divergence_input": "['ada scored 91.5']",
+      "divergence_justification": "91.5 rendered through %d becomes 91. The board silently understates every fractional score."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "injection-string-concat",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "report query builder"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def quote(value):\n    return value.replace(\"'\", \"''\")\n\n\ndef build_query(table, name):\n    return \"SELECT * FROM \" + table + \" WHERE name = '\" + name + \"'\"\n\n\ndef build_all(table, names):\n    queries = []\n    for name in names:\n        queries.append(build_query(table, name))\n    return queries\n\n\ndef describe(queries):\n    return {\"queries\": queries, \"count\": len(queries)}\n",
+      "fixed_code": "def quote(value):\n    return value.replace(\"'\", \"''\")\n\n\ndef build_query(table, name):\n    return \"SELECT * FROM \" + table + \" WHERE name = '\" + quote(name) + \"'\"\n\n\ndef build_all(table, names):\n    queries = []\n    for name in names:\n        queries.append(build_query(table, name))\n    return queries\n\n\ndef describe(queries):\n    return {\"queries\": queries, \"count\": len(queries)}\n",
+      "bug_lines": [
+        6
+      ],
+      "test_code": "result = describe(build_all(\"users\", [\"O'Brien\"]))[\"queries\"][0]\nprint(repr(result))\nassert result == \"SELECT * FROM users WHERE name = 'O''Brien'\", \"the caller value must be quoted\"\n",
+      "context_note": "Builds the read-only report queries that a downstream tool executes.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The caller value is pasted straight between the quotes, so a value containing a quote character closes the literal early and the rest is read as query text"
+        },
+        {
+          "id": "b",
+          "text": "String concatenation with the plus operator raises TypeError when either side is not a string"
+        },
+        {
+          "id": "c",
+          "text": "The table name is interpolated the same way, and that is the only untrusted part of the query"
+        },
+        {
+          "id": "d",
+          "text": "replace() substitutes only the first occurrence, so quote() would not help even if it were called"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "quote() exists and is never called. The caller's value is concatenated straight into the literal, so a single quote inside it terminates the literal and everything after it is parsed as part of the statement. The helper right above shows what should have happened to it.",
+        "principle": "Never concatenate an untrusted value into a query. Bind it, or at minimum escape it.",
+        "line_notes": [
+          {
+            "line": 6,
+            "note": "The caller value goes straight between the quote marks, unescaped."
+          }
+        ]
+      },
+      "concepts": [
+        "injection-string-concat"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A value containing a single quote.",
+      "divergence_input": "A name of O'Brien, which contains one apostrophe.",
+      "buggy_result_on_divergence_input": "\"SELECT * FROM users WHERE name = 'O'Brien'\"",
+      "fixed_result_on_divergence_input": "\"SELECT * FROM users WHERE name = 'O''Brien'\"",
+      "divergence_justification": "The apostrophe in the name closes the string literal, so the query the downstream tool receives is not the query that was intended."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "memoization-cache-staleness",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "pricing service"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "_CACHE = {}\n\n\ndef cache_key(item, multiplier):\n    return item[\"sku\"]\n\n\ndef price(item, multiplier):\n    key = cache_key(item, multiplier)\n    if key in _CACHE:\n        return _CACHE[key]\n    value = item[\"base\"] * multiplier\n    _CACHE[key] = value\n    return value\n\n\ndef quote(item, multipliers):\n    return [price(item, multiplier) for multiplier in multipliers]\n",
+      "fixed_code": "_CACHE = {}\n\n\ndef cache_key(item, multiplier):\n    return item[\"sku\"] + \":\" + str(multiplier)\n\n\ndef price(item, multiplier):\n    key = cache_key(item, multiplier)\n    if key in _CACHE:\n        return _CACHE[key]\n    value = item[\"base\"] * multiplier\n    _CACHE[key] = value\n    return value\n\n\ndef quote(item, multipliers):\n    return [price(item, multiplier) for multiplier in multipliers]\n",
+      "bug_lines": [
+        5
+      ],
+      "test_code": "result = quote({\"sku\": \"A1\", \"base\": 10}, [1, 2])\nprint(repr(result))\nassert result == [10, 20], \"a different multiplier should be priced, not served from cache\"\n",
+      "context_note": "Prices an item at several customer tiers. The cache exists because base lookups are expensive.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The cache key ignores the multiplier, so a result computed for one tier is served for every other tier"
+        },
+        {
+          "id": "b",
+          "text": "The cache is a module-level dictionary, and module-level state cannot persist between calls"
+        },
+        {
+          "id": "c",
+          "text": "A list comprehension evaluates lazily, so every element ends up holding the last multiplier"
+        },
+        {
+          "id": "d",
+          "text": "Membership testing with in scans the values of a dictionary, not its keys"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "A memo key must capture every input the result depends on. This one captures the item and forgets the multiplier, so the first tier priced wins forever and every subsequent tier is answered with a value computed for someone else.",
+        "principle": "The cache key must include every argument the cached value depends on. If it does not, the cache is a source of wrong answers.",
+        "line_notes": [
+          {
+            "line": 5,
+            "note": "The result depends on the multiplier, and the key does not mention it."
+          }
+        ]
+      },
+      "concepts": [
+        "memoization-cache-staleness"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "The same item is priced at two different multipliers.",
+      "divergence_input": "quote({\"sku\": \"A1\", \"base\": 10}, [1, 2]) - the same item priced at two tiers.",
+      "buggy_result_on_divergence_input": "[10, 10]",
+      "fixed_result_on_divergence_input": "[10, 20]",
+      "divergence_justification": "The first tier is priced and stored under a key that mentions only the item. The second tier finds that key already present and is served the first tier's price."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "encoding-decoding-mismatch",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "message transport"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def to_bytes(text):\n    return text.encode(\"utf-8\")\n\n\ndef to_text(data):\n    return data.decode(\"latin-1\")\n\n\ndef roundtrip(text):\n    return to_text(to_bytes(text))\n\n\ndef audit(messages):\n    lengths = []\n    for message in messages:\n        lengths.append(len(roundtrip(message)))\n    return lengths\n",
+      "fixed_code": "def to_bytes(text):\n    return text.encode(\"utf-8\")\n\n\ndef to_text(data):\n    return data.decode(\"utf-8\")\n\n\ndef roundtrip(text):\n    return to_text(to_bytes(text))\n\n\ndef audit(messages):\n    lengths = []\n    for message in messages:\n        lengths.append(len(roundtrip(message)))\n    return lengths\n",
+      "bug_lines": [
+        6
+      ],
+      "test_code": "result = audit([\"caf\\u00e9\"])\nprint(repr(result))\nassert result == [4], \"a round trip should hand back what it was given\"\n",
+      "context_note": "Carries text over a byte channel and reads it back on the far side.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The bytes are written in one encoding and read back in another, so a multi-byte character comes back as the several separate characters its bytes happen to spell"
+        },
+        {
+          "id": "b",
+          "text": "encode() and decode() are inverses regardless of the codec named, so the codec argument has no effect"
+        },
+        {
+          "id": "c",
+          "text": "len() on a string returns its byte count, so the two sides can never agree"
+        },
+        {
+          "id": "d",
+          "text": "A list comprehension cannot call a function that raises, so audit() silently returns an empty list"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "The writer spends two bytes on the accented character; the reader is told each byte is a whole character in a single-byte codec. Nothing raises. The text simply comes back one character longer than it went in, and the corruption travels quietly downstream.",
+        "principle": "The codec that reads must be the codec that wrote. A mismatch is silent, not fatal.",
+        "line_notes": [
+          {
+            "line": 6,
+            "note": "This reads back in a different codec from the one that wrote."
+          }
+        ]
+      },
+      "concepts": [
+        "encoding-decoding-mismatch"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "Any character outside ASCII.",
+      "divergence_input": "A single four-character message containing one accented character, five bytes in UTF-8.",
+      "buggy_result_on_divergence_input": "[5]",
+      "fixed_result_on_divergence_input": "[4]",
+      "divergence_justification": "The accented character is two bytes in UTF-8. Read back as latin-1 those two bytes become two separate characters, so a four-character message returns as five."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "timezone-naive-vs-aware",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "scheduling"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "import datetime\n\nUTC = datetime.timezone.utc\n\n\ndef to_utc(stamp):\n    return stamp.replace(tzinfo=UTC)\n\n\ndef minutes_between(start, end):\n    return int((end - start).total_seconds() // 60)\n\n\ndef window(start_local, end_utc):\n    return minutes_between(to_utc(start_local), end_utc)\n",
+      "fixed_code": "import datetime\n\nUTC = datetime.timezone.utc\n\n\ndef to_utc(stamp):\n    return stamp.astimezone(UTC)\n\n\ndef minutes_between(start, end):\n    return int((end - start).total_seconds() // 60)\n\n\ndef window(start_local, end_utc):\n    return minutes_between(to_utc(start_local), end_utc)\n",
+      "bug_lines": [
+        7
+      ],
+      "test_code": "import datetime\n\neast = datetime.timezone(datetime.timedelta(hours=5))\nstart = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=east)\nend = datetime.datetime(2026, 1, 1, 8, 0, tzinfo=UTC)\nresult = window(start, end)\nprint(repr(result))\nassert result == 60, \"noon in a plus-five zone is 07:00 UTC, one hour before the end\"\n",
+      "context_note": "Measures how long a job has left, given a start in the operator's zone and a deadline in UTC.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "Replacing the zone relabels the wall-clock reading as UTC instead of converting it, so the instant silently moves by the size of the offset"
+        },
+        {
+          "id": "b",
+          "text": "Two aware datetimes cannot be subtracted, so the subtraction raises TypeError"
+        },
+        {
+          "id": "c",
+          "text": "total_seconds() returns whole minutes already, so the floor division divides by sixty twice"
+        },
+        {
+          "id": "d",
+          "text": "datetime.timezone.utc is a naive zone, so every value built from it is naive"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "replace() edits the label on the reading and leaves the digits alone: noon in a plus-five zone becomes noon UTC, an instant five hours earlier than the one the operator meant. astimezone() moves the digits so the instant is preserved.",
+        "principle": "replace(tzinfo=...) relabels. astimezone() converts. Only one of them preserves the instant.",
+        "line_notes": [
+          {
+            "line": 7,
+            "note": "This changes the label without moving the reading, so the instant shifts by the offset."
+          }
+        ]
+      },
+      "concepts": [
+        "timezone-naive-vs-aware"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A start whose zone offset is not zero.",
+      "divergence_input": "A start of noon in a UTC-plus-five zone and a deadline of 08:00 UTC.",
+      "buggy_result_on_divergence_input": "-240",
+      "fixed_result_on_divergence_input": "60",
+      "divergence_justification": "The true start is 07:00 UTC, one hour before the deadline. Relabelling makes it 12:00 UTC, four hours after, so the remaining window is reported as negative."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "integer-division-truncation",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python",
+      "domain": "latency reporting"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def mean(values):\n    return sum(values) // len(values)\n\n\ndef spread(values):\n    return max(values) - min(values)\n\n\ndef latency_report(values):\n    if not values:\n        return None\n    return {\n        \"mean\": mean(values),\n        \"spread\": spread(values),\n        \"samples\": len(values),\n    }\n",
+      "fixed_code": "def mean(values):\n    return sum(values) / len(values)\n\n\ndef spread(values):\n    return max(values) - min(values)\n\n\ndef latency_report(values):\n    if not values:\n        return None\n    return {\n        \"mean\": mean(values),\n        \"spread\": spread(values),\n        \"samples\": len(values),\n    }\n",
+      "bug_lines": [
+        2
+      ],
+      "test_code": "result = latency_report([10, 11])[\"mean\"]\nprint(repr(result))\nassert result == 10.5, \"the mean of ten and eleven is ten and a half\"\n",
+      "context_note": "Summarises a window of request latencies in milliseconds.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The floor operator throws away the fractional part, so a mean that is not whole is reported low"
+        },
+        {
+          "id": "b",
+          "text": "sum() on a list of integers returns a float, so the division is already exact"
+        },
+        {
+          "id": "c",
+          "text": "max() and min() are evaluated in the wrong order, so the spread comes back negative"
+        },
+        {
+          "id": "d",
+          "text": "Dividing an integer by an integer in Python always truncates, whichever operator is used"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "Two slashes is floor division: it discards the remainder and returns the whole part. Averaging ten and eleven gives ten and a half, and the report says ten. Every mean in the system is biased downward and nothing announces it.",
+        "principle": "Two slashes floors. One slash divides. Choose the one that matches the quantity you are reporting.",
+        "line_notes": [
+          {
+            "line": 2,
+            "note": "This discards the remainder rather than keeping it."
+          }
+        ]
+      },
+      "concepts": [
+        "integer-division-truncation"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "Any window whose mean is not a whole number.",
+      "divergence_input": "A window of two samples, ten and eleven milliseconds.",
+      "buggy_result_on_divergence_input": "10",
+      "fixed_result_on_divergence_input": "10.5",
+      "divergence_justification": "The true mean is 10.5. Floor division reports 10, understating every non-whole average in the report."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "closure-late-binding",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "pipeline construction"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def make_steps(offsets):\n    steps = []\n    for offset in offsets:\n        steps.append(lambda value: value + offset)\n    return steps\n\n\ndef apply_steps(steps, seed):\n    results = []\n    for step in steps:\n        results.append(step(seed))\n    return results\n\n\ndef run_pipeline(offsets, seed):\n    return apply_steps(make_steps(offsets), seed)\n",
+      "fixed_code": "def make_steps(offsets):\n    steps = []\n    for offset in offsets:\n        steps.append(lambda value, offset=offset: value + offset)\n    return steps\n\n\ndef apply_steps(steps, seed):\n    results = []\n    for step in steps:\n        results.append(step(seed))\n    return results\n\n\ndef run_pipeline(offsets, seed):\n    return apply_steps(make_steps(offsets), seed)\n",
+      "bug_lines": [
+        4
+      ],
+      "test_code": "result = run_pipeline([1, 10], 0)\nprint(repr(result))\nassert result == [1, 10], \"each step should carry the offset it was built with\"\n",
+      "context_note": "Builds one transform per configured offset, then runs them all against a seed value.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "Every lambda closes over the loop variable itself rather than its value at the time, so all of them read whatever it held when the loop finished"
+        },
+        {
+          "id": "b",
+          "text": "A lambda cannot refer to a name from the enclosing function, so offset is undefined when the step runs"
+        },
+        {
+          "id": "c",
+          "text": "append() stores a copy of the lambda, so each step in the list is the same object"
+        },
+        {
+          "id": "d",
+          "text": "The loop variable is deleted when the loop ends, so calling a step raises NameError"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "A closure captures the variable, not a snapshot of it. All the lambdas share the single loop variable, and by the time any of them runs the loop has finished and left the last offset behind. Every step applies that one.",
+        "principle": "Closures capture names, not values. Bind the value at definition time, with a default argument or a factory.",
+        "line_notes": [
+          {
+            "line": 4,
+            "note": "This lambda reads the loop variable when it runs, not when it is built."
+          }
+        ]
+      },
+      "concepts": [
+        "closure-late-binding"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "More than one offset, and the steps are called after the loop has finished.",
+      "divergence_input": "Offsets of 1 and 10, run against a seed of 0.",
+      "buggy_result_on_divergence_input": "[10, 10]",
+      "fixed_result_on_divergence_input": "[1, 10]",
+      "divergence_justification": "Both lambdas read the same loop variable, which holds 10 once the loop ends, so both add 10 and the first offset is lost."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "shallow-vs-deep-copy",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "template instantiation"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "import copy\n\nTEMPLATE = {\n    \"name\": \"unnamed\",\n    \"tags\": [\"draft\"],\n}\n\n\ndef instantiate(template, name):\n    made = copy.copy(template)\n    made[\"name\"] = name\n    return made\n\n\ndef tag(record, label):\n    record[\"tags\"].append(label)\n    return record\n",
+      "fixed_code": "import copy\n\nTEMPLATE = {\n    \"name\": \"unnamed\",\n    \"tags\": [\"draft\"],\n}\n\n\ndef instantiate(template, name):\n    made = copy.deepcopy(template)\n    made[\"name\"] = name\n    return made\n\n\ndef tag(record, label):\n    record[\"tags\"].append(label)\n    return record\n",
+      "bug_lines": [
+        10
+      ],
+      "test_code": "first = tag(instantiate(TEMPLATE, \"alpha\"), \"urgent\")\nsecond = instantiate(TEMPLATE, \"beta\")\nresult = second[\"tags\"]\nprint(repr(result))\nassert result == [\"draft\"], \"a fresh record should carry only the template tags\"\n",
+      "context_note": "Stamps out records from a shared template, then lets callers tag them.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "A shallow copy duplicates the outer dictionary but not the list inside it, so both records point at one list of tags"
+        },
+        {
+          "id": "b",
+          "text": "copy.copy() returns the original object unchanged, so instantiate() hands back the template itself"
+        },
+        {
+          "id": "c",
+          "text": "Assigning to made[\"name\"] rebinds the template's name as well, because strings are mutable"
+        },
+        {
+          "id": "d",
+          "text": "append() returns a new list, so tag() discards its own result"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "A shallow copy is one level deep. The new dictionary is genuinely new, so writing the name is safe, but every value inside it is the same object as before. The tags list is shared with the template, so tagging one record edits the template every later record is stamped from.",
+        "principle": "A shallow copy duplicates the container, not what it contains. For nested mutable structures, copy deeply.",
+        "line_notes": [
+          {
+            "line": 10,
+            "note": "This duplicates the outer dictionary only; the list inside is still shared."
+          }
+        ]
+      },
+      "concepts": [
+        "shallow-vs-deep-copy"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A record is tagged, and then a second record is stamped from the same template.",
+      "divergence_input": "One record tagged urgent, then a second record instantiated and its tags read.",
+      "buggy_result_on_divergence_input": "['draft', 'urgent']",
+      "fixed_result_on_divergence_input": "['draft']",
+      "divergence_justification": "The first record's tag list is the template's tag list, so appending to it contaminates the template, and the second record inherits a tag that belongs to someone else."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "aliasing-vs-copy",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python",
+      "domain": "audit snapshots"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def snapshot(rows):\n    return rows\n\n\ndef append_row(rows, row):\n    rows.append(row)\n    return rows\n\n\ndef audit(rows):\n    before = snapshot(rows)\n    append_row(rows, \"late\")\n    return {\n        \"before\": before,\n        \"after\": rows,\n    }\n",
+      "fixed_code": "def snapshot(rows):\n    return list(rows)\n\n\ndef append_row(rows, row):\n    rows.append(row)\n    return rows\n\n\ndef audit(rows):\n    before = snapshot(rows)\n    append_row(rows, \"late\")\n    return {\n        \"before\": before,\n        \"after\": rows,\n    }\n",
+      "bug_lines": [
+        2
+      ],
+      "test_code": "result = audit([\"a\", \"b\"])[\"before\"]\nprint(repr(result))\nassert result == [\"a\", \"b\"], \"the snapshot should not see a row added after it was taken\"\n",
+      "context_note": "Records what a list held before a change, so the two can be compared afterwards.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "Returning the list hands back the same object, so the snapshot and the live list are two names for one thing and both show the later addition"
+        },
+        {
+          "id": "b",
+          "text": "append() returns a new list, so append_row() mutates a temporary and the original is untouched"
+        },
+        {
+          "id": "c",
+          "text": "A function cannot return its own argument, so snapshot() returns None"
+        },
+        {
+          "id": "d",
+          "text": "Dictionary values are copied when the dictionary is built, so before is already independent by the time audit() returns"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "Returning an argument returns the object, not a copy of it. The snapshot is a second name for the very list that is about to be appended to, so by the time anyone reads it, it shows the change it was supposed to predate.",
+        "principle": "Returning a mutable argument shares it. To capture a value at a moment in time, copy it.",
+        "line_notes": [
+          {
+            "line": 2,
+            "note": "This hands back the same object, not a copy of it."
+          }
+        ]
+      },
+      "concepts": [
+        "aliasing-vs-copy"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "The list is mutated after the snapshot is taken.",
+      "divergence_input": "audit([\"a\", \"b\"]), reading the before entry after a row is appended.",
+      "buggy_result_on_divergence_input": "['a', 'b', 'late']",
+      "fixed_result_on_divergence_input": "['a', 'b']",
+      "divergence_justification": "The snapshot and the live list are the same object, so the row appended afterwards appears in the record of what the list held beforehand."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "mutable-default-arg",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "request tracing"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def trace(name, duration, spans={}):\n    spans[name] = duration\n    return spans\n\n\ndef slowest(spans):\n    if not spans:\n        return None\n    ranked = sorted(spans.items(), key=lambda pair: pair[1], reverse=True)\n    return ranked[0][0]\n\n\ndef handle(name, duration):\n    spans = trace(name, duration)\n    return {\n        \"spans\": spans,\n        \"slowest\": slowest(spans),\n    }\n",
+      "fixed_code": "def trace(name, duration, spans=None):\n    if spans is None:\n        spans = {}\n    spans[name] = duration\n    return spans\n\n\ndef slowest(spans):\n    if not spans:\n        return None\n    ranked = sorted(spans.items(), key=lambda pair: pair[1], reverse=True)\n    return ranked[0][0]\n\n\ndef handle(name, duration):\n    spans = trace(name, duration)\n    return {\n        \"spans\": spans,\n        \"slowest\": slowest(spans),\n    }\n",
+      "bug_lines": [
+        1
+      ],
+      "test_code": "handle(\"warmup\", 99)\nresult = handle(\"db\", 5)[\"spans\"]\nprint(repr(result))\nassert result == {\"db\": 5}, \"a new request should start with no spans\"\n",
+      "context_note": "Collects the timing of each step of a request, so the slowest can be reported.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The empty dictionary is built once, when the function is defined, so every request that does not pass one appends to the same shared object"
+        },
+        {
+          "id": "b",
+          "text": "A dictionary cannot be used as a default argument, so Python rebuilds it on every call"
+        },
+        {
+          "id": "c",
+          "text": "sorted() on items() yields keys only, so slowest() ranks the span names"
+        },
+        {
+          "id": "d",
+          "text": "Assigning spans inside the loop rebinds the caller's name, so only the last step survives"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "A default argument is evaluated once, when the def statement runs. The dictionary therefore belongs to the function, not to the call, and every request that omits it writes into the same object. Yesterday's spans turn up in today's trace.",
+        "principle": "Default arguments are evaluated at definition time. Never default to a mutable object.",
+        "line_notes": [
+          {
+            "line": 1,
+            "note": "This dictionary is built once, when the module is imported, and shared by every call."
+          }
+        ]
+      },
+      "concepts": [
+        "mutable-default-arg"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A second request that does not pass its own span collection.",
+      "divergence_input": "One request tracing a warmup step, then a second request tracing a db step.",
+      "buggy_result_on_divergence_input": "{'warmup': 99, 'db': 5}",
+      "fixed_result_on_divergence_input": "{'db': 5}",
+      "divergence_justification": "The first request's warmup span is still sitting in the shared default when the second request begins, so it is reported as part of the second request."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "off-by-one",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python",
+      "domain": "retention windows"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def window_days(first, last):\n    days = []\n    for day in range(first, last):\n        days.append(day)\n    return days\n\n\ndef retained(events, first, last):\n    days = window_days(first, last)\n    kept = []\n    for event in events:\n        if event[\"day\"] in days:\n            kept.append(event[\"id\"])\n    return kept\n\n\ndef summary(events, first, last):\n    return {\"kept\": retained(events, first, last), \"span\": len(window_days(first, last))}\n",
+      "fixed_code": "def window_days(first, last):\n    days = []\n    for day in range(first, last + 1):\n        days.append(day)\n    return days\n\n\ndef retained(events, first, last):\n    days = window_days(first, last)\n    kept = []\n    for event in events:\n        if event[\"day\"] in days:\n            kept.append(event[\"id\"])\n    return kept\n\n\ndef summary(events, first, last):\n    return {\"kept\": retained(events, first, last), \"span\": len(window_days(first, last))}\n",
+      "bug_lines": [
+        3
+      ],
+      "test_code": "events = [{\"id\": \"a\", \"day\": 1}, {\"id\": \"b\", \"day\": 3}]\nresult = summary(events, 1, 3)[\"kept\"]\nprint(repr(result))\nassert result == [\"a\", \"b\"], \"a window from day one to day three includes day three\"\n",
+      "context_note": "Selects the events that fall inside an inclusive retention window, first day to last day.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "range() stops before its second argument, so the last day of an inclusive window is never in the list"
+        },
+        {
+          "id": "b",
+          "text": "range() starts at zero regardless of its first argument, so the window is shifted"
+        },
+        {
+          "id": "c",
+          "text": "Membership testing with in on a list raises TypeError when the list holds integers"
+        },
+        {
+          "id": "d",
+          "text": "append() inside the loop overwrites the previous entry, so days only ever holds one value"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "The window is documented as inclusive of both ends, but range() stops one short of its upper argument. The final day is quietly outside the window, so every event on the last day of every window is dropped.",
+        "principle": "range(a, b) stops before b. An inclusive upper bound needs b plus one.",
+        "line_notes": [
+          {
+            "line": 3,
+            "note": "This stops one short of the last day the window is meant to include."
+          }
+        ]
+      },
+      "concepts": [
+        "off-by-one"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "An event that falls on the final day of the window.",
+      "divergence_input": "Events on day one and day three, with a window of day one to day three.",
+      "buggy_result_on_divergence_input": "['a']",
+      "fixed_result_on_divergence_input": "['a', 'b']",
+      "divergence_justification": "The window list is [1, 2], so the event on day three falls outside it and is dropped even though the window is meant to include that day."
+    }
+  }
+]

@@ -13,6 +13,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+# D-82: the five divergence fields v4 (stb_py_v4) requires; kept together so the
+# all-or-none validator and the free static check reference one list.
+_DIVERGENCE_FIELDS = (
+    "bug_trigger_condition",
+    "divergence_input",
+    "buggy_result_on_divergence_input",
+    "fixed_result_on_divergence_input",
+    "divergence_justification",
+)
+
 _STRICT = ConfigDict(extra="forbid")
 
 
@@ -52,6 +62,16 @@ class STBSelfCheck(BaseModel):
     runs_without_error_on_happy_path: bool
     no_hinting_names_or_comments: bool
     distractors_verifiably_wrong: bool
+    # D-80 (stb_py_v3): a compliance nudge for choosing a discriminating test
+    # input on the divergence boundary. Optional so the earlier v2 output and
+    # every existing fixture (which omit it) still validate; like the rest of
+    # self_check it is untrusted -- the sandbox gate's buggy_fails_test check is
+    # the real enforcement.
+    test_input_is_on_the_divergence_boundary: bool | None = None
+    # D-82 (stb_py_v4): the self-review nudge -- the model confirms its test
+    # actually asserts on divergence_input. Optional, untrusted (the sandbox
+    # claim-check is the real enforcement), same as the rest of self_check.
+    test_asserts_on_divergence_input: bool | None = None
 
 
 class STBCandidate(BaseModel):
@@ -68,6 +88,65 @@ class STBCandidate(BaseModel):
     concepts: list[str] = Field(min_length=1)
     self_difficulty: int = Field(ge=1, le=10)
     self_check: STBSelfCheck
+    # D-82 (stb_py_v4): the forced divergence derivation. The generator must
+    # write the CORRECT code first, plant one bug, then state -- as
+    # machine-checkable fields -- under exactly what input buggy and fixed
+    # DIVERGE, a concrete input on that boundary, and the two DIFFERENT results.
+    # Optional so v2/v3 output and every existing fixture (which omit them) still
+    # validate; a v4 candidate provides all five (has_bug=true) or none
+    # (has_bug=false, where buggy==fixed and there is no divergence).
+    bug_trigger_condition: str | None = None
+    divergence_input: str | None = None
+    buggy_result_on_divergence_input: str | None = None
+    fixed_result_on_divergence_input: str | None = None
+    divergence_justification: str | None = None
+
+    @model_validator(mode="after")
+    def _divergence_fields_all_or_none_and_discriminating(self) -> STBCandidate:
+        """B3 (D-82): a FREE static check -- zero tokens, zero sandbox.
+
+        The divergence fields are all-or-nothing. When present (a v4 has_bug
+        candidate), the model has stated the buggy and fixed results on its own
+        chosen divergence input; if those two results are IDENTICAL, the model
+        has ADMITTED its test cannot discriminate -- the dominant STB sandbox
+        reject (buggy+test exits 0) caught for free at schema validation, before
+        the 6-container sandbox pass is ever invoked. A schema failure is
+        discarded per the retry policy (regenerate fresh from the same spec).
+        """
+        present = [f for f in _DIVERGENCE_FIELDS if getattr(self, f) is not None]
+        if present and len(present) != len(_DIVERGENCE_FIELDS):
+            missing = [f for f in _DIVERGENCE_FIELDS if getattr(self, f) is None]
+            raise ValueError(
+                f"divergence fields must be provided together or all omitted; missing {missing}",
+            )
+        if self.buggy_result_on_divergence_input is not None and (
+            self.buggy_result_on_divergence_input.strip()
+            == self.fixed_result_on_divergence_input.strip()
+        ):
+            raise ValueError(
+                "buggy_result_on_divergence_input equals fixed_result_on_divergence_input: "
+                "the model's own test cannot discriminate the bug (B3)",
+            )
+        return self
+
+
+class PredictFixVariant(BaseModel):
+    model_config = _STRICT
+
+    code: str
+    note: str
+
+
+class PredictFixCandidate(BaseModel):
+    """Generator output for predict_the_fix (D-80): ONLY the 3 wrong-fix
+    distractors. The correct choice is the upstream spot_the_bug candidate's
+    execution-verified fixed_code, never anything in this object. Every variant
+    here is re-executed against the test in the sandbox and must STILL FAIL.
+    """
+
+    model_config = _STRICT
+
+    wrong_fixes: list[PredictFixVariant] = Field(min_length=3, max_length=3)
 
 
 class Choice(BaseModel):

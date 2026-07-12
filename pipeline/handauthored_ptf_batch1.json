@@ -1,0 +1,344 @@
+[
+  {
+    "stb_exercise_id": "6117f5d6-09e6-482b-aaba-8c219d5bc95b",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def record_event(name, payload, history=[]):\n    if history is None:\n        history = []\n    entry = {\"name\": name, \"payload\": payload}\n    history.append(entry)\n    if len(history) > 100:\n        history.pop(0)\n    return history\n\n\ndef summarize(history):\n    return [item[\"name\"] for item in history]\n",
+        "note": "Adds the None guard from the usual remedy but leaves the default as a literal list, so the guard never fires."
+      },
+      {
+        "code": "def record_event(name, payload, history=[]):\n    entry = {\"name\": name, \"payload\": payload}\n    history.append(entry)\n    if len(history) > 100:\n        history.pop(0)\n    return list(history)\n\n\ndef summarize(history):\n    return [item[\"name\"] for item in history]\n",
+        "note": "Hands back a copy, but the shared default is still the object being appended to on every call."
+      },
+      {
+        "code": "def record_event(name, payload, history=[]):\n    entry = {\"name\": name, \"payload\": payload}\n    history.append(entry)\n    if len(history) >= 100:\n        history.pop(0)\n    return history\n\n\ndef summarize(history):\n    return [item[\"name\"] for item in history]\n",
+        "note": "Tightens the trim boundary, which has nothing to do with the history surviving between calls."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "79463928-f9c3-490a-86b4-0c246f2b3017",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "class TemplateStore:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def clone(self):\n        return self.defaults.copy()\n\n    def customize(self, overrides):\n        draft = self.clone()\n        for key, value in overrides.items():\n            if isinstance(value, dict):\n                draft[key].update(value)\n            else:\n                draft[key] = value\n        return draft\n",
+        "note": "Swaps in the copy() method, which is still a one-level copy: the nested dict is the same object."
+      },
+      {
+        "code": "class TemplateStore:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def clone(self):\n        return dict(self.defaults)\n\n    def customize(self, overrides):\n        draft = self.clone()\n        for key, value in overrides.items():\n            if isinstance(value, dict):\n                draft[key].update(dict(value))\n            else:\n                draft[key] = value\n        return draft\n",
+        "note": "Copies the incoming override rather than the nested default it is about to write into."
+      },
+      {
+        "code": "class TemplateStore:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def clone(self):\n        return {**self.defaults}\n\n    def customize(self, overrides):\n        draft = self.clone()\n        for key, value in overrides.items():\n            if isinstance(value, dict):\n                draft[key].update(value)\n            else:\n                draft[key] = value\n        return draft\n",
+        "note": "Copies the outer dict a second time; the nested value inside it is still shared with the defaults."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "8ccfcfed-c436-4f1d-9030-0cfebaa47ce4",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "class RetryPolicy:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def limit_for(self, route, overrides):\n        configured = overrides.get(route, self.defaults[\"limit\"])\n        if not configured:\n            return self.defaults[\"limit\"]\n        return configured\n\n    def describe(self, route, overrides):\n        return \"{}:{}\".format(route, self.limit_for(route, overrides))\n",
+        "note": "Moves the default into get(), but the truthiness test below still discards an explicit zero."
+      },
+      {
+        "code": "class RetryPolicy:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def limit_for(self, route, overrides):\n        configured = overrides.get(route)\n        if route not in overrides or not configured:\n            return self.defaults[\"limit\"]\n        return configured\n\n    def describe(self, route, overrides):\n        return \"{}:{}\".format(route, self.limit_for(route, overrides))\n",
+        "note": "Adds a membership check, which is true here; the falsy test that actually discards the zero is untouched."
+      },
+      {
+        "code": "class RetryPolicy:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def limit_for(self, route, overrides):\n        configured = overrides.get(route) or self.defaults[\"limit\"]\n        if not configured:\n            return self.defaults[\"limit\"]\n        return configured\n\n    def describe(self, route, overrides):\n        return \"{}:{}\".format(route, self.limit_for(route, overrides))\n",
+        "note": "Uses or to supply the default, which is the same falsy test written a different way."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "0434600e-b232-4e35-814e-ead0d323b49e",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def find_matching_order(orders, target_id):\n    for order in orders:\n        if order[\"id\"] is target_id:\n            return order\n    return None\n\n\ndef lookup_from_request(orders, raw_id):\n    return find_matching_order(orders, raw_id)\n",
+        "note": "Stops converting the raw identifier, which changes what is compared but not how it is compared."
+      },
+      {
+        "code": "def find_matching_order(orders, target_id):\n    for order in orders:\n        if order[\"id\"] is not None and order[\"id\"] is target_id:\n            return order\n    return None\n\n\ndef lookup_from_request(orders, raw_id):\n    return find_matching_order(orders, int(raw_id))\n",
+        "note": "Guards against a missing identifier; the identity comparison underneath is unchanged."
+      },
+      {
+        "code": "def find_matching_order(orders, target_id):\n    for order in orders:\n        if order.get(\"id\") is target_id:\n            return order\n    return None\n\n\ndef lookup_from_request(orders, raw_id):\n    return find_matching_order(orders, int(raw_id))\n",
+        "note": "Reaches the field through get(), which returns the same object the identity test was already failing on."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "d1d1ed31-d667-4ce2-ae92-56e0bb6f2a7e",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def tally(events):\n    counts = {}\n    for event in events:\n        name = event[\"endpoint\"]\n        counts[name] = counts.get(name, 0) + 1\n    return counts\n\n\ndef busiest_endpoint(events):\n    counts = tally(events)\n    if not counts:\n        return None\n    ranked = sorted(counts.items(), key=lambda pair: pair[0], reverse=True)\n    return ranked[0][1]\n\n\ndef summary(events):\n    return {\n        \"counts\": tally(events),\n        \"busiest\": busiest_endpoint(events),\n    }\n",
+        "note": "Reads the other half of the pair off the winner, but the winner was still chosen alphabetically."
+      },
+      {
+        "code": "def tally(events):\n    counts = {}\n    for event in events:\n        name = event[\"endpoint\"]\n        counts[name] = counts.get(name, 0) + 1\n    return counts\n\n\ndef busiest_endpoint(events):\n    counts = tally(events)\n    if not counts:\n        return None\n    ranked = sorted(counts, reverse=True)\n    return ranked[0]\n\n\ndef summary(events):\n    return {\n        \"counts\": tally(events),\n        \"busiest\": busiest_endpoint(events),\n    }\n",
+        "note": "Sorts the keys directly, which is the same alphabetical ordering with the counts thrown away."
+      },
+      {
+        "code": "def tally(events):\n    counts = {}\n    for event in events:\n        name = event[\"endpoint\"]\n        counts[name] = counts.get(name, 0) + 1\n    return counts\n\n\ndef busiest_endpoint(events):\n    counts = tally(events)\n    if not counts:\n        return None\n    return max(counts, key=lambda name: name)\n\n\ndef summary(events):\n    return {\n        \"counts\": tally(events),\n        \"busiest\": busiest_endpoint(events),\n    }\n",
+        "note": "Swaps sorted() for max() but keeps ranking by the endpoint name rather than the hit count."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "64ead3a0-3682-4e8e-a73f-8451d33e56a9",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "LINE_ITEMS = (\n    (\"shipping\", 0.1),\n    (\"handling\", 0.2),\n)\n\n\ndef line_total(items):\n    total = 0.0\n    for _name, amount in items:\n        total += amount\n    return total\n\n\ndef reconciles(items, expected):\n    total = line_total(items)\n    return str(total) == str(expected)\n\n\ndef audit(items, expected):\n    return {\n        \"total\": line_total(items),\n        \"reconciles\": reconciles(items, expected),\n    }\n",
+        "note": "Compares the printed forms, which differ for exactly the reason the numbers do."
+      },
+      {
+        "code": "LINE_ITEMS = (\n    (\"shipping\", 0.1),\n    (\"handling\", 0.2),\n)\n\n\ndef line_total(items):\n    total = 0\n    for _name, amount in items:\n        total += amount\n    return total\n\n\ndef reconciles(items, expected):\n    total = line_total(items)\n    return total == expected\n\n\ndef audit(items, expected):\n    return {\n        \"total\": line_total(items),\n        \"reconciles\": reconciles(items, expected),\n    }\n",
+        "note": "Starts the accumulator as an integer; the first addition makes it a float again and the drift is identical."
+      },
+      {
+        "code": "LINE_ITEMS = (\n    (\"shipping\", 0.1),\n    (\"handling\", 0.2),\n)\n\n\ndef line_total(items):\n    total = 0.0\n    for _name, amount in items:\n        total += amount\n    return total\n\n\ndef reconciles(items, expected):\n    total = line_total(items)\n    return abs(total - expected) == 0\n\n\ndef audit(items, expected):\n    return {\n        \"total\": line_total(items),\n        \"reconciles\": reconciles(items, expected),\n    }\n",
+        "note": "Introduces abs() but keeps an exact comparison, so any drift at all still reports a mismatch."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "bed3af5f-8e18-4893-bd9a-126ef560f718",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def find_row(rows, target):\n    for position, row in enumerate(rows):\n        if tuple(row) is tuple(target):\n            return position\n    return -1\n\n\ndef parse_rows(raw):\n    parsed = []\n    for chunk in raw.split(\";\"):\n        parsed.append([int(part) for part in chunk.split(\",\")])\n    return parsed\n\n\ndef locate(raw, target):\n    rows = parse_rows(raw)\n    return {\n        \"rows\": rows,\n        \"position\": find_row(rows, target),\n    }\n",
+        "note": "Converts both sides to tuples, which builds two new objects that are still not the same object."
+      },
+      {
+        "code": "def find_row(rows, target):\n    for position, row in enumerate(rows):\n        if row is not None and row is target:\n            return position\n    return -1\n\n\ndef parse_rows(raw):\n    parsed = []\n    for chunk in raw.split(\";\"):\n        parsed.append([int(part) for part in chunk.split(\",\")])\n    return parsed\n\n\ndef locate(raw, target):\n    rows = parse_rows(raw)\n    return {\n        \"rows\": rows,\n        \"position\": find_row(rows, target),\n    }\n",
+        "note": "Adds a None guard in front of an identity test that was never going to succeed."
+      },
+      {
+        "code": "def find_row(rows, target):\n    for position, row in enumerate(rows):\n        if row is target:\n            return position\n    return -1\n\n\ndef parse_rows(raw):\n    parsed = []\n    for chunk in raw.split(\";\"):\n        parsed.append([int(part) for part in chunk.split(\",\")])\n    return parsed\n\n\ndef locate(raw, target):\n    rows = parse_rows(raw)\n    return {\n        \"rows\": rows,\n        \"position\": find_row(rows, list(target)),\n    }\n",
+        "note": "Normalises the target into a list, producing yet another distinct object for the identity test to miss."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "4e41ec9e-fff9-445e-940c-b8fd4344e2b7",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "BASE_CONFIG = {\n    \"retries\": 3,\n    \"timeout\": 30,\n}\n\n\ndef with_overrides(overrides):\n    config = BASE_CONFIG\n    config.update(overrides)\n    return dict(config)\n\n\ndef describe(config):\n    parts = []\n    for key in sorted(config):\n        parts.append(key + \"=\" + str(config[key]))\n    return \" \".join(parts)\n\n\ndef run_twice(first, second):\n    with_overrides(first)\n    return describe(with_overrides(second))\n",
+        "note": "Copies on the way out, long after the module-level dictionary has already been overwritten in place."
+      },
+      {
+        "code": "BASE_CONFIG = {\n    \"retries\": 3,\n    \"timeout\": 30,\n}\n\n\ndef with_overrides(overrides):\n    config = BASE_CONFIG\n    config.update(dict(overrides))\n    return config\n\n\ndef describe(config):\n    parts = []\n    for key in sorted(config):\n        parts.append(key + \"=\" + str(config[key]))\n    return \" \".join(parts)\n\n\ndef run_twice(first, second):\n    with_overrides(first)\n    return describe(with_overrides(second))\n",
+        "note": "Copies the overrides, which were never the shared object; the defaults are still updated in place."
+      },
+      {
+        "code": "BASE_CONFIG = {\n    \"retries\": 3,\n    \"timeout\": 30,\n}\n\n\ndef with_overrides(overrides):\n    config = BASE_CONFIG\n    config.update(overrides)\n    return config\n\n\ndef describe(config):\n    parts = []\n    for key in sorted(config):\n        parts.append(key + \"=\" + str(config[key]))\n    return \" \".join(parts)\n\n\ndef run_twice(first, second):\n    with_overrides(dict(first))\n    return describe(with_overrides(second))\n",
+        "note": "Copies the caller's first payload, which does not stop the defaults being rewritten by the update."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "2fe2b7c2-3979-4088-9e4c-878f25826c77",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "PAGE_SIZE = 3\n\n\ndef page(items, number):\n    start = number * (PAGE_SIZE - 1)\n    end = start + PAGE_SIZE - 1\n    return items[start:end]\n\n\ndef page_count(items):\n    full, remainder = divmod(len(items), PAGE_SIZE)\n    if remainder:\n        return full + 1\n    return full\n\n\ndef paginate(items):\n    pages = []\n    for number in range(page_count(items)):\n        pages.append(page(items, number))\n    return pages\n",
+        "note": "Narrows the stride to match the shortened window, so the pages no longer overlap but each is still short."
+      },
+      {
+        "code": "PAGE_SIZE = 4\n\n\ndef page(items, number):\n    start = number * PAGE_SIZE\n    end = start + PAGE_SIZE - 1\n    return items[start:end]\n\n\ndef page_count(items):\n    full, remainder = divmod(len(items), PAGE_SIZE)\n    if remainder:\n        return full + 1\n    return full\n\n\ndef paginate(items):\n    pages = []\n    for number in range(page_count(items)):\n        pages.append(page(items, number))\n    return pages\n",
+        "note": "Widens the page size to make up the missing row, which shifts the window instead of restoring it."
+      },
+      {
+        "code": "PAGE_SIZE = 3\n\n\ndef page(items, number):\n    start = number * PAGE_SIZE\n    end = min(start + PAGE_SIZE - 1, len(items))\n    return items[start:end]\n\n\ndef page_count(items):\n    full, remainder = divmod(len(items), PAGE_SIZE)\n    if remainder:\n        return full + 1\n    return full\n\n\ndef paginate(items):\n    pages = []\n    for number in range(page_count(items)):\n        pages.append(page(items, number))\n    return pages\n",
+        "note": "Clamps the end against the length of the list, which was never the reason a row was missing."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "b3567247-a647-4269-a925-8789aab6338f",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def drop_blank_rows(rows):\n    kept = []\n    for row in rows:\n        if not row:\n            rows.pop(rows.index(row))\n            continue\n        kept.append(row)\n    return kept\n\n\ndef label_rows(rows):\n    labels = []\n    for index, row in enumerate(rows):\n        labels.append(\"row-\" + str(index) + \"-\" + str(len(row)))\n    return labels\n\n\ndef report(rows):\n    kept = drop_blank_rows(rows)\n    return {\n        \"kept\": kept,\n        \"labels\": label_rows(kept),\n    }\n",
+        "note": "Swaps remove() for pop() with an explicit index, which shortens the list being walked in exactly the same way."
+      },
+      {
+        "code": "def drop_blank_rows(rows):\n    kept = []\n    for row in reversed(rows):\n        if not row:\n            rows.remove(row)\n            continue\n        kept.append(row)\n    return kept\n\n\ndef label_rows(rows):\n    labels = []\n    for index, row in enumerate(rows):\n        labels.append(\"row-\" + str(index) + \"-\" + str(len(row)))\n    return labels\n\n\ndef report(rows):\n    kept = drop_blank_rows(rows)\n    return {\n        \"kept\": kept,\n        \"labels\": label_rows(kept),\n    }\n",
+        "note": "Walks the list backwards, which survives the deletion but hands the rows back in the reverse order."
+      },
+      {
+        "code": "def drop_blank_rows(rows):\n    kept = []\n    for row in rows:\n        if not row:\n            rows.remove(row)\n            continue\n        kept.append(list(row))\n    return kept\n\n\ndef label_rows(rows):\n    labels = []\n    for index, row in enumerate(rows):\n        labels.append(\"row-\" + str(index) + \"-\" + str(len(row)))\n    return labels\n\n\ndef report(rows):\n    kept = drop_blank_rows(rows)\n    return {\n        \"kept\": kept,\n        \"labels\": label_rows(kept),\n    }\n",
+        "note": "Copies each row on the way into the result, which does nothing about the list being shortened underneath the walk."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "17d4aceb-adeb-46f1-a38f-2c9969705c75",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def tally(words):\n    counts = {}\n    for word in words:\n        counts[word] = counts.get(word, 0) + 1\n    return counts\n\n\ndef prune(counts, floor):\n    kept = {}\n    for key in counts.keys():\n        if counts[key] < floor:\n            del counts[key]\n            continue\n        kept[key] = counts[key]\n    return kept\n\n\ndef frequent(words, floor):\n    return prune(tally(words), floor)\n",
+        "note": "Iterates keys() explicitly, which is the same live view over the dictionary being resized."
+      },
+      {
+        "code": "def tally(words):\n    counts = {}\n    for word in words:\n        counts[word] = counts.get(word, 0) + 1\n    return counts\n\n\ndef prune(counts, floor):\n    kept = {}\n    for key in counts:\n        if counts[key] < floor:\n            counts.pop(key)\n            continue\n        kept[key] = counts[key]\n    return kept\n\n\ndef frequent(words, floor):\n    return prune(tally(words), floor)\n",
+        "note": "Swaps del for pop(), which removes the entry and changes the size just the same."
+      },
+      {
+        "code": "def tally(words):\n    counts = {}\n    for word in words:\n        counts[word] = counts.get(word, 0) + 1\n    return counts\n\n\ndef prune(counts, floor):\n    kept = {}\n    for key in counts:\n        if counts[key] <= floor:\n            del counts[key]\n            continue\n        kept[key] = counts[key]\n    return kept\n\n\ndef frequent(words, floor):\n    return prune(tally(words), floor)\n",
+        "note": "Loosens the floor comparison, which changes which entries are dropped but not that dropping them breaks the walk."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "878953f9-64ef-4abd-9dc1-4680c601ead3",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def render(row):\n    return \"%s scored %i\" % (row[\"name\"], row[\"score\"])\n\n\ndef render_all(rows):\n    lines = []\n    for row in rows:\n        lines.append(render(row))\n    return lines\n\n\ndef scoreboard(rows):\n    return {\n        \"lines\": render_all(rows),\n        \"entries\": len(rows),\n    }\n",
+        "note": "Uses the other integer conversion, which truncates the score in precisely the same way."
+      },
+      {
+        "code": "def render(row):\n    return \"%s scored %d\" % (row[\"name\"], round(row[\"score\"]))\n\n\ndef render_all(rows):\n    lines = []\n    for row in rows:\n        lines.append(render(row))\n    return lines\n\n\ndef scoreboard(rows):\n    return {\n        \"lines\": render_all(rows),\n        \"entries\": len(rows),\n    }\n",
+        "note": "Rounds the score before handing it over, which still delivers a whole number to a whole-number conversion."
+      },
+      {
+        "code": "def render(row):\n    return \"%s scored %.0f\" % (row[\"name\"], row[\"score\"])\n\n\ndef render_all(rows):\n    lines = []\n    for row in rows:\n        lines.append(render(row))\n    return lines\n\n\ndef scoreboard(rows):\n    return {\n        \"lines\": render_all(rows),\n        \"entries\": len(rows),\n    }\n",
+        "note": "Switches to a float conversion but asks for no decimal places, so the half point is rounded away instead of truncated."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "4f1eb607-79ea-409b-85ce-3a03fb690cbb",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "_CACHE = {}\n\n\ndef cache_key(item, multiplier):\n    return item[\"sku\"] + \":\" + str(item[\"base\"])\n\n\ndef price(item, multiplier):\n    key = cache_key(item, multiplier)\n    if key in _CACHE:\n        return _CACHE[key]\n    value = item[\"base\"] * multiplier\n    _CACHE[key] = value\n    return value\n\n\ndef quote(item, multipliers):\n    return [price(item, multiplier) for multiplier in multipliers]\n",
+        "note": "Adds the base price to the key, which is the same for both tiers; the multiplier is still missing."
+      },
+      {
+        "code": "_CACHE = {}\n\n\ndef cache_key(item, multiplier):\n    return str(item)\n\n\ndef price(item, multiplier):\n    key = cache_key(item, multiplier)\n    if key in _CACHE:\n        return _CACHE[key]\n    value = item[\"base\"] * multiplier\n    _CACHE[key] = value\n    return value\n\n\ndef quote(item, multipliers):\n    return [price(item, multiplier) for multiplier in multipliers]\n",
+        "note": "Keys on the whole item, which is also identical across the two tiers being priced."
+      },
+      {
+        "code": "_CACHE = {}\n\n\ndef cache_key(item, multiplier):\n    return item[\"sku\"]\n\n\ndef price(item, multiplier):\n    key = cache_key(item, multiplier)\n    if key in _CACHE:\n        return _CACHE[key]\n    value = item[\"base\"] * multiplier\n    _CACHE.setdefault(key, value)\n    return value\n\n\ndef quote(item, multipliers):\n    return [price(item, multiplier) for multiplier in multipliers]\n",
+        "note": "Writes with setdefault so an existing entry is never overwritten, which is what was already happening."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "8b2a18e6-54f2-4168-b86f-9ffa5374181f",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def to_bytes(text):\n    return text.encode(\"utf-8\")\n\n\ndef to_text(data):\n    return data.decode(\"latin-1\", errors=\"ignore\")\n\n\ndef roundtrip(text):\n    return to_text(to_bytes(text))\n\n\ndef audit(messages):\n    lengths = []\n    for message in messages:\n        lengths.append(len(roundtrip(message)))\n    return lengths\n",
+        "note": "Suppresses decoding errors, but the mismatched codec never raised one: it silently produced the wrong text."
+      },
+      {
+        "code": "def to_bytes(text):\n    return text.encode(\"utf-8\", errors=\"replace\")\n\n\ndef to_text(data):\n    return data.decode(\"latin-1\")\n\n\ndef roundtrip(text):\n    return to_text(to_bytes(text))\n\n\ndef audit(messages):\n    lengths = []\n    for message in messages:\n        lengths.append(len(roundtrip(message)))\n    return lengths\n",
+        "note": "Adds a replacement policy on the writing side; the reader is still using a different codec."
+      },
+      {
+        "code": "def to_bytes(text):\n    return text.encode(\"utf-8\")\n\n\ndef to_text(data):\n    return data.decode(\"ascii\", errors=\"replace\")\n\n\ndef roundtrip(text):\n    return to_text(to_bytes(text))\n\n\ndef audit(messages):\n    lengths = []\n    for message in messages:\n        lengths.append(len(roundtrip(message)))\n    return lengths\n",
+        "note": "Reads back as ASCII with replacement, which is a third codec rather than the one that wrote the bytes."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "6c542755-4a3d-4134-97d3-6dbe5b744707",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def make_steps(offsets):\n    steps = []\n    for offset in offsets:\n        step = lambda value: value + offset\n        steps.append(step)\n    return steps\n\n\ndef apply_steps(steps, seed):\n    results = []\n    for step in steps:\n        results.append(step(seed))\n    return results\n\n\ndef run_pipeline(offsets, seed):\n    return apply_steps(make_steps(offsets), seed)\n",
+        "note": "Names the lambda before storing it, which changes nothing about when the loop variable is read."
+      },
+      {
+        "code": "def make_steps(offsets):\n    steps = []\n    for offset in offsets:\n        steps.append(lambda value, offset=offsets[0]: value + offset)\n    return steps\n\n\ndef apply_steps(steps, seed):\n    results = []\n    for step in steps:\n        results.append(step(seed))\n    return results\n\n\ndef run_pipeline(offsets, seed):\n    return apply_steps(make_steps(offsets), seed)\n",
+        "note": "Binds a default argument, which is the right shape, but binds the first offset to every step."
+      },
+      {
+        "code": "def make_steps(offsets):\n    steps = []\n    for index in range(len(offsets)):\n        steps.append(lambda value: value + offsets[index])\n    return steps\n\n\ndef apply_steps(steps, seed):\n    results = []\n    for step in steps:\n        results.append(step(seed))\n    return results\n\n\ndef run_pipeline(offsets, seed):\n    return apply_steps(make_steps(offsets), seed)\n",
+        "note": "Closes over an index instead of the value, which is late-bound in exactly the same way."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "a1a8833a-7f39-4cd9-a526-9a844f3e2219",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "def trace(name, duration, spans={}):\n    if spans is None:\n        spans = {}\n    spans[name] = duration\n    return spans\n\n\ndef slowest(spans):\n    if not spans:\n        return None\n    ranked = sorted(spans.items(), key=lambda pair: pair[1], reverse=True)\n    return ranked[0][0]\n\n\ndef handle(name, duration):\n    spans = trace(name, duration)\n    return {\n        \"spans\": spans,\n        \"slowest\": slowest(spans),\n    }\n",
+        "note": "Adds the None guard from the usual remedy while leaving the default as a literal dict, so the guard is dead code."
+      },
+      {
+        "code": "def trace(name, duration, spans={}):\n    spans[name] = duration\n    return dict(spans)\n\n\ndef slowest(spans):\n    if not spans:\n        return None\n    ranked = sorted(spans.items(), key=lambda pair: pair[1], reverse=True)\n    return ranked[0][0]\n\n\ndef handle(name, duration):\n    spans = trace(name, duration)\n    return {\n        \"spans\": spans,\n        \"slowest\": slowest(spans),\n    }\n",
+        "note": "Returns a copy, which leaves the caller with fresh data but keeps writing into the one shared default."
+      },
+      {
+        "code": "def trace(name, duration, spans={}):\n    spans.setdefault(name, duration)\n    return spans\n\n\ndef slowest(spans):\n    if not spans:\n        return None\n    ranked = sorted(spans.items(), key=lambda pair: pair[1], reverse=True)\n    return ranked[0][0]\n\n\ndef handle(name, duration):\n    spans = trace(name, duration)\n    return {\n        \"spans\": spans,\n        \"slowest\": slowest(spans),\n    }\n",
+        "note": "Uses setdefault so an existing span is never overwritten, which was never how the earlier request's span got in."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "5876c089-5e1a-4988-a490-264964a2bde6",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "FIELD_BYTES = 10\n\n\ndef pack_field(text, limit):\n    encoded = text.encode(\"utf-8\")\n    if len(text.encode(\"ascii\", errors=\"ignore\")) > limit:\n        return None\n    return encoded\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(pack_field(label, FIELD_BYTES))\n    return packed\n",
+        "note": "Measures the ASCII-only encoding, which drops the very character that made the label overrun."
+      },
+      {
+        "code": "FIELD_BYTES = 10\n\n\ndef pack_field(text, limit):\n    encoded = text.encode(\"ascii\", errors=\"ignore\")\n    if len(text) > limit:\n        return None\n    return encoded\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(pack_field(label, FIELD_BYTES))\n    return packed\n",
+        "note": "Writes ASCII bytes instead, which shortens the payload but still measures the unencoded string."
+      },
+      {
+        "code": "FIELD_BYTES = 10\n\n\ndef pack_field(text, limit):\n    encoded = text.encode(\"utf-8\")\n    if len(text) > limit:\n        return None\n    return encoded\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(pack_field(label.strip(), FIELD_BYTES))\n    return packed\n",
+        "note": "Trims the label before packing it, which changes nothing for a label that has no surrounding whitespace."
+      }
+    ]
+  },
+  {
+    "stb_exercise_id": "f4fb97c6-3d86-40e3-bb49-77fd8c00e0cf",
+    "stb_exercise_version": 1,
+    "prompt_template_id": "handauthored_ptf_v1",
+    "wrong_fixes": [
+      {
+        "code": "import datetime\n\nUTC = datetime.timezone.utc\n\n\ndef minutes_left(start_local, end_utc):\n    start_utc = start_local.replace(tzinfo=UTC)\n    gap = start_utc - end_utc\n    return int(gap.total_seconds() // 60)\n\n\ndef schedule(jobs, end_utc):\n    remaining = []\n    for job in jobs:\n        remaining.append(minutes_left(job[\"start\"], end_utc))\n    return remaining\n",
+        "note": "Flips the subtraction, which turns the sign around without moving the instant that was mislabelled."
+      },
+      {
+        "code": "import datetime\n\nUTC = datetime.timezone.utc\n\n\ndef minutes_left(start_local, end_utc):\n    start_utc = start_local.replace(tzinfo=UTC)\n    gap = end_utc - start_utc\n    return int(gap.total_seconds() / 60)\n\n\ndef schedule(jobs, end_utc):\n    remaining = []\n    for job in jobs:\n        remaining.append(minutes_left(job[\"start\"], end_utc))\n    return remaining\n",
+        "note": "Divides instead of flooring, which changes nothing for a gap that is a whole number of minutes."
+      },
+      {
+        "code": "import datetime\n\nUTC = datetime.timezone.utc\n\n\ndef minutes_left(start_local, end_utc):\n    start_utc = start_local.replace(tzinfo=UTC)\n    end_utc = end_utc.replace(tzinfo=UTC)\n    gap = end_utc - start_utc\n    return int(gap.total_seconds() // 60)\n\n\ndef schedule(jobs, end_utc):\n    remaining = []\n    for job in jobs:\n        remaining.append(minutes_left(job[\"start\"], end_utc))\n    return remaining\n",
+        "note": "Relabels the deadline as well, which is already in UTC, so only the start remains shifted."
+      }
+    ]
+  }
+]

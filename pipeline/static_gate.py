@@ -113,11 +113,15 @@ def _iter_identifiers(tree: ast.AST) -> list[str]:
     return names
 
 
-def check(code: str, *, line_budget: tuple[int, int] | None) -> StaticGateResult:
-    """`line_budget=None` skips the length check only (D-51): the budget is a
-    UX constraint on the code the user reads (buggy_code / trace code), so a
-    fixed_code that legitimately grew past it via an inserted fix line is not
-    a violation. Every other check always runs.
+def check(code: str, *, line_budget: tuple[int | None, int] | None) -> StaticGateResult:
+    """`line_budget=None` skips the length check entirely (D-51): the budget is
+    a UX constraint on the code the user reads (buggy_code / trace code), so a
+    fixed_code that legitimately grew past it via an inserted fix line is not a
+    violation. A `(None, hi)` budget checks the MAX only (D-80): the minimum is
+    a readability nicety, not a correctness rule, and the reject reports showed
+    it false-rejecting the naturally-short low-difficulty bugs and the
+    high-difficulty ones the model cannot pad -- keeping the max still protects
+    against an unreadably long snippet. Every other check always runs.
     """
     violations: list[str] = []
 
@@ -129,8 +133,10 @@ def check(code: str, *, line_budget: tuple[int, int] | None) -> StaticGateResult
     if line_budget is not None:
         line_count = len(code.splitlines())
         lo, hi = line_budget
-        if not (lo <= line_count <= hi):
-            violations.append(f"line_count {line_count} outside budget [{lo}, {hi}]")
+        below_min = lo is not None and line_count < lo
+        if below_min or line_count > hi:
+            budget_repr = f"[{'-' if lo is None else lo}, {hi}]"
+            violations.append(f"line_count {line_count} outside budget {budget_repr}")
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):

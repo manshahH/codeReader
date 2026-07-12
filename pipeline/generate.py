@@ -28,10 +28,25 @@ PROMPTS_DIR = REPO_ROOT / "prompts"
 PYTHON_VERSION = "3.12"
 
 _TEMPLATE_FILES = {
-    # v2 (D-53): dropped the trailing-newline constraint (gate joins with a
-    # newline itself, D-50) and added the exception-to-assertion test example.
-    "spot_the_bug": PROMPTS_DIR / "generator_spot_the_bug_python_v2.md",
-    "trace": PROMPTS_DIR / "generator_trace_python_v1.md",
+    # v5 (D-86): byte-identical instructional content to v4 (D-82), with the
+    # varying `## Specification` block RELOCATED to the very END of the user
+    # message so the large static prefix (persona + difficulty scale + the three
+    # worked examples + all constraints + the output schema) is one stable,
+    # spec-independent chunk OpenAI's prompt cache can serve on every call. v4's
+    # decomposition (correct-code-first -> plant one bug -> DERIVE the divergence
+    # as required fields -> a test that prints repr(result) and asserts on the
+    # divergence input), the free B3 schema check, and the B4 execution claim-
+    # check are all unchanged -- only the spec's position in the prompt moved.
+    "spot_the_bug": PROMPTS_DIR / "generator_spot_the_bug_python_v5.md",
+    "trace": PROMPTS_DIR / "generator_trace_python_v2.md",
+    # predict_the_fix reuses a verified spot_the_bug (buggy, fixed, test)
+    # triple and only asks the model for wrong-fix distractors (D-80).
+    "predict_the_fix": PROMPTS_DIR / "generator_predict_the_fix_python_v1.md",
+    # Feedback-driven repair templates (D-83): handed the original candidate + the
+    # specific failed check + concrete evidence, asked to change ONLY what the
+    # failure requires. A repaired candidate goes through the full gate chain.
+    "repair_spot_the_bug": PROMPTS_DIR / "repair_spot_the_bug_python_v1.md",
+    "repair_trace": PROMPTS_DIR / "repair_trace_python_v1.md",
 }
 _SCHEMA_BY_TYPE: dict[str, type[STBCandidate] | type[TraceCandidate]] = {
     "spot_the_bug": STBCandidate,

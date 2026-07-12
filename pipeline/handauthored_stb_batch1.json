@@ -1,0 +1,457 @@
+[
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "mutable-default-arg",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def record_event(name, payload, history=[]):\n    entry = {\"name\": name, \"payload\": payload}\n    history.append(entry)\n    if len(history) > 100:\n        history.pop(0)\n    return history\n\n\ndef summarize(history):\n    return [item[\"name\"] for item in history]\n",
+      "fixed_code": "def record_event(name, payload, history=None):\n    if history is None:\n        history = []\n    entry = {\"name\": name, \"payload\": payload}\n    history.append(entry)\n    if len(history) > 100:\n        history.pop(0)\n    return history\n\n\ndef summarize(history):\n    return [item[\"name\"] for item in history]\n",
+      "bug_lines": [
+        1
+      ],
+      "test_code": "record_event(\"login\", {\"user\": 1})\nresult = summarize(record_event(\"logout\", {\"user\": 1}))\nprint(repr(result))\nassert result == [\"logout\"], \"a call without a history should start empty\"\n",
+      "context_note": "Records events for an audit trail. Called once per request.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The default list is created once at definition time and shared by every call"
+        },
+        {
+          "id": "b",
+          "text": "append() returns None, so the value handed back is not the list"
+        },
+        {
+          "id": "c",
+          "text": "The history is copied on each call, so earlier entries are discarded"
+        },
+        {
+          "id": "d",
+          "text": "The parameter shadows a module-level name of the same spelling"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "Default argument values are evaluated once, when the function object is created. The empty list therefore belongs to the function, not to the call, so every call that omits the argument appends to the same list.",
+        "principle": "Default arguments are evaluated at definition time. Never default to a mutable object.",
+        "line_notes": [
+          {
+            "line": 1,
+            "note": "This empty list is built once, when the module is imported, and reused by every call."
+          }
+        ]
+      },
+      "concepts": [
+        "mutable-default-arg"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "record_event is called a second time without passing history explicitly.",
+      "divergence_input": "Two successive calls: record_event(\"login\", ...) then record_event(\"logout\", ...).",
+      "buggy_result_on_divergence_input": "['login', 'logout']",
+      "fixed_result_on_divergence_input": "['logout']",
+      "divergence_justification": "The buggy version keeps appending to the single list built when the function was defined, so the second call still holds the first entry. The corrected version allocates a new list on every call."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "aliasing-vs-copy",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "class CartPricer:\n    def __init__(self, base_prices):\n        self.base_prices = base_prices\n\n    def apply_markdown(self, percent):\n        adjusted = self.base_prices\n        for sku in adjusted:\n            adjusted[sku] = adjusted[sku] * (100 - percent) // 100\n        return adjusted\n",
+      "fixed_code": "class CartPricer:\n    def __init__(self, base_prices):\n        self.base_prices = base_prices\n\n    def apply_markdown(self, percent):\n        adjusted = dict(self.base_prices)\n        for sku in adjusted:\n            adjusted[sku] = adjusted[sku] * (100 - percent) // 100\n        return adjusted\n",
+      "bug_lines": [
+        6
+      ],
+      "test_code": "pricer = CartPricer({\"sku-1\": 1000})\npricer.apply_markdown(10)\nresult = pricer.apply_markdown(10)\nprint(repr(result))\nassert result == {\"sku-1\": 900}, \"each markdown starts from the base prices\"\n",
+      "context_note": "Applies a promotional markdown. Prices are held in integer cents.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "Integer division truncates, so the second markdown loses precision"
+        },
+        {
+          "id": "b",
+          "text": "The assignment binds a second name to the same dict, so the base prices are overwritten"
+        },
+        {
+          "id": "c",
+          "text": "Iterating a dict while assigning to its keys raises at runtime"
+        },
+        {
+          "id": "d",
+          "text": "The percentage is applied as a fraction rather than a percentage"
+        }
+      ],
+      "correct_reason_id": "b",
+      "draft_explanation": {
+        "summary": "Assigning one name to another does not copy a dict. Both names refer to the same object, so writing through one is visible through the other. The stored base prices are overwritten by the first markdown and the second compounds on them.",
+        "principle": "Assignment binds a name to an object; it never copies. Copy explicitly before mutating a caller's data.",
+        "line_notes": [
+          {
+            "line": 6,
+            "note": "This binds a second name to the caller's dict rather than producing a copy."
+          }
+        ]
+      },
+      "concepts": [
+        "aliasing-vs-copy"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "apply_markdown is called more than once on the same CartPricer.",
+      "divergence_input": "Two successive calls of apply_markdown(10) on a pricer holding {'sku-1': 1000}.",
+      "buggy_result_on_divergence_input": "{'sku-1': 810}",
+      "fixed_result_on_divergence_input": "{'sku-1': 900}",
+      "divergence_justification": "The buggy version rebinds a name to the very same dict, so the first markdown overwrites the stored base prices and the second markdown compounds on top of them. The corrected version works on a copy, leaving the base prices intact."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "off-by-one",
+      "difficulty": 2,
+      "has_bug": true,
+      "language": "python"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def select_top_scores(scores, limit):\n    ordered = sorted(scores, reverse=True)\n    selected = []\n    for index in range(len(ordered)):\n        if index > limit:\n            break\n        selected.append(ordered[index])\n    return selected\n",
+      "fixed_code": "def select_top_scores(scores, limit):\n    ordered = sorted(scores, reverse=True)\n    selected = []\n    for index in range(len(ordered)):\n        if index >= limit:\n            break\n        selected.append(ordered[index])\n    return selected\n",
+      "bug_lines": [
+        5
+      ],
+      "test_code": "result = select_top_scores([10, 50, 30, 20, 40], 2)\nprint(repr(result))\nassert result == [50, 40], \"the limit caps how many scores are selected\"\n",
+      "context_note": "Selects the leaderboard entries shown on the results page.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "sorted() with reverse=True is not stable, so the order is unpredictable"
+        },
+        {
+          "id": "b",
+          "text": "The comparison lets the entry at index == limit through, returning one entry too many"
+        },
+        {
+          "id": "c",
+          "text": "range(len(ordered)) skips the final index"
+        },
+        {
+          "id": "d",
+          "text": "The list is sorted ascending, so the lowest scores are selected"
+        }
+      ],
+      "correct_reason_id": "b",
+      "draft_explanation": {
+        "summary": "The loop breaks only after the index has passed the limit, so the entry at index equal to the limit is appended before the break fires. The result holds one entry more than requested.",
+        "principle": "When a loop guard uses a count, decide whether the boundary index is inside or outside the range, and test at exactly that boundary.",
+        "line_notes": [
+          {
+            "line": 5,
+            "note": "A strict comparison lets the index equal to the limit through before breaking."
+          }
+        ]
+      },
+      "concepts": [
+        "off-by-one"
+      ],
+      "self_difficulty": 2,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "The input holds more entries than the limit allows.",
+      "divergence_input": "select_top_scores([10, 50, 30, 20, 40], 2)",
+      "buggy_result_on_divergence_input": "[50, 40, 30]",
+      "fixed_result_on_divergence_input": "[50, 40]",
+      "divergence_justification": "The loop breaks only once the index has passed the limit, so the entry sitting at index == limit has already been appended. The corrected comparison stops before that entry is taken."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "shallow-vs-deep-copy",
+      "difficulty": 6,
+      "has_bug": true,
+      "language": "python"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "class TemplateStore:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def clone(self):\n        return dict(self.defaults)\n\n    def customize(self, overrides):\n        draft = self.clone()\n        for key, value in overrides.items():\n            if isinstance(value, dict):\n                draft[key].update(value)\n            else:\n                draft[key] = value\n        return draft\n",
+      "fixed_code": "class TemplateStore:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def clone(self):\n        return dict(self.defaults)\n\n    def customize(self, overrides):\n        draft = self.clone()\n        for key, value in overrides.items():\n            if isinstance(value, dict):\n                draft[key] = {**draft[key], **value}\n            else:\n                draft[key] = value\n        return draft\n",
+      "bug_lines": [
+        12
+      ],
+      "test_code": "store = TemplateStore({\"header\": {\"color\": \"blue\"}, \"title\": \"Report\"})\nstore.customize({\"header\": {\"color\": \"red\"}})\nresult = store.customize({\"title\": \"Q3\"})\nprint(repr(result))\nassert result == {\"header\": {\"color\": \"blue\"}, \"title\": \"Q3\"}, \"defaults survive an earlier customization\"\n",
+      "context_note": "Builds a per-tenant report template from a shared set of defaults.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "dict() copies only the top level, so the nested dict is updated in place and the defaults change"
+        },
+        {
+          "id": "b",
+          "text": "isinstance() returns False for dict literals, so the branch is never taken"
+        },
+        {
+          "id": "c",
+          "text": "The defaults are re-read on every call, so the first customization is lost"
+        },
+        {
+          "id": "d",
+          "text": "Dict unpacking preserves insertion order, so the keys come back in the wrong order"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "dict(self.defaults) copies the outer mapping but not the values inside it, so the nested header dict is the very same object held by the defaults. Updating it in place mutates the defaults, and every later call inherits that change.",
+        "principle": "A shallow copy duplicates the container, not the objects inside it. Rebuild nested values before mutating them.",
+        "line_notes": [
+          {
+            "line": 12,
+            "note": "update() writes into the nested dict that the defaults still hold a reference to."
+          }
+        ]
+      },
+      "concepts": [
+        "shallow-vs-deep-copy"
+      ],
+      "self_difficulty": 6,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "customize is called twice, and the first call overrides a nested dict.",
+      "divergence_input": "customize({\"header\": {\"color\": \"red\"}}) followed by customize({\"title\": \"Q3\"}).",
+      "buggy_result_on_divergence_input": "{'header': {'color': 'red'}, 'title': 'Q3'}",
+      "fixed_result_on_divergence_input": "{'header': {'color': 'blue'}, 'title': 'Q3'}",
+      "divergence_justification": "dict() produces a shallow copy, so the nested header dict is shared with the defaults. Updating it in place therefore edits the defaults, and the second call inherits the first call's override. The corrected version rebuilds the nested dict."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "truthy-falsy-empty-check",
+      "difficulty": 5,
+      "has_bug": true,
+      "language": "python"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "class RetryPolicy:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def limit_for(self, route, overrides):\n        configured = overrides.get(route)\n        if not configured:\n            return self.defaults[\"limit\"]\n        return configured\n\n    def describe(self, route, overrides):\n        return \"{}:{}\".format(route, self.limit_for(route, overrides))\n",
+      "fixed_code": "class RetryPolicy:\n    def __init__(self, defaults):\n        self.defaults = defaults\n\n    def limit_for(self, route, overrides):\n        configured = overrides.get(route)\n        if configured is None:\n            return self.defaults[\"limit\"]\n        return configured\n\n    def describe(self, route, overrides):\n        return \"{}:{}\".format(route, self.limit_for(route, overrides))\n",
+      "bug_lines": [
+        7
+      ],
+      "test_code": "policy = RetryPolicy({\"limit\": 3})\nresult = policy.describe(\"/checkout\", {\"/checkout\": 0})\nprint(repr(result))\nassert result == \"/checkout:0\", \"an explicit zero is honoured\"\n",
+      "context_note": "Resolves the retry limit for a route. Zero means the route is never retried.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "dict.get() raises when the key is absent, so the default is never reached"
+        },
+        {
+          "id": "b",
+          "text": "A configured value of 0 is falsy, so it is treated as absent and replaced by the default"
+        },
+        {
+          "id": "c",
+          "text": "format() coerces the limit to a string before the comparison happens"
+        },
+        {
+          "id": "d",
+          "text": "The defaults dict is mutated by limit_for, so later calls see the override"
+        }
+      ],
+      "correct_reason_id": "b",
+      "draft_explanation": {
+        "summary": "A truthiness test cannot distinguish a configured 0 from a missing key, because both are falsy. A route explicitly set to zero retries therefore silently receives the default of three.",
+        "principle": "Test for absence with `is None`, not with truthiness, whenever 0, empty string, or empty collection is a legitimate value.",
+        "line_notes": [
+          {
+            "line": 7,
+            "note": "This is true both when the key is missing and when it is present with the value 0."
+          }
+        ]
+      },
+      "concepts": [
+        "truthy-falsy-empty-check"
+      ],
+      "self_difficulty": 5,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A route is configured with the value 0, which is a real setting rather than an absent one.",
+      "divergence_input": "describe(\"/checkout\", {\"/checkout\": 0})",
+      "buggy_result_on_divergence_input": "'/checkout:3'",
+      "fixed_result_on_divergence_input": "'/checkout:0'",
+      "divergence_justification": "0 is falsy, so the truthiness test cannot tell a configured zero apart from a missing key and falls back to the default of 3. The corrected version tests for absence explicitly, so an explicit zero survives."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "is-vs-equality",
+      "difficulty": 5,
+      "has_bug": true,
+      "language": "python"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def find_matching_order(orders, target_id):\n    for order in orders:\n        if order[\"id\"] is target_id:\n            return order\n    return None\n\n\ndef lookup_from_request(orders, raw_id):\n    return find_matching_order(orders, int(raw_id))\n",
+      "fixed_code": "def find_matching_order(orders, target_id):\n    for order in orders:\n        if order[\"id\"] == target_id:\n            return order\n    return None\n\n\ndef lookup_from_request(orders, raw_id):\n    return find_matching_order(orders, int(raw_id))\n",
+      "bug_lines": [
+        3
+      ],
+      "test_code": "orders = [{\"id\": 1000, \"total\": 42}]\nresult = lookup_from_request(orders, \"1000\")\nprint(repr(result))\nassert result == {\"id\": 1000, \"total\": 42}, \"a parsed identifier matches by value\"\n",
+      "context_note": "Looks up an order by the identifier supplied in a request path.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "int() raises on a string, so the lookup never runs"
+        },
+        {
+          "id": "b",
+          "text": "An identity test compares object identity, and the parsed integer is a different object from the stored one"
+        },
+        {
+          "id": "c",
+          "text": "Dict subscripting returns a copy, so the comparison is against a temporary"
+        },
+        {
+          "id": "d",
+          "text": "The loop returns on the first entry regardless of the comparison"
+        }
+      ],
+      "correct_reason_id": "b",
+      "draft_explanation": {
+        "summary": "`is` asks whether two names refer to the same object, not whether they are equal. The identifier parsed from the request is a newly built integer, so it is a different object from the equal one stored in the order, and the lookup misses. It would appear to work for small identifiers, which CPython keeps interned.",
+        "principle": "Use `is` only for identity (None, sentinels). Use `==` to compare values.",
+        "line_notes": [
+          {
+            "line": 3,
+            "note": "Identity, not equality. Two equal integers are not required to be the same object."
+          }
+        ]
+      },
+      "concepts": [
+        "is-vs-equality"
+      ],
+      "self_difficulty": 5,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "The identifier is parsed at runtime and its value falls outside the range of small integers CPython keeps interned.",
+      "divergence_input": "lookup_from_request([{\"id\": 1000, \"total\": 42}], \"1000\")",
+      "buggy_result_on_divergence_input": "None",
+      "fixed_result_on_divergence_input": "{'id': 1000, 'total': 42}",
+      "divergence_justification": "int('1000') builds a fresh integer object, so it is a different object from the 1000 stored in the order even though the two are equal. An identity test therefore fails and the lookup returns nothing. An equality test succeeds."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "generator-exhaustion",
+      "difficulty": 6,
+      "has_bug": true,
+      "language": "python"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def summarize_rows(rows):\n    materialized = rows\n    total = sum(row[\"amount\"] for row in materialized)\n    count = len(list(materialized))\n    return {\"total\": total, \"count\": count}\n",
+      "fixed_code": "def summarize_rows(rows):\n    materialized = list(rows)\n    total = sum(row[\"amount\"] for row in materialized)\n    count = len(list(materialized))\n    return {\"total\": total, \"count\": count}\n",
+      "bug_lines": [
+        2
+      ],
+      "test_code": "def make_rows():\n    yield {\"amount\": 10}\n    yield {\"amount\": 32}\n\n\nresult = summarize_rows(make_rows())\nprint(repr(result))\nassert result == {\"total\": 42, \"count\": 2}, \"the count reflects every row\"\n",
+      "context_note": "Summarizes ledger rows streamed from an upstream reader.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "sum() raises on a generator of dicts, so the total is never computed"
+        },
+        {
+          "id": "b",
+          "text": "The rows are walked twice, and a generator can only be walked once, so the second walk sees nothing"
+        },
+        {
+          "id": "c",
+          "text": "len() cannot be applied to a list, so the count is always zero"
+        },
+        {
+          "id": "d",
+          "text": "The generator yields dicts rather than numbers, so the amounts are summed as strings"
+        }
+      ],
+      "correct_reason_id": "b",
+      "draft_explanation": {
+        "summary": "The rows are consumed twice: once to total the amounts and once to count them. A generator is exhausted by the first walk, so the second sees an empty sequence and the count is zero. The total is right, which makes this easy to miss.",
+        "principle": "A generator can be consumed only once. Materialize it if you need to walk it more than once.",
+        "line_notes": [
+          {
+            "line": 2,
+            "note": "This binds a name to the generator itself; it does not materialize the rows."
+          }
+        ]
+      },
+      "concepts": [
+        "generator-exhaustion"
+      ],
+      "self_difficulty": 6,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "The caller passes a generator rather than a list, so the rows can only be walked once.",
+      "divergence_input": "summarize_rows(make_rows()), where make_rows() yields two rows.",
+      "buggy_result_on_divergence_input": "{'total': 42, 'count': 0}",
+      "fixed_result_on_divergence_input": "{'total': 42, 'count': 2}",
+      "divergence_justification": "Summing the amounts walks the generator to its end. The second walk therefore sees nothing and the count comes back as zero. Materializing the rows into a list first lets both walks see all of them. A list argument would hide the defect entirely."
+    }
+  }
+]

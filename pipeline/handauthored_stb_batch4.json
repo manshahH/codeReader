@@ -1,0 +1,266 @@
+[
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "string-vs-bytes-confusion",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "binary record packing"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "FIELD_BYTES = 10\n\n\ndef pack_field(text, limit):\n    encoded = text.encode(\"utf-8\")\n    if len(text) > limit:\n        return None\n    return encoded\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(pack_field(label, FIELD_BYTES))\n    return packed\n",
+      "fixed_code": "FIELD_BYTES = 10\n\n\ndef pack_field(text, limit):\n    encoded = text.encode(\"utf-8\")\n    if len(encoded) > limit:\n        return None\n    return encoded\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(pack_field(label, FIELD_BYTES))\n    return packed\n",
+      "bug_lines": [
+        6
+      ],
+      "test_code": "result = pack([{\"label\": \"caf\\u00e9-latte\"}])[0]\nprint(repr(result))\nassert result is None, \"the label overruns a ten-byte field\"\n",
+      "context_note": "Prepares labels for a binary record format that budgets ten bytes per field.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The length is taken from the unencoded string, so a character that costs more than one byte in UTF-8 slips past a budget that is measured in bytes"
+        },
+        {
+          "id": "b",
+          "text": "encode() rewrites the string in place, so len() already sees the encoded form"
+        },
+        {
+          "id": "c",
+          "text": "UTF-8 spends exactly two bytes on every character, so the count is always double what len() reports"
+        },
+        {
+          "id": "d",
+          "text": "packed is rebuilt on each pass of the loop, so only the last record is ever returned"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "The line above produces the bytes that will actually be written, but the guard measures the string those bytes came from. A str counts characters; the field counts bytes. UTF-8 spends one byte on ASCII and two or more on anything else, so an over-long label sails through the check and is silently written past the end of its field.",
+        "principle": "Measure the thing you are about to store, in the unit the destination counts.",
+        "line_notes": [
+          {
+            "line": 6,
+            "note": "The encoded bytes are sitting right above; this measures the string instead."
+          }
+        ]
+      },
+      "concepts": [
+        "string-vs-bytes-confusion"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A label whose character count fits the budget but whose UTF-8 byte count does not.",
+      "divergence_input": "A single record whose label is a ten-character string containing one accented character, eleven bytes once encoded.",
+      "buggy_result_on_divergence_input": "b'caf\\xc3\\xa9-latte'",
+      "fixed_result_on_divergence_input": "None",
+      "divergence_justification": "The label is ten characters, so the character count clears a ten-unit budget and the bytes are handed back for writing. It is eleven bytes encoded, so the corrected guard rejects it."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "injection-string-concat",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "report query builder"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def quote(value):\n    return value.replace(\"'\", \"''\")\n\n\ndef build_query(table, name):\n    return \"SELECT * FROM \" + table + \" WHERE name = '\" + name + \"'\"\n\n\ndef build_all(table, names):\n    queries = []\n    for name in names:\n        queries.append(build_query(table, name))\n    return queries\n\n\ndef describe(queries):\n    return {\"queries\": queries, \"count\": len(queries)}\n",
+      "fixed_code": "def quote(value):\n    return value.replace(\"'\", \"''\")\n\n\ndef build_query(table, name):\n    return \"SELECT * FROM \" + table + \" WHERE name = '\" + quote(name) + \"'\"\n\n\ndef build_all(table, names):\n    queries = []\n    for name in names:\n        queries.append(build_query(table, name))\n    return queries\n\n\ndef describe(queries):\n    return {\"queries\": queries, \"count\": len(queries)}\n",
+      "bug_lines": [
+        6
+      ],
+      "test_code": "result = describe(build_all(\"users\", [\"O'Brien\"]))[\"queries\"][0]\nprint(repr(result))\nassert result == \"SELECT * FROM users WHERE name = 'O''Brien'\", \"the caller value must be quoted\"\n",
+      "context_note": "Builds the read-only report queries that a downstream tool executes.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The caller value is pasted straight between the quotes, so a value containing a quote character closes the literal early and the rest is read as query text"
+        },
+        {
+          "id": "b",
+          "text": "quote() is applied to the table name but not to the caller value, which is why only one of the two is safe"
+        },
+        {
+          "id": "c",
+          "text": "The table name is interpolated the same way, and that is the only untrusted part of the query"
+        },
+        {
+          "id": "d",
+          "text": "replace() substitutes only the first occurrence, so quote() would not help even if it were called"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "quote() exists and is never called. The caller's value is concatenated straight into the literal, so a single quote inside it terminates the literal and everything after it is parsed as part of the statement. The helper right above shows what should have happened to it.",
+        "principle": "Never concatenate an untrusted value into a query. Bind it, or at minimum escape it.",
+        "line_notes": [
+          {
+            "line": 6,
+            "note": "The caller value goes straight between the quote marks, unescaped."
+          }
+        ]
+      },
+      "concepts": [
+        "injection-string-concat"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A value containing a single quote.",
+      "divergence_input": "A name of O'Brien, which contains one apostrophe.",
+      "buggy_result_on_divergence_input": "\"SELECT * FROM users WHERE name = 'O'Brien'\"",
+      "fixed_result_on_divergence_input": "\"SELECT * FROM users WHERE name = 'O''Brien'\"",
+      "divergence_justification": "The apostrophe in the name closes the string literal, so the query the downstream tool receives is not the query that was intended."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "aliasing-vs-copy",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "audit snapshots"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def describe(rows):\n    if not rows:\n        return {\"count\": 0, \"last\": None}\n    return {\"count\": len(rows), \"last\": rows[-1]}\n\n\ndef audit(rows, extra):\n    before = rows\n    rows.append(extra)\n    return {\n        \"before\": before,\n        \"after\": rows,\n        \"summary\": describe(rows),\n    }\ndef run(rows, extra):\n    return audit(rows, extra)[\"before\"]\n",
+      "fixed_code": "def describe(rows):\n    if not rows:\n        return {\"count\": 0, \"last\": None}\n    return {\"count\": len(rows), \"last\": rows[-1]}\n\n\ndef audit(rows, extra):\n    before = list(rows)\n    rows.append(extra)\n    return {\n        \"before\": before,\n        \"after\": rows,\n        \"summary\": describe(rows),\n    }\ndef run(rows, extra):\n    return audit(rows, extra)[\"before\"]\n",
+      "bug_lines": [
+        8
+      ],
+      "test_code": "result = run([\"a\", \"b\"], \"late\")\nprint(repr(result))\nassert result == [\"a\", \"b\"], \"the record of what came before should not show the later row\"\n",
+      "context_note": "Records what a list held before a row was added, so the two states can be compared.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "Binding a second name to a list does not copy it, so before and rows are one object and the appended row shows up in both"
+        },
+        {
+          "id": "b",
+          "text": "append() returns a new list, so the append mutates a temporary and rows is left untouched"
+        },
+        {
+          "id": "c",
+          "text": "Building a dictionary copies each value into it, so before is already independent by the time audit returns"
+        },
+        {
+          "id": "d",
+          "text": "rows[-1] raises IndexError on a list with a single element, so describe cannot be trusted"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "Assignment binds a name; it does not copy. before and rows are two names for one list, so the row appended on the very next line is visible through both. The record of what came before shows something that came after.",
+        "principle": "Assignment shares. To capture a mutable value at a moment in time, copy it.",
+        "line_notes": [
+          {
+            "line": 8,
+            "note": "This binds a second name to the same list rather than copying it."
+          }
+        ]
+      },
+      "concepts": [
+        "aliasing-vs-copy"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "The list is mutated after the earlier state is recorded.",
+      "divergence_input": "audit([\"a\", \"b\"], \"late\"), reading the before entry.",
+      "buggy_result_on_divergence_input": "['a', 'b', 'late']",
+      "fixed_result_on_divergence_input": "['a', 'b']",
+      "divergence_justification": "before and rows refer to one object, so appending late is visible through before, which was supposed to hold the state from before the append."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "timezone-naive-vs-aware",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "scheduling"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "import datetime\n\nUTC = datetime.timezone.utc\n\n\ndef minutes_left(start_local, end_utc):\n    start_utc = start_local.replace(tzinfo=UTC)\n    gap = end_utc - start_utc\n    return int(gap.total_seconds() // 60)\n\n\ndef schedule(jobs, end_utc):\n    remaining = []\n    for job in jobs:\n        remaining.append(minutes_left(job[\"start\"], end_utc))\n    return remaining\n",
+      "fixed_code": "import datetime\n\nUTC = datetime.timezone.utc\n\n\ndef minutes_left(start_local, end_utc):\n    start_utc = start_local.astimezone(UTC)\n    gap = end_utc - start_utc\n    return int(gap.total_seconds() // 60)\n\n\ndef schedule(jobs, end_utc):\n    remaining = []\n    for job in jobs:\n        remaining.append(minutes_left(job[\"start\"], end_utc))\n    return remaining\n",
+      "bug_lines": [
+        7
+      ],
+      "test_code": "east = datetime.timezone(datetime.timedelta(hours=5))\njobs = [{\"start\": datetime.datetime(2026, 1, 1, 12, 0, tzinfo=east)}]\ndeadline = datetime.datetime(2026, 1, 1, 8, 0, tzinfo=UTC)\nresult = schedule(jobs, deadline)\nprint(repr(result))\nassert result == [60], \"noon in a plus-five zone is 07:00 UTC, one hour before the deadline\"\n",
+      "context_note": "Reports how many minutes each job has left, given a start in the operator's zone and a deadline in UTC.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "Replacing the zone relabels the wall-clock reading as UTC instead of converting it, so the instant silently moves by the size of the offset"
+        },
+        {
+          "id": "b",
+          "text": "Two aware datetimes cannot be subtracted, so the subtraction raises TypeError"
+        },
+        {
+          "id": "c",
+          "text": "total_seconds() already returns whole minutes, so the floor division divides by sixty a second time"
+        },
+        {
+          "id": "d",
+          "text": "datetime.timezone.utc is a naive zone, so every value built from it is naive"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "replace() edits the label on the reading and leaves the digits alone: noon in a plus-five zone becomes noon UTC, an instant five hours earlier than the operator meant. astimezone() moves the digits so the instant survives the conversion.",
+        "principle": "replace(tzinfo=...) relabels. astimezone() converts. Only one of them preserves the instant.",
+        "line_notes": [
+          {
+            "line": 7,
+            "note": "This changes the label without moving the reading, so the instant shifts by the offset."
+          }
+        ]
+      },
+      "concepts": [
+        "timezone-naive-vs-aware"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A start whose zone offset is not zero.",
+      "divergence_input": "One job starting at noon in a UTC-plus-five zone, against a deadline of 08:00 UTC.",
+      "buggy_result_on_divergence_input": "[-240]",
+      "fixed_result_on_divergence_input": "[60]",
+      "divergence_justification": "The true start is 07:00 UTC, one hour before the deadline. Relabelling makes it 12:00 UTC, four hours after it, so the job is reported as already four hours overdue."
+    }
+  }
+]

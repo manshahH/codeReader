@@ -1,0 +1,662 @@
+[
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "list-mutation-during-iteration",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "spreadsheet ingestion"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def drop_blank_rows(rows):\n    for row in rows:\n        if not row:\n            rows.remove(row)\n    return rows\n\n\ndef label_rows(rows):\n    labels = []\n    for index, row in enumerate(rows):\n        labels.append(\"row-\" + str(index) + \"-\" + str(len(row)))\n    return labels\n\n\ndef report(rows):\n    kept = drop_blank_rows(rows)\n    return {\n        \"kept\": kept,\n        \"labels\": label_rows(kept),\n    }\n",
+      "fixed_code": "def drop_blank_rows(rows):\n    for row in list(rows):\n        if not row:\n            rows.remove(row)\n    return rows\n\n\ndef label_rows(rows):\n    labels = []\n    for index, row in enumerate(rows):\n        labels.append(\"row-\" + str(index) + \"-\" + str(len(row)))\n    return labels\n\n\ndef report(rows):\n    kept = drop_blank_rows(rows)\n    return {\n        \"kept\": kept,\n        \"labels\": label_rows(kept),\n    }\n",
+      "bug_lines": [
+        2
+      ],
+      "test_code": "rows = [[1], [], [], [2]]\nresult = report(rows)[\"kept\"]\nprint(repr(result))\nassert result == [[1], [2]], \"every blank row should be dropped\"\n",
+      "context_note": "Cleans a batch of parsed spreadsheet rows before they are rendered.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The list is shortened while it is being walked, so the element that shifts into the vacated position is skipped"
+        },
+        {
+          "id": "b",
+          "text": "remove() deletes every matching element, not just the first one"
+        },
+        {
+          "id": "c",
+          "text": "enumerate() caches the length of the list before the loop starts"
+        },
+        {
+          "id": "d",
+          "text": "An empty list is truthy, so the guard inside the loop never runs"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "Deleting an element from a list while a for-loop is walking it shifts every later element down one position, but the loop's internal counter still advances. Whatever slides into the vacated index is never visited.",
+        "principle": "Never mutate a sequence while iterating over it. Iterate over a copy, or build a new list.",
+        "line_notes": [
+          {
+            "line": 2,
+            "note": "This walks the same list that the body shortens."
+          }
+        ]
+      },
+      "concepts": [
+        "list-mutation-during-iteration"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "Two or more blank rows sit next to each other.",
+      "divergence_input": "rows = [[1], [], [], [2]] passed to report(), reading the \"kept\" entry.",
+      "buggy_result_on_divergence_input": "[[1], [], [2]]",
+      "fixed_result_on_divergence_input": "[[1], [2]]",
+      "divergence_justification": "With two adjacent blank rows, removing the first shifts the second down into the index the loop has already passed, so it survives. Walking a snapshot of the list visits both."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "truthy-falsy-empty-check",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python",
+      "domain": "service configuration"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "DEFAULT_SETTINGS = {\n    \"retries\": 3,\n    \"timeout\": 30,\n    \"verbose\": True,\n}\n\n\ndef resolve(overrides, key):\n    value = overrides.get(key)\n    if not value:\n        return DEFAULT_SETTINGS[key]\n    return value\n\n\ndef resolve_all(overrides):\n    resolved = {}\n    for key in DEFAULT_SETTINGS:\n        resolved[key] = resolve(overrides, key)\n    return resolved\n",
+      "fixed_code": "DEFAULT_SETTINGS = {\n    \"retries\": 3,\n    \"timeout\": 30,\n    \"verbose\": True,\n}\n\n\ndef resolve(overrides, key):\n    value = overrides.get(key)\n    if value is None:\n        return DEFAULT_SETTINGS[key]\n    return value\n\n\ndef resolve_all(overrides):\n    resolved = {}\n    for key in DEFAULT_SETTINGS:\n        resolved[key] = resolve(overrides, key)\n    return resolved\n",
+      "bug_lines": [
+        10
+      ],
+      "test_code": "result = resolve_all({\"retries\": 0, \"verbose\": False})\nprint(repr(result))\nassert result == {\"retries\": 0, \"timeout\": 30, \"verbose\": False}, \"an explicit zero should survive\"\n",
+      "context_note": "Merges a caller's overrides onto the service defaults.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "dict.get() raises KeyError when the key is absent, so the guard never runs"
+        },
+        {
+          "id": "b",
+          "text": "0 and False are falsy, so a value the caller supplied on purpose is discarded and replaced by the default"
+        },
+        {
+          "id": "c",
+          "text": "Iterating a dictionary yields its values, so resolve() receives the wrong argument"
+        },
+        {
+          "id": "d",
+          "text": "DEFAULT_SETTINGS is mutated by resolve(), so later lookups see stale entries"
+        }
+      ],
+      "correct_reason_id": "b",
+      "draft_explanation": {
+        "summary": "An override of 0 or False is a legitimate value, but both are falsy. Testing the value for truthiness cannot tell 'the caller said zero' apart from 'the caller said nothing', so a deliberate override is silently overwritten by the default.",
+        "principle": "To ask whether a value was supplied, compare against None. Truthiness answers a different question.",
+        "line_notes": [
+          {
+            "line": 10,
+            "note": "This asks whether the value is truthy, not whether the caller supplied one."
+          }
+        ]
+      },
+      "concepts": [
+        "truthy-falsy-empty-check"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "An override whose value is 0, False, or an empty string.",
+      "divergence_input": "resolve_all({\"retries\": 0, \"verbose\": False})",
+      "buggy_result_on_divergence_input": "{'retries': 3, 'timeout': 30, 'verbose': True}",
+      "fixed_result_on_divergence_input": "{'retries': 0, 'timeout': 30, 'verbose': False}",
+      "divergence_justification": "The caller explicitly asked for zero retries and no verbosity. The truthiness test treats both as absent and substitutes the defaults; the None test keeps them."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "string-immutability-misuse",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python",
+      "domain": "catalogue normalisation"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def normalize_label(label):\n    label.strip()\n    label = label.lower()\n    label = label.replace(\" \", \"-\")\n    return label\n\n\ndef normalize_all(labels):\n    cleaned = []\n    for label in labels:\n        cleaned.append(normalize_label(label))\n    return cleaned\n\n\ndef build_index(labels):\n    index = {}\n    for position, label in enumerate(normalize_all(labels)):\n        index[label] = position\n    return index\n",
+      "fixed_code": "def normalize_label(label):\n    label = label.strip()\n    label = label.lower()\n    label = label.replace(\" \", \"-\")\n    return label\n\n\ndef normalize_all(labels):\n    cleaned = []\n    for label in labels:\n        cleaned.append(normalize_label(label))\n    return cleaned\n\n\ndef build_index(labels):\n    index = {}\n    for position, label in enumerate(normalize_all(labels)):\n        index[label] = position\n    return index\n",
+      "bug_lines": [
+        2
+      ],
+      "test_code": "result = build_index([\"  Alpha One  \"])\nprint(repr(result))\nassert result == {\"alpha-one\": 0}, \"surrounding whitespace should be removed\"\n",
+      "context_note": "Turns human-typed category names into stable lookup keys.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "replace() only substitutes the first occurrence unless a count is given"
+        },
+        {
+          "id": "b",
+          "text": "lower() rewrites the string in place, so the following call sees the original text"
+        },
+        {
+          "id": "c",
+          "text": "enumerate() starts at 1, so every stored position is shifted by one"
+        },
+        {
+          "id": "d",
+          "text": "Strings are immutable, so strip() hands back a new string and the result of that call is thrown away"
+        }
+      ],
+      "correct_reason_id": "d",
+      "draft_explanation": {
+        "summary": "Every string method returns a new string and leaves the original untouched. Calling strip() as a bare statement computes a trimmed copy and immediately discards it, so the padding survives into the following two steps.",
+        "principle": "String methods are pure. Their return value is the only thing that changed.",
+        "line_notes": [
+          {
+            "line": 2,
+            "note": "This computes a trimmed copy and throws it away."
+          }
+        ]
+      },
+      "concepts": [
+        "string-immutability-misuse"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A label that carries leading or trailing whitespace.",
+      "divergence_input": "build_index([\"  Alpha One  \"])",
+      "buggy_result_on_divergence_input": "{'--alpha-one--': 0}",
+      "fixed_result_on_divergence_input": "{'alpha-one': 0}",
+      "divergence_justification": "The padding survives strip(), so the later replace() converts each surviving space into a dash and the key gains four dashes it should not have."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "key-function-misuse",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "access log analytics"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def tally(events):\n    counts = {}\n    for event in events:\n        name = event[\"endpoint\"]\n        counts[name] = counts.get(name, 0) + 1\n    return counts\n\n\ndef busiest_endpoint(events):\n    counts = tally(events)\n    if not counts:\n        return None\n    ranked = sorted(counts.items(), key=lambda pair: pair[0], reverse=True)\n    return ranked[0][0]\n\n\ndef summary(events):\n    return {\n        \"counts\": tally(events),\n        \"busiest\": busiest_endpoint(events),\n    }\n",
+      "fixed_code": "def tally(events):\n    counts = {}\n    for event in events:\n        name = event[\"endpoint\"]\n        counts[name] = counts.get(name, 0) + 1\n    return counts\n\n\ndef busiest_endpoint(events):\n    counts = tally(events)\n    if not counts:\n        return None\n    ranked = sorted(counts.items(), key=lambda pair: pair[1], reverse=True)\n    return ranked[0][0]\n\n\ndef summary(events):\n    return {\n        \"counts\": tally(events),\n        \"busiest\": busiest_endpoint(events),\n    }\n",
+      "bug_lines": [
+        13
+      ],
+      "test_code": "events = [\n    {\"endpoint\": \"/alpha\"},\n    {\"endpoint\": \"/alpha\"},\n    {\"endpoint\": \"/alpha\"},\n    {\"endpoint\": \"/zulu\"},\n]\nresult = summary(events)[\"busiest\"]\nprint(repr(result))\nassert result == \"/alpha\", \"the endpoint with the most hits should win\"\n",
+      "context_note": "Picks the hottest endpoint from a window of access-log entries.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "reverse=True sorts ascending, so the smallest count ends up first"
+        },
+        {
+          "id": "b",
+          "text": "dict.items() yields keys only, so the lambda receives a string"
+        },
+        {
+          "id": "c",
+          "text": "The sort key reads the endpoint name instead of the hit count, so the ranking is alphabetical"
+        },
+        {
+          "id": "d",
+          "text": "counts.get(name, 0) resets the running count on every hit"
+        }
+      ],
+      "correct_reason_id": "c",
+      "draft_explanation": {
+        "summary": "items() yields (endpoint, count) pairs. Indexing the pair at 0 selects the endpoint, so the descending sort ranks the endpoints alphabetically and the winner is whichever name sorts last, not whichever endpoint was hit most.",
+        "principle": "A sort key must return the quantity you are ranking by, not merely something derived from the same record.",
+        "line_notes": [
+          {
+            "line": 13,
+            "note": "Index 0 of the pair is the endpoint name; the count sits at index 1."
+          }
+        ]
+      },
+      "concepts": [
+        "key-function-misuse"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "The alphabetically last endpoint is not the most frequent one.",
+      "divergence_input": "Four events: three hits on \"/alpha\" and one on \"/zulu\".",
+      "buggy_result_on_divergence_input": "'/zulu'",
+      "fixed_result_on_divergence_input": "'/alpha'",
+      "divergence_justification": "Ranking by name in reverse puts '/zulu' first even though it was hit once. Ranking by count puts '/alpha' first with three hits."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "float-precision",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "invoice reconciliation"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "LINE_ITEMS = (\n    (\"shipping\", 0.1),\n    (\"handling\", 0.2),\n)\n\n\ndef line_total(items):\n    total = 0.0\n    for _name, amount in items:\n        total += amount\n    return total\n\n\ndef reconciles(items, expected):\n    total = line_total(items)\n    return total == expected\n\n\ndef audit(items, expected):\n    return {\n        \"total\": line_total(items),\n        \"reconciles\": reconciles(items, expected),\n    }\n",
+      "fixed_code": "LINE_ITEMS = (\n    (\"shipping\", 0.1),\n    (\"handling\", 0.2),\n)\n\n\ndef line_total(items):\n    total = 0.0\n    for _name, amount in items:\n        total += amount\n    return total\n\n\ndef reconciles(items, expected):\n    total = line_total(items)\n    return abs(total - expected) < 0.005\n\n\ndef audit(items, expected):\n    return {\n        \"total\": line_total(items),\n        \"reconciles\": reconciles(items, expected),\n    }\n",
+      "bug_lines": [
+        16
+      ],
+      "test_code": "result = audit(LINE_ITEMS, 0.3)[\"reconciles\"]\nprint(repr(result))\nassert result is True, \"the line items should reconcile against the quoted total\"\n",
+      "context_note": "Checks a generated invoice against the total the customer was quoted.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "A tuple cannot be unpacked in a for-loop, so amount is bound to the whole pair"
+        },
+        {
+          "id": "b",
+          "text": "Binary floating point cannot hold these decimals exactly, so the accumulated sum is not bit-identical to the expected value"
+        },
+        {
+          "id": "c",
+          "text": "total is initialised to 0.0 rather than 0, which forces integer truncation"
+        },
+        {
+          "id": "d",
+          "text": "line_total() is called twice, so the amount is doubled before the comparison"
+        }
+      ],
+      "correct_reason_id": "b",
+      "draft_explanation": {
+        "summary": "0.1 and 0.2 have no exact binary representation, so adding them yields 0.30000000000000004 rather than 0.3. Exact equality between two floats that were arrived at by different arithmetic almost never holds, even when the decimal maths agrees.",
+        "principle": "Compare floats within a tolerance chosen from the domain, never with equality.",
+        "line_notes": [
+          {
+            "line": 16,
+            "note": "Two floats that agree in decimal can still differ in the last bit."
+          }
+        ]
+      },
+      "concepts": [
+        "float-precision"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "Any total assembled from decimals that binary floating point cannot represent exactly.",
+      "divergence_input": "LINE_ITEMS of 0.1 and 0.2 checked against an expected total of 0.3.",
+      "buggy_result_on_divergence_input": "False",
+      "fixed_result_on_divergence_input": "True",
+      "divergence_justification": "The accumulated sum is 0.30000000000000004, which is not equal to 0.3, so the exact comparison reports a mismatch. A tolerance of half a cent accepts it."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "is-vs-equality",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "tabular data lookup"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "def find_row(rows, target):\n    for position, row in enumerate(rows):\n        if row is target:\n            return position\n    return -1\n\n\ndef parse_rows(raw):\n    parsed = []\n    for chunk in raw.split(\";\"):\n        parsed.append([int(part) for part in chunk.split(\",\")])\n    return parsed\n\n\ndef locate(raw, target):\n    rows = parse_rows(raw)\n    return {\n        \"rows\": rows,\n        \"position\": find_row(rows, target),\n    }\n",
+      "fixed_code": "def find_row(rows, target):\n    for position, row in enumerate(rows):\n        if row == target:\n            return position\n    return -1\n\n\ndef parse_rows(raw):\n    parsed = []\n    for chunk in raw.split(\";\"):\n        parsed.append([int(part) for part in chunk.split(\",\")])\n    return parsed\n\n\ndef locate(raw, target):\n    rows = parse_rows(raw)\n    return {\n        \"rows\": rows,\n        \"position\": find_row(rows, target),\n    }\n",
+      "bug_lines": [
+        3
+      ],
+      "test_code": "result = locate(\"1,2;3,4;5,6\", [3, 4])[\"position\"]\nprint(repr(result))\nassert result == 1, \"the matching row should be found by value\"\n",
+      "context_note": "Finds where a given row sits inside a freshly parsed table.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "The identity operator asks whether two names point at the same object, and the parsed row is a different object from the target even though their contents match"
+        },
+        {
+          "id": "b",
+          "text": "enumerate() yields the value first and the index second, so position holds a list"
+        },
+        {
+          "id": "c",
+          "text": "split(\";\") discards the final chunk, so the target row is never inspected"
+        },
+        {
+          "id": "d",
+          "text": "Two lists cannot be compared with the equality operator, which would raise TypeError"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "parse_rows() builds brand-new list objects. The caller's target is a separate object that merely holds the same numbers, so an identity test is False for every row and the search reports failure.",
+        "principle": "Identity asks 'the same object?'. Equality asks 'the same value?'. Data comparison almost always wants the second.",
+        "line_notes": [
+          {
+            "line": 3,
+            "note": "This asks whether the two names refer to one object, not whether they hold the same values."
+          }
+        ]
+      },
+      "concepts": [
+        "is-vs-equality"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "The target holds the same values as a parsed row but is a distinct object.",
+      "divergence_input": "locate(\"1,2;3,4;5,6\", [3, 4]), reading the \"position\" entry.",
+      "buggy_result_on_divergence_input": "-1",
+      "fixed_result_on_divergence_input": "1",
+      "divergence_justification": "The literal [3, 4] handed in by the caller is not the same object as the [3, 4] that parse_rows() constructed, so the identity test never succeeds and the search falls through to its not-found result."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "global-state-mutation",
+      "difficulty": 4,
+      "has_bug": true,
+      "language": "python",
+      "domain": "service configuration"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "BASE_CONFIG = {\n    \"retries\": 3,\n    \"timeout\": 30,\n}\n\n\ndef with_overrides(overrides):\n    config = BASE_CONFIG\n    config.update(overrides)\n    return config\n\n\ndef describe(config):\n    parts = []\n    for key in sorted(config):\n        parts.append(key + \"=\" + str(config[key]))\n    return \" \".join(parts)\n\n\ndef run_twice(first, second):\n    with_overrides(first)\n    return describe(with_overrides(second))\n",
+      "fixed_code": "BASE_CONFIG = {\n    \"retries\": 3,\n    \"timeout\": 30,\n}\n\n\ndef with_overrides(overrides):\n    config = dict(BASE_CONFIG)\n    config.update(overrides)\n    return config\n\n\ndef describe(config):\n    parts = []\n    for key in sorted(config):\n        parts.append(key + \"=\" + str(config[key]))\n    return \" \".join(parts)\n\n\ndef run_twice(first, second):\n    with_overrides(first)\n    return describe(with_overrides(second))\n",
+      "bug_lines": [
+        8
+      ],
+      "test_code": "result = run_twice({\"retries\": 9}, {})\nprint(repr(result))\nassert result == \"retries=3 timeout=30\", \"a later call should not inherit an earlier override\"\n",
+      "context_note": "Layers a caller's settings on top of the service defaults before a run.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "dict.update() returns a new dictionary, so the return value is discarded"
+        },
+        {
+          "id": "b",
+          "text": "sorted() on a dictionary yields its values, so describe() reads the wrong side of each pair"
+        },
+        {
+          "id": "c",
+          "text": "The second call passes an empty dictionary, so with_overrides() returns None"
+        },
+        {
+          "id": "d",
+          "text": "The assignment binds a second name to the module-level dictionary rather than copying it, so every call permanently rewrites the shared defaults"
+        }
+      ],
+      "correct_reason_id": "d",
+      "draft_explanation": {
+        "summary": "Assignment in Python binds a name; it does not copy. config and BASE_CONFIG therefore refer to one dictionary, and update() rewrites it in place. The first caller's override becomes the new default for everyone who follows.",
+        "principle": "Assignment binds, it does not copy. To leave a shared structure intact, copy it before mutating.",
+        "line_notes": [
+          {
+            "line": 8,
+            "note": "This makes config a second name for the module-level dictionary."
+          }
+        ]
+      },
+      "concepts": [
+        "global-state-mutation"
+      ],
+      "self_difficulty": 4,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A second call that relies on a default the first call overrode.",
+      "divergence_input": "run_twice({\"retries\": 9}, {}) - an override of 9 retries followed by a call that overrides nothing.",
+      "buggy_result_on_divergence_input": "'retries=9 timeout=30'",
+      "fixed_result_on_divergence_input": "'retries=3 timeout=30'",
+      "divergence_justification": "The first call writes 9 into the shared defaults, so the second call, which overrides nothing, still reports 9. Copying before the update leaves the module-level dictionary untouched."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "string-vs-bytes-confusion",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python",
+      "domain": "binary record packing"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "FIELD_LIMIT = 10\n\n\ndef encode_field(text):\n    return text.encode(\"utf-8\")\n\n\ndef fits(text, limit):\n    return len(text) <= limit\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(\n            {\n                \"label\": label,\n                \"fits\": fits(label, FIELD_LIMIT),\n                \"encoded\": encode_field(label),\n            },\n        )\n    return packed\n",
+      "fixed_code": "FIELD_LIMIT = 10\n\n\ndef encode_field(text):\n    return text.encode(\"utf-8\")\n\n\ndef fits(text, limit):\n    return len(text.encode(\"utf-8\")) <= limit\n\n\ndef pack(records):\n    packed = []\n    for record in records:\n        label = record[\"label\"]\n        packed.append(\n            {\n                \"label\": label,\n                \"fits\": fits(label, FIELD_LIMIT),\n                \"encoded\": encode_field(label),\n            },\n        )\n    return packed\n",
+      "bug_lines": [
+        9
+      ],
+      "test_code": "result = pack([{\"label\": \"caf\\u00e9-latte\"}])[0][\"fits\"]\nprint(repr(result))\nassert result is False, \"the label overruns the field once it is encoded\"\n",
+      "context_note": "Prepares labels for a binary record format with a byte budget per field.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "encode() rewrites the string in place, so len() already sees the encoded form"
+        },
+        {
+          "id": "b",
+          "text": "len() on a string counts characters, but the field budget is measured in bytes, and a non-ASCII character costs more than one byte"
+        },
+        {
+          "id": "c",
+          "text": "UTF-8 spends exactly two bytes on every character, so the count is always double what len() reports"
+        },
+        {
+          "id": "d",
+          "text": "The record dictionary is rebuilt on each pass, so only the last label is ever packed"
+        }
+      ],
+      "correct_reason_id": "b",
+      "draft_explanation": {
+        "summary": "A str is a sequence of characters; the record format budgets bytes. UTF-8 spends one byte on ASCII but two or more on anything else, so a label can sit inside the character budget and still overrun the field once encoded.",
+        "principle": "Characters and bytes are different units. Measure in whichever unit the destination is counting.",
+        "line_notes": [
+          {
+            "line": 9,
+            "note": "This counts characters, but the destination counts bytes."
+          }
+        ]
+      },
+      "concepts": [
+        "string-vs-bytes-confusion"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A label containing a non-ASCII character whose character count sits at the limit.",
+      "divergence_input": "A single record whose label is the ten-character string cafe-latte with an accented e, which is eleven bytes in UTF-8.",
+      "buggy_result_on_divergence_input": "True",
+      "fixed_result_on_divergence_input": "False",
+      "divergence_justification": "The label is ten characters, so the character count clears a ten-unit budget. Encoded it is eleven bytes, which does not, and the record would be silently truncated downstream."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "dataclass-mutable-default",
+      "difficulty": 5,
+      "has_bug": true,
+      "language": "python",
+      "domain": "account provisioning"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "import dataclasses\n\n\nclass Ledger:\n    def __init__(self):\n        self.entries = []\n\n    def add(self, amount):\n        self.entries.append(amount)\n\n    def balance(self):\n        return sum(self.entries)\n\n\n@dataclasses.dataclass\nclass Account:\n    owner: str\n    ledger: Ledger = Ledger()\n\n\ndef open_accounts(owners):\n    accounts = []\n    for owner in owners:\n        accounts.append(Account(owner))\n    return accounts\n",
+      "fixed_code": "import dataclasses\n\n\nclass Ledger:\n    def __init__(self):\n        self.entries = []\n\n    def add(self, amount):\n        self.entries.append(amount)\n\n    def balance(self):\n        return sum(self.entries)\n\n\n@dataclasses.dataclass\nclass Account:\n    owner: str\n    ledger: Ledger = dataclasses.field(default_factory=Ledger)\n\n\ndef open_accounts(owners):\n    accounts = []\n    for owner in owners:\n        accounts.append(Account(owner))\n    return accounts\n",
+      "bug_lines": [
+        18
+      ],
+      "test_code": "accounts = open_accounts([\"ada\", \"linus\"])\naccounts[0].ledger.add(50)\nresult = accounts[1].ledger.balance()\nprint(repr(result))\nassert result == 0, \"a freshly opened account should start empty\"\n",
+      "context_note": "Opens ledger-backed accounts for a batch of new customers.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "sum() on an empty list raises TypeError, so balance() never returns a number"
+        },
+        {
+          "id": "b",
+          "text": "A dataclass copies each default value for every instance, so the two ledgers are already independent"
+        },
+        {
+          "id": "c",
+          "text": "The default is a single Ledger object built once when the class body is executed, so every account shares it"
+        },
+        {
+          "id": "d",
+          "text": "open_accounts() appends the same Account object twice because the loop variable is rebound"
+        }
+      ],
+      "correct_reason_id": "c",
+      "draft_explanation": {
+        "summary": "A dataclass field default is an ordinary expression, evaluated once while the class body runs. One Ledger is built at import time and handed to every Account that does not supply its own, so all accounts share a single balance.",
+        "principle": "A default value is created once, at definition time. For anything mutable, use default_factory so each instance gets its own.",
+        "line_notes": [
+          {
+            "line": 18,
+            "note": "This Ledger is constructed once, when the class is defined, and reused by every instance."
+          }
+        ]
+      },
+      "concepts": [
+        "dataclass-mutable-default"
+      ],
+      "self_difficulty": 5,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "A second account is opened without an explicit ledger and the first one has already been posted to.",
+      "divergence_input": "open_accounts([\"ada\", \"linus\"]), posting 50 to the first account and reading the second account balance.",
+      "buggy_result_on_divergence_input": "50",
+      "fixed_result_on_divergence_input": "0",
+      "divergence_justification": "Both accounts hold a reference to the same Ledger built at class-definition time, so the posting to the first is visible in the second. default_factory constructs a fresh Ledger per instance."
+    }
+  },
+  {
+    "spec": {
+      "type": "spot_the_bug",
+      "concept": "off-by-one-slicing",
+      "difficulty": 3,
+      "has_bug": true,
+      "language": "python",
+      "domain": "API pagination"
+    },
+    "prompt_template_id": "handauthored_stb_v1",
+    "candidate": {
+      "buggy_code": "PAGE_SIZE = 3\n\n\ndef page(items, number):\n    start = number * PAGE_SIZE\n    end = start + PAGE_SIZE - 1\n    return items[start:end]\n\n\ndef page_count(items):\n    full, remainder = divmod(len(items), PAGE_SIZE)\n    if remainder:\n        return full + 1\n    return full\n\n\ndef paginate(items):\n    pages = []\n    for number in range(page_count(items)):\n        pages.append(page(items, number))\n    return pages\n",
+      "fixed_code": "PAGE_SIZE = 3\n\n\ndef page(items, number):\n    start = number * PAGE_SIZE\n    end = start + PAGE_SIZE\n    return items[start:end]\n\n\ndef page_count(items):\n    full, remainder = divmod(len(items), PAGE_SIZE)\n    if remainder:\n        return full + 1\n    return full\n\n\ndef paginate(items):\n    pages = []\n    for number in range(page_count(items)):\n        pages.append(page(items, number))\n    return pages\n",
+      "bug_lines": [
+        6
+      ],
+      "test_code": "result = paginate([\"a\", \"b\", \"c\", \"d\", \"e\", \"f\"])\nprint(repr(result))\nassert result == [[\"a\", \"b\", \"c\"], [\"d\", \"e\", \"f\"]], \"every item should appear on exactly one page\"\n",
+      "context_note": "Splits a result set into equal-size pages for the API response.",
+      "reason_options": [
+        {
+          "id": "a",
+          "text": "A slice already excludes its end index, so subtracting one more drops the last item of every page"
+        },
+        {
+          "id": "b",
+          "text": "divmod() hands back the remainder first, so page_count() is computed from the wrong half of the pair"
+        },
+        {
+          "id": "c",
+          "text": "range() includes its upper bound, so one page too many is produced"
+        },
+        {
+          "id": "d",
+          "text": "Slicing a list with a start index beyond its length raises IndexError"
+        }
+      ],
+      "correct_reason_id": "a",
+      "draft_explanation": {
+        "summary": "A slice is already half-open: items[0:3] yields three items and stops before index 3. Subtracting one from the end index therefore takes PAGE_SIZE minus one items per page, and one record per page never reaches the caller.",
+        "principle": "Python slices exclude their upper bound. The end index is a stop, not a last index.",
+        "line_notes": [
+          {
+            "line": 6,
+            "note": "The slice already stops before this index, so the subtraction removes a second item."
+          }
+        ]
+      },
+      "concepts": [
+        "off-by-one-slicing"
+      ],
+      "self_difficulty": 3,
+      "self_check": {
+        "single_bug_confirmed": true,
+        "runs_without_error_on_happy_path": true,
+        "no_hinting_names_or_comments": true,
+        "distractors_verifiably_wrong": true,
+        "test_input_is_on_the_divergence_boundary": true,
+        "test_asserts_on_divergence_input": true
+      },
+      "bug_trigger_condition": "Any page that is full, which is every page except possibly the last.",
+      "divergence_input": "paginate([\"a\", \"b\", \"c\", \"d\", \"e\", \"f\"]) with a page size of three.",
+      "buggy_result_on_divergence_input": "[['a', 'b'], ['d', 'e']]",
+      "fixed_result_on_divergence_input": "[['a', 'b', 'c'], ['d', 'e', 'f']]",
+      "divergence_justification": "Each page takes items[start:start+2] instead of items[start:start+3], so 'c' and 'f' are silently lost while page_count still reports two pages."
+    }
+  }
+]

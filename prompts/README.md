@@ -10,13 +10,32 @@ SPEC SAMPLER -> [generator_*.md] -> STATIC GATE -> SANDBOX GATE -> [gates.md] ->
 
 | File | Role | Model | Temp |
 |---|---|---|---|
-| `generator_spot_the_bug_python_v2.md` | produces STB candidates | strong model (Sonnet-class or better) | 0.8 |
-| `generator_trace_python_v1.md` | produces Trace candidates | strong model | 0.8 |
+| `generator_spot_the_bug_python_v5.md` | produces STB candidates | strong model (Sonnet-class or better), or GENERATOR_MODEL_STB override (D-80) | 0.8 |
+| `generator_predict_the_fix_python_v1.md` | produces wrong-fix distractors for a verified STB (D-80) | strong model | 0.8 |
+| `generator_trace_python_v2.md` | produces Trace candidates | strong model | 0.8 |
+| `repair_spot_the_bug_python_v1.md` | targeted repair of a REPAIRABLE STB rejection (D-83) | same generator | 0.8 |
+| `repair_trace_python_v1.md` | targeted repair of a REPAIRABLE trace rejection (D-83) | same generator | 0.8 |
 | `gates_v1.md` | adversarial checks post-sandbox | DIFFERENT model/family than generator | 0.0 |
 
-(`generator_spot_the_bug_python_v1.md` is retired but kept for traceability of
-already-generated candidates; D-46 edited it in place, so v1 on disk reflects
-its final, not original, state -- noted in D-53.)
+(`generator_spot_the_bug_python_v1.md`, `_v2.md`, `_v3.md`, and `_v4.md` are
+retired but kept for traceability of already-generated candidates; D-46 edited v1
+in place, so v1 on disk reflects its final, not original, state -- noted in D-53.
+v3 added the single divergence-boundary worked example (D-80) but did not move the
+non-discriminating-test reject rate. v4 (D-82) decomposes generation into
+correct-code-first -> plant one bug -> DERIVE the divergence as required fields ->
+a test that prints repr(result) and asserts on the divergence input, adds three
+structurally different worked examples, and is backed by the free B3 schema check
+and the B4 execution claim-check. v5 (D-86) is v4 with its content byte-identical
+but the varying `## Specification` block relocated to the END so the static prefix
+is prompt-cacheable; `generator_trace_python_v1.md` is likewise retired for its
+cache-optimized v2. The `repair_*` templates (D-83) are handed a REPAIRABLE
+rejection's original candidate + failed check + evidence and asked to change only
+what the failure requires; the repaired candidate re-runs the FULL gate chain.)
+
+`generator_predict_the_fix_python_v1.md` is NOT sampled from a spec: it is
+handed a verified STB's (buggy, fixed, test) triple and asked only for wrong-fix
+distractors. Its correct answer is the execution-proven fixed_code, and every
+distractor is re-executed and must STILL FAIL the test (D-80).
 
 Generator temperature is high for variety; gate temperature is 0 because gates are judges, not writers.
 
@@ -42,8 +61,15 @@ Generator temperature is high for variety; gate temperature is 0 because gates a
 
 ## Retry policy
 
-Per candidate: 1 generation call. If any gate rejects, do NOT ask the model to "fix" the candidate; discard and generate fresh from the same spec (max 3 specs attempts, then flag the spec). Repaired candidates inherit subtle inconsistencies; fresh ones don't. The one exception: JSON parse failure gets a single "output valid JSON only" retry because nothing semantic is wrong yet.
+Per candidate: 1 generation call. On a gate rejection the orchestrator now does one of two things (D-83, superseding the original discard-and-regenerate-only rule of D-10):
+
+- **REPAIRABLE rejection** (a mechanical static violation; a non-discriminating test / mispredicted result / non-self-consistent fix in the sandbox): feed the candidate BACK to the generator with the failed check and its concrete evidence, via `repair_*`, and ask for a targeted fix. The repaired candidate re-runs the FULL gate chain, no exemptions -- a repair is not trusted. At most 2 repairs per candidate, never the same check twice.
+- **FUNDAMENTAL rejection** (a genuine second defect, an unsolvable/ambiguous exercise, a `partially_defensible` distractor, a duplicate): the idea is bad; discard and generate fresh. Repairing it is asking the model to rescue a bad idea.
+
+Both fresh generations and repairs draw from one budget of `MAX_ATTEMPTS_PER_SPEC` total generation calls per spec (then the spec is flagged/exhausted). Where budget allows, best-of-N (D-84) collects more than one survivor and publishes the highest-scoring. The one JSON exception is unchanged: a parse failure gets a single "output valid JSON only" retry because nothing semantic is wrong yet.
 
 ## Versioning
 
 Template file name is the `prompt_template_id` stored in `exercises.source`. Any edit to a template, however small, bumps the version and creates a new file. This is what lets you trace a bad batch of exercises back to the exact prompt that made them.
+
+One `prompt_template_id` value is not a file: `handauthored_stb_v1` (D-87, `pipeline/ingest.py`) tags a candidate a human wrote directly, with no generator template and no generation call in the loop. It still goes through the same static/sandbox/semantic/dedup gate chain as every template above, on the OpenAI gate path (D-14) since the author is Claude. `source.origin="handauthored_claude"` is the field that actually distinguishes it; the fixed `prompt_template_id` is a load-time-enforced tag, not free text.

@@ -72,6 +72,40 @@ def _render(template_text: str, variables: dict[str, object]) -> str:
     return rendered
 
 
+# D-81 (pipeline defect #5). A1: the gate model (gpt-4o-mini) could not reliably
+# COUNT to the right line in a 25-45 line class, so it identified the correct,
+# only bug and then reported it at the wrong line number -- which the old exact
+# set-intersection in defect_audit then killed as a "line mismatch". Feeding the
+# code with explicit line-number prefixes removes the counting step entirely: the
+# model reports the number it READS off the prefix. The invariant is unchanged;
+# only the model's arithmetic is taken out of the loop. Numbered with splitlines()
+# so line N here is line N in the sandbox's diff-derived verified_bug_lines.
+def _number_lines(code: str) -> str:
+    lines = code.splitlines()
+    width = len(str(len(lines))) or 1
+    return "\n".join(f"{i:>{width}}| {line}" for i, line in enumerate(lines, 1))
+
+
+# A2: even reading numbered lines, a defect that spans a construct can be
+# attributed to the def line or one line off the exact changed line. Match the
+# described defect against the diff-derived region with a SMALL window instead
+# of a brittle exact intersection. The "exactly one defect" count is preserved
+# by the caller (D-13-style invariant is not weakened); the window is kept tight
+# (2) so a genuine SECOND bug in another function -- always many lines away --
+# never slips in.
+_DEFECT_LINE_MATCH_WINDOW = 2
+
+
+def _defect_lines_match_bug_region(reported_lines: list[int], bug_lines: list[int]) -> bool:
+    if not bug_lines:
+        return False
+    if set(reported_lines) & set(bug_lines):
+        return True
+    lo = min(bug_lines) - _DEFECT_LINE_MATCH_WINDOW
+    hi = max(bug_lines) + _DEFECT_LINE_MATCH_WINDOW
+    return any(lo <= line <= hi for line in reported_lines)
+
+
 def _parse_json_response(raw: str) -> dict | None:
     stripped = raw.strip()
     fence_match = re.match(r"^```(?:json)?\s*(.*?)\s*```$", stripped, re.DOTALL)
@@ -145,7 +179,7 @@ def defect_audit(
 ) -> GateOutcome:
     prompt = _render(
         _load_gate_prompt("defect_audit"),
-        {"python_version": python_version, "buggy_code": buggy_code},
+        {"python_version": python_version, "buggy_code": _number_lines(buggy_code)},
     )
     raw = llm_client.complete(system=_JUDGE_SYSTEM, user=prompt, temperature=_TEMPERATURE)
     parsed = _parse_json_response(raw)
@@ -170,10 +204,10 @@ def defect_audit(
                 "defect_audit found zero defects on a has_bug=true candidate",
                 report,
             )
-        if len(defects) == 1 and set(defects[0].lines) & set(bug_lines):
+        if len(defects) == 1 and _defect_lines_match_bug_region(defects[0].lines, bug_lines):
             return GateOutcome(
                 GateVerdict.PASS,
-                "exactly one defect, overlapping bug_lines",
+                "exactly one defect, overlapping the verified bug region",
                 report,
             )
         return GateOutcome(
@@ -213,9 +247,16 @@ def solver(
     multi-line bug has several equally correct lines; keying to one exact
     line wrongly rejected a solver that named another of them as "mis-keyed".
     """
+    # A1 (D-81): number the code the solver reads so its reported `line` is a
+    # value it read off a prefix, not one it counted. Copy first -- never mutate
+    # the caller's payload. Trace payloads (choice_id answer, no line) are
+    # numbered too; harmless, and keeps the solver's view consistent.
+    numbered_payload = dict(payload_json)
+    if isinstance(numbered_payload.get("code"), str):
+        numbered_payload["code"] = _number_lines(numbered_payload["code"])
     prompt = _render(
         _load_gate_prompt("solver"),
-        {"payload_json": json.dumps(payload_json, indent=2)},
+        {"payload_json": json.dumps(numbered_payload, indent=2)},
     )
     raw = llm_client.complete(system=_JUDGE_SYSTEM, user=prompt, temperature=_TEMPERATURE)
     parsed = _parse_json_response(raw)
@@ -284,7 +325,7 @@ def reasons(
         _load_gate_prompt("reasons"),
         {
             "python_version": python_version,
-            "buggy_code": buggy_code,
+            "buggy_code": _number_lines(buggy_code),
             "reason_options_json": json.dumps(reason_options, indent=2),
         },
     )
