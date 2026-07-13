@@ -48,5 +48,8 @@ test('already-onboarded user visiting /onboarding is redirected to the dashboard
   // proof; the dashboard's own data loading is not under test here.
   await page.goto('/onboarding');
 
-  await expect(page).toHaveURL(/localhost:5173\/$/, { timeout: 15_000 });
+  // Resolved against baseURL, never a hardcoded port: this used to assert
+  // /localhost:5173\/$/, so it failed on any other port even when the redirect
+  // worked perfectly. A test that fails for the wrong reason gets ignored.
+  await expect(page).toHaveURL('/', { timeout: 15_000 });
 });
