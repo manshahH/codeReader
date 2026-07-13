@@ -2443,3 +2443,57 @@ D-109 Review-gate defect: validation_report_url stored an ABSOLUTE path rooted
      command counted sections with `packet.count('### ')`, which also matches
      every '#### Code' sub-heading, reporting "616 exercise(s)" for a
      77-exercise packet. Now counts section headings only.
+
+D-110 First full human review gate run (M8 part 2): 77 candidates reviewed, 4
+     killed, 73 approved to live. Live pool goes 25 -> 98, in_review 77 -> 0.
+     This is the first review pass made possible by D-109; before that fix, 92
+     of 98 exercises showed "no validation report on disk" and the receipts a
+     reviewer needs were unreadable.
+     KILLED (4, all spot_the_bug, all v1, in_review -> retired; no live row was
+     touched). Every one is the same failure mode: the distractors are
+     PARTIALLY DEFENSIBLE, so more than one option can be argued correct and
+     the exercise stops having a single defensible answer.
+     - dbd2f905-058d-473d-8a0f-7725d6393a13: has_bug=false with an EMPTY answer
+       key, but the STB UI requires a line tap. Literally unanswerable -- the
+       one shape the type cannot express. Worth noting as a generator/UI
+       contract gap, not just a bad candidate: nothing upstream forbids
+       has_bug=false for a type whose UI demands a line selection.
+     - 6d8ce525-1874-4f80-be07-23e7b73353ca (d10) and
+       1b77eca4-eeb3-4a6f-8948-1403bfdc4799: three hedged "could / may /
+       risking" distractors. A hedged distractor is not wrong, it is merely
+       weaker, so the answer key is a judgement call rather than a fact.
+     - 1803aa12-10cd-47c2-8e6d-1efbf2f7362d: defect_audit=flag AND hedged
+       distractors -- the gate flagged it and the review agreed.
+     APPROVED (73: 21 spot_the_bug, 21 predict_the_fix, 31 trace). The id list
+     was verified against the in_review set before the batch ran (exact match,
+     no strays, no omissions); all 73 succeeded, zero failures. Backup taken
+     first via backend/scripts/backup_db.sh (D-64).
+     Final content state: 98 live (39 trace, 29 spot_the_bug, 29
+     predict_the_fix, 1 summarize), 8 pulled, 4 retired, 0 in_review.
+     KNOWN GAP, and the #1 post-launch CONTENT target (a roadmap item, NOT a
+     defect -- nothing is broken and nothing is being disabled for it):
+     the senior end of the live pool is carried almost entirely by trace.
+     - spot_the_bug and predict_the_fix pile up at d3-d4 (23 of 29 each, ~79%)
+       and spot_the_bug has a HARD d6 CEILING: zero STB above difficulty 6.
+     - The senior band is (5, 10) with target 7 (D-61). It holds 33 live
+       candidates -- but 23 of those 33 (70%) are trace, and every in-band STB
+       sits at the band FLOOR (d5-d6). The boss slot (needs d>=9) has 7
+       candidates: 6 trace, 1 predict_the_fix, 0 spot_the_bug.
+     - Consequence: a senior gets a FULL, working session (the sampler does not
+       starve -- D-61 degrades gracefully and never raises, and this was
+       verified, not assumed), but it is trace-heavy and its bug-finding
+       content is mid-difficulty. A senior never sees a senior-difficulty
+       spot_the_bug, because none exists.
+     - Note the 4 kills removed from the thinnest band (one was d10), so the
+       gap is now structural rather than incidental.
+     DECISION: senior stays ENABLED. Disabling it was considered and rejected.
+     The case for disabling rested on "the level cannot be filled", which the
+     numbers above disprove: 33 in-band candidates, a full session, no sampler
+     bug, and zero users at level='senior' today (36 users: 35 mid, 1 junior),
+     so there was no affected population to protect. A working-but-imperfect
+     tier is not hidden: the soft launch EXISTS to tell us whether seniors show
+     up and whether the trace-heavy mix reads as too easy, and hiding the tier
+     throws away exactly that signal. We launch with senior enabled and
+     imperfect and let real senior usage decide what to author first.
+     ACTION: author d7-d10 spot_the_bug and predict_the_fix. That, not a
+     feature flag, is what closes this.
