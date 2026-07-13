@@ -4,17 +4,16 @@ import { DisputeModal } from '../components/DisputeModal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Reveal } from '../components/session/Reveal';
 import { SessionComplete } from '../components/session/SessionComplete';
-import { SessionGate } from '../components/session/SessionGate';
 import { SessionProgressRail } from '../components/session/SessionProgressRail';
 import { PredictTheFixAnswer } from '../components/session/PredictTheFixAnswer';
 import { SpotTheBugAnswer } from '../components/session/SpotTheBugAnswer';
 import { SummarizeAnswer } from '../components/session/SummarizeAnswer';
 import { TraceAnswer } from '../components/session/TraceAnswer';
-import { ApiError, getAttemptPoll, getMeStats, getSessionToday, postAttempt } from '../lib/api';
+import { ApiError, getAttemptPoll, getSessionToday, postAttempt } from '../lib/api';
 import { idempotencyKeyFor } from '../lib/idempotency';
-import type { Answer, AttemptResponse, MeStats, SessionResponse, StreakInfo } from '../lib/types';
+import type { Answer, AttemptResponse, SessionResponse, StreakInfo } from '../lib/types';
 
-type Phase = 'gate' | 'answering' | 'submitting' | 'grading_pending' | 'revealed' | 'grading_failed' | 'grading_timeout';
+type Phase = 'answering' | 'submitting' | 'grading_pending' | 'revealed' | 'grading_failed' | 'grading_timeout';
 
 const DEFAULT_POLL_SECONDS = 3;
 // A stuck grade must never freeze the session: after this long we stop
@@ -25,10 +24,9 @@ const MAX_POLL_MS = 2 * 60 * 1000;
 
 export function Session() {
   const [session, setSession] = useState<SessionResponse | null>(null);
-  const [meStats, setMeStats] = useState<MeStats | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [phase, setPhase] = useState<Phase>('gate');
+  const [phase, setPhase] = useState<Phase>('answering');
   const [attempt, setAttempt] = useState<AttemptResponse | null>(null);
   const [userAnswer, setUserAnswer] = useState<Answer | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
@@ -47,35 +45,22 @@ export function Session() {
   const pollStartRef = useRef(0);
 
   useEffect(() => {
-    // The session content is the ONLY essential fetch. getMeStats is a
-    // secondary read (the gate's streak count) and must never block the
-    // session player: a transient failure of it used to blank the whole core
-    // loop (the FIX-A all-or-nothing pattern, here on the session screen).
+    // The session content is the only fetch this screen needs. Reaching
+    // /session is already the user's deliberate choice (the dashboard CTA);
+    // the player opens on the first unattempted exercise, and a reload
+    // mid-session resumes where they left off.
     getSessionToday()
       .then((body) => {
         setSession(body);
         const firstUnattempted = body.exercises.findIndex((e) => !e.attempted);
         const idx = firstUnattempted === -1 ? body.exercises.length : firstUnattempted;
         setCurrentIndex(idx);
-        // The gate is the entry to a NOT-yet-started session -- a reload
-        // mid-session (some exercises already attempted) or of an
-        // already-completed one skips straight past it.
-        setPhase(idx === 0 && body.exercises.length > 0 ? 'gate' : 'answering');
         startTimeRef.current = Date.now();
       })
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : 'Could not load today’s session.'));
-    // Best-effort: the gate simply shows a 0 streak if this fails.
-    getMeStats()
-      .then(setMeStats)
-      .catch(() => undefined);
     return () => {
       if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
     };
-  }, []);
-
-  const handleEnterSandbox = useCallback(() => {
-    startTimeRef.current = Date.now();
-    setPhase('answering');
   }, []);
 
   const resetDraft = useCallback(() => {
@@ -141,15 +126,6 @@ export function Session() {
   }
   if (session.exercises.length === 0) {
     return <p className="p-6 text-ink-muted">Nothing to read just yet. Check back in a little while.</p>;
-  }
-  if (phase === 'gate') {
-    return (
-      <SessionGate
-        exerciseCount={session.exercises.length}
-        currentStreak={meStats?.current_streak ?? 0}
-        onEnter={handleEnterSandbox}
-      />
-    );
   }
   if (currentIndex >= session.exercises.length) {
     // Only claim a correct/total tally when every exercise was actually

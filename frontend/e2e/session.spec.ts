@@ -24,13 +24,11 @@ test('full session: login (seed) -> one of each type -> reveal -> complete', asy
   // from the dashboard's CTA. (Pre-M9 this test asserted "/" === /session,
   // which is why the whole M6 smoke suite had been red on a benign routing
   // change; fixed here without dropping any coverage.)
+  // The dashboard CTA is the ONE deliberate click that starts a session (D-111):
+  // it lands straight in the player, never on a second "are you sure" screen.
   await page.goto('/');
   await page.getByRole('link', { name: 'Enter sandbox' }).click({ timeout: 15_000 });
   await expect(page).toHaveURL(/\/session$/, { timeout: 15_000 });
-
-  // Session-ready gate: entering is the user's choice, never automatic.
-  await expect(page.getByText('Your session is ready.')).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'Enter sandbox' }).click();
 
   const seenTypes = new Set<string>();
   let skipped = false;

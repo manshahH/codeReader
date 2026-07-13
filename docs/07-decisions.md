@@ -2497,3 +2497,45 @@ D-110 First full human review gate run (M8 part 2): 77 candidates reviewed, 4
      imperfect and let real senior usage decide what to author first.
      ACTION: author d7-d10 spot_the_bug and predict_the_fix. That, not a
      feature flag, is what closes this.
+
+D-111 The session gate is removed: reaching /session now opens the player
+     directly. Reported from real use -- clicking "Enter sandbox" on the
+     dashboard appeared to load an "old, broken, left-aligned" screen. It was
+     not old UI and nothing was stale: it was `SessionGate`, current code,
+     doing exactly what it was written to do.
+     WHAT WENT WRONG: the product brief says a user must never be dropped into
+     a session automatically. That was implemented as a second confirmation
+     SCREEN -- Session.tsx opened in a 'gate' phase whose primary action was a
+     button ALSO labelled "Enter sandbox" (the same words as the dashboard CTA
+     that had just been clicked). So the deliberate-entry requirement was
+     satisfied twice, and the user paid two clicks for one decision. Landing on
+     a sparse, left-aligned screen (`items-start`) whose button repeats the
+     label you just pressed reads exactly like a regression to an older build,
+     which is how it was reported.
+     The brief's actual concern was AUTO-START: the earlier behaviour opened a
+     session the moment the app loaded, with no choice at all. The dashboard
+     CTA already IS the deliberate choice. A confirmation screen behind a
+     deliberate click is not consent, it is a second click.
+     Note docs/08 never specified a gate screen (zero mentions); it was an
+     over-reading of the brief, not a design-doc requirement, so removing it
+     diverges from no binding design decision.
+     CHANGE: Phase loses 'gate' and starts at 'answering'; SessionGate.tsx is
+     deleted; the dashboard CTA keeps the "Enter sandbox" label as the single
+     entry point. Auto-start remains impossible -- /session is only reached by
+     an explicit navigation, never on login or app open, so the invariant the
+     brief actually cared about is untouched.
+     ALSO REMOVED: the Session screen's getMeStats() call. It existed solely to
+     feed the gate's streak count, so it is now dead. This deletes the fetch
+     that D-106/D-108 had to make best-effort precisely BECAUSE it could blank
+     the core loop; the safest version of that call is the one not made. The
+     streak still shows on Reveal and SessionComplete, from the attempt
+     response, so no user-facing information is lost.
+     TESTS: the three e2e specs that clicked the gate button (session,
+     predict-the-fix, reveal-error-boundary) now assert the player opens
+     directly. VERIFIED in a real browser, not just by typecheck: the hermetic
+     predict-the-fix spec drives /session and lands straight in the answer UI
+     (passing); dashboard-resilience and onboarding-gate pass, so the dashboard
+     CTA and the onboarding redirect are intact; tsc --noEmit clean.
+     NOTE (pre-existing, not fixed here): onboarding-gate.spec.ts:51 hardcodes
+     `localhost:5173` in a toHaveURL assertion instead of deriving it from
+     baseURL, so it fails on any other port even though the app is fine.

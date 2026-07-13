@@ -100,8 +100,6 @@ test('predict_the_fix: answer UI and reveal render and grade', async ({ page }) 
   });
 
   await page.goto('/session');
-  await expect(page.getByText('Your session is ready.')).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'Enter sandbox' }).click();
 
   // The PTF answer UI: code-diff choices as radios named "fix".
   await expect(page.getByText('Which change makes the failing test pass?')).toBeVisible();

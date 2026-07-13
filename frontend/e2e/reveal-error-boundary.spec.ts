@@ -40,8 +40,6 @@ test('malformed reveal renders an error state and the session continues', async 
   // This deliberately sidesteps the dashboard's multi-call landing page --
   // this test is about the session-player error boundary, not the dashboard.
   await page.goto('/session');
-  await expect(page.getByText('Your session is ready.')).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'Enter sandbox' }).click();
 
   // Answer whatever the first exercise is (any valid answer -- the response is
   // intercepted regardless of correctness).
