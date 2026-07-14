@@ -13,7 +13,6 @@ interface Props {
 export function PredictTheFixAnswer({ payload, selectedChoiceId, onSelectChoice }: Props) {
   return (
     <div className="flex flex-col gap-6">
-      <CodeBlock code={payload.code} />
 
       {payload.failing_test ? (
         <div className="flex flex-col gap-2">

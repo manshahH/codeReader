@@ -27,6 +27,23 @@ function RevealUnavailable() {
   );
 }
 
+export function getSpotTheBugCodeMarks(reveal: STBReveal, answer: Answer) {
+  let markLines: Record<number, 'correct' | 'incorrect'> | undefined;
+  let notedLines: Set<number> | undefined;
+
+  if (reveal.correct_lines && reveal.explanation?.line_notes) {
+    markLines = {};
+    reveal.correct_lines.forEach((line) => {
+      markLines![line] = 'correct';
+    });
+    if ('line' in answer && !reveal.correct_lines.includes(answer.line)) {
+      markLines![answer.line] = 'incorrect';
+    }
+    notedLines = new Set(reveal.explanation.line_notes.map((n) => n.line));
+  }
+  return { markLines, notedLines };
+}
+
 export function ExplanationSummary({ summary, principle }: { summary: string; principle: string }) {
   return (
     <div className="measure flex flex-col gap-2 border-t border-border pt-4">
@@ -60,7 +77,6 @@ export function SpotTheBugRevealView({
 
   return (
     <div className="flex flex-col gap-4">
-      <CodeBlock code={code} markLines={markLines} notedLines={notedLines} />
       {correctReasonText ? <p className="text-sm text-ink-muted">Reason: {correctReasonText}</p> : null}
       <ul className="flex flex-col gap-2">
         {reveal.explanation.line_notes.map((note) => (
@@ -80,7 +96,6 @@ export function TraceRevealView({ code, reveal, answer }: { code: string; reveal
 
   return (
     <div className="flex flex-col gap-4">
-      <CodeBlock code={code} />
       {wrongNote ? <p className="text-sm text-incorrect">{wrongNote.note}</p> : null}
       <div className="rounded-soft border border-border">
         <table className="w-full text-left font-code text-sm">

@@ -1,4 +1,3 @@
-import { CodeBlock } from '../gutter/CodeBlock';
 import type { SessionExercisePayload } from '../../lib/types';
 
 interface Props {
@@ -12,10 +11,7 @@ interface Props {
 export function SpotTheBugAnswer({ payload, selectedLine, onSelectLine, selectedReasonId, onSelectReason }: Props) {
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <p className="mb-2 text-sm text-ink-muted">Tap the line number where the bug is.</p>
-        <CodeBlock code={payload.code} selectedLine={selectedLine} onSelectLine={onSelectLine} />
-      </div>
+      <p className="font-medium text-action mb-4">Tap the line number in the code where the bug is.</p>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm text-ink-muted">Why is it a bug?</legend>
         {(payload.reason_options ?? []).map((option) => (

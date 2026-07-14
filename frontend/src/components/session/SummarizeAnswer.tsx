@@ -1,4 +1,3 @@
-import { CodeBlock } from '../gutter/CodeBlock';
 import type { SessionExercisePayload } from '../../lib/types';
 
 interface Props {
@@ -19,7 +18,6 @@ export function SummarizeAnswer({ payload, text, onChangeText }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <CodeBlock code={payload.code} />
       <div>
         <label htmlFor="summary" className="mb-2 block text-sm text-ink-muted">
           Describe what this does, in one or two sentences.

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DisputeModal } from '../components/DisputeModal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Navigate } from 'react-router-dom';
+import { CodeBlock } from '../components/gutter/CodeBlock';
 import { Reveal } from '../components/session/Reveal';
 import { SessionProgressRail } from '../components/session/SessionProgressRail';
 import { PredictTheFixAnswer } from '../components/session/PredictTheFixAnswer';
@@ -184,15 +185,15 @@ export function Session() {
   };
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-8">
-      <SessionProgressRail exercises={session.exercises} currentIndex={currentIndex} />
+    <div className="mx-auto flex h-full max-w-7xl flex-col gap-6 px-4 py-8">
+      <div className="shrink-0">
+        <SessionProgressRail exercises={session.exercises} currentIndex={currentIndex} />
 
-      <div className="flex items-center justify-between text-sm text-ink-muted">
-        <span className="capitalize">{exercise.type.replace(/_/g, ' ')}</span>
-        <span>{exercise.difficulty_band}</span>
+        <div className="mt-6 flex items-center justify-between text-sm text-ink-muted">
+          <span className="capitalize">{exercise.type.replace(/_/g, ' ')}</span>
+          <span>{exercise.difficulty_band}</span>
+        </div>
       </div>
-
-      <p className="text-sm text-ink-muted">{exercise.payload.context_note}</p>
 
       <ErrorBoundary
         key={currentIndex}
@@ -211,62 +212,80 @@ export function Session() {
           </div>
         }
       >
-      {phase === 'answering' || phase === 'submitting' ? (
-        <>
-          {exercise.type === 'spot_the_bug' ? (
-            <SpotTheBugAnswer
-              payload={exercise.payload}
-              selectedLine={selectedLine}
-              onSelectLine={setSelectedLine}
-              selectedReasonId={selectedReasonId}
-              onSelectReason={setSelectedReasonId}
+      {phase === 'answering' || phase === 'submitting' || phase === 'grading_pending' || phase === 'grading_failed' || phase === 'grading_timeout' ? (
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-10 lg:grid-cols-2">
+          {/* Left Column: Code */}
+          <div className="flex-1 overflow-y-auto pr-2">
+            <CodeBlock
+              code={exercise.payload.code}
+              selectedLine={exercise.type === 'spot_the_bug' ? selectedLine : null}
+              onSelectLine={exercise.type === 'spot_the_bug' ? setSelectedLine : undefined}
             />
-          ) : exercise.type === 'trace' ? (
-            <TraceAnswer payload={exercise.payload} selectedChoiceId={selectedChoiceId} onSelectChoice={setSelectedChoiceId} />
-          ) : exercise.type === 'predict_the_fix' ? (
-            <PredictTheFixAnswer payload={exercise.payload} selectedChoiceId={selectedChoiceId} onSelectChoice={setSelectedChoiceId} />
-          ) : (
-            <SummarizeAnswer payload={exercise.payload} text={summaryText} onChangeText={setSummaryText} />
-          )}
-          {submitError ? <p className="text-sm text-incorrect">{submitError}</p> : null}
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!isValid || phase === 'submitting'}
-              className="rounded-soft bg-action px-6 py-3 font-ui text-base font-medium text-surface-reading transition-colors duration-fast hover:bg-action-hover disabled:opacity-40"
-            >
-              {phase === 'submitting' ? 'Checking…' : 'Check answer'}
-            </button>
-            {exercise.type !== 'summarize' ? (
-              <button
-                type="button"
-                onClick={handleSkip}
-                disabled={phase === 'submitting'}
-                className="text-sm text-ink-muted underline hover:text-ink disabled:opacity-40"
-              >
-                I don't know
-              </button>
+          </div>
+
+          {/* Right Column: Interaction */}
+          <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-6">
+            <p className="text-sm text-ink-muted">{exercise.payload.context_note}</p>
+
+            {phase === 'answering' || phase === 'submitting' ? (
+              <>
+                {exercise.type === 'spot_the_bug' ? (
+                  <SpotTheBugAnswer
+                    payload={exercise.payload}
+                    selectedLine={selectedLine}
+                    onSelectLine={setSelectedLine}
+                    selectedReasonId={selectedReasonId}
+                    onSelectReason={setSelectedReasonId}
+                  />
+                ) : exercise.type === 'trace' ? (
+                  <TraceAnswer payload={exercise.payload} selectedChoiceId={selectedChoiceId} onSelectChoice={setSelectedChoiceId} />
+                ) : exercise.type === 'predict_the_fix' ? (
+                  <PredictTheFixAnswer payload={exercise.payload} selectedChoiceId={selectedChoiceId} onSelectChoice={setSelectedChoiceId} />
+                ) : (
+                  <SummarizeAnswer payload={exercise.payload} text={summaryText} onChangeText={setSummaryText} />
+                )}
+                {submitError ? <p className="text-sm text-incorrect">{submitError}</p> : null}
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={!isValid || phase === 'submitting'}
+                    className="rounded-soft bg-action px-6 py-3 font-ui text-base font-medium text-surface-reading transition-colors duration-fast hover:bg-action-hover disabled:opacity-40"
+                  >
+                    {phase === 'submitting' ? 'Checking…' : 'Check answer'}
+                  </button>
+                  {exercise.type !== 'summarize' ? (
+                    <button
+                      type="button"
+                      onClick={handleSkip}
+                      disabled={phase === 'submitting'}
+                      className="text-sm text-ink-muted underline hover:text-ink disabled:opacity-40"
+                    >
+                      I don't know
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            ) : phase === 'grading_pending' ? (
+              <p className="text-sm text-ink-muted" aria-live="polite">
+                Reviewing your answer…
+              </p>
+            ) : phase === 'grading_failed' ? (
+              <div className="flex flex-col gap-4">
+                <p className="text-sm text-ink-muted">We couldn’t grade this one. Your streak still counts.</p>
+                <button type="button" onClick={handleNext} className="self-start rounded-soft bg-action px-6 py-3 text-base font-medium text-surface-reading">
+                  Next
+                </button>
+              </div>
+            ) : phase === 'grading_timeout' ? (
+              <div className="flex flex-col gap-4">
+                <p className="text-sm text-ink-muted">We’ll grade this shortly. Your streak already counted, so keep going.</p>
+                <button type="button" onClick={handleNext} className="self-start rounded-soft bg-action px-6 py-3 text-base font-medium text-surface-reading">
+                  Next
+                </button>
+              </div>
             ) : null}
           </div>
-        </>
-      ) : phase === 'grading_pending' ? (
-        <p className="text-sm text-ink-muted" aria-live="polite">
-          Reviewing your answer…
-        </p>
-      ) : phase === 'grading_failed' ? (
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-ink-muted">We couldn’t grade this one. Your streak still counts.</p>
-          <button type="button" onClick={handleNext} className="self-start rounded-soft bg-action px-6 py-3 text-base font-medium text-surface-reading">
-            Next
-          </button>
-        </div>
-      ) : phase === 'grading_timeout' ? (
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-ink-muted">We’ll grade this shortly. Your streak already counted, so keep going.</p>
-          <button type="button" onClick={handleNext} className="self-start rounded-soft bg-action px-6 py-3 text-base font-medium text-surface-reading">
-            Next
-          </button>
         </div>
       ) : attempt && userAnswer ? (
         <Reveal exercise={exercise} attempt={attempt} userAnswer={userAnswer} onNext={handleNext} onDispute={() => setDisputeOpen(true)} />

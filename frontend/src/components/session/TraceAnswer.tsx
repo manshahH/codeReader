@@ -1,4 +1,3 @@
-import { CodeBlock } from '../gutter/CodeBlock';
 import type { SessionExercisePayload } from '../../lib/types';
 
 interface Props {
@@ -10,7 +9,6 @@ interface Props {
 export function TraceAnswer({ payload, selectedChoiceId, onSelectChoice }: Props) {
   return (
     <div className="flex flex-col gap-6">
-      <CodeBlock code={payload.code} />
       {payload.question ? <p className="font-explanation text-lg text-ink">{payload.question}</p> : null}
       <fieldset className="flex flex-col gap-2">
         <legend className="sr-only">Choose an answer</legend>

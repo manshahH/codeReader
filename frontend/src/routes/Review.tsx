@@ -7,6 +7,7 @@ import {
   PredictTheFixRevealView,
   SpotTheBugRevealView,
   TraceRevealView,
+  getSpotTheBugCodeMarks,
 } from '../components/session/revealViews';
 import { ApiError, getSessionTodayReview } from '../lib/api';
 import { VerdictText } from '../lib/verdict';
@@ -27,7 +28,6 @@ import type {
 function ReviewSummarizeRow({ code, reveal, answer }: { code: string; reveal: SummarizeReveal; answer: Answer }) {
   return (
     <div className="flex flex-col gap-4">
-      <CodeBlock code={code} />
       {'text' in answer ? <p className="font-explanation text-base leading-relaxed text-ink">{answer.text}</p> : null}
       <ExplanationSummary summary={reveal.explanation.summary} principle={reveal.explanation.principle} />
     </div>
@@ -46,6 +46,17 @@ function ReviewRow({ row }: { row: SessionReviewExercise }) {
 
       {row.reveal ? (
         <>
+          {(() => {
+            let markLines;
+            let notedLines;
+            if (row.type === 'spot_the_bug') {
+              const marks = getSpotTheBugCodeMarks(row.reveal as STBReveal, row.answer);
+              markLines = marks.markLines;
+              notedLines = marks.notedLines;
+            }
+            return <CodeBlock code={row.code} markLines={markLines} notedLines={notedLines} />;
+          })()}
+          
           {row.type === 'spot_the_bug' ? (
             <SpotTheBugRevealView code={row.code} reveal={row.reveal as STBReveal} answer={row.answer} />
           ) : row.type === 'trace' ? (

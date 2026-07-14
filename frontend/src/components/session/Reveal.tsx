@@ -6,7 +6,9 @@ import {
   PredictTheFixRevealView,
   SpotTheBugRevealView,
   TraceRevealView,
+  getSpotTheBugCodeMarks,
 } from './revealViews';
+import { CodeBlock } from '../gutter/CodeBlock';
 import type {
   Answer,
   AttemptResponse,
@@ -100,46 +102,63 @@ export function Reveal({ exercise, attempt, userAnswer, onNext, onDispute }: Pro
   const verdict: ReviewVerdict = attempt.status === 'skipped' ? 'skipped' : attempt.is_correct ? 'correct' : 'incorrect';
 
   return (
-    <div className="flex flex-col gap-6">
-      <VerdictText verdict={verdict} />
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-10 lg:grid-cols-2">
+      {/* Left Column: Code */}
+      <div className="flex-1 overflow-y-auto pr-2">
+        {(() => {
+          let markLines;
+          let notedLines;
+          if (exercise.type === 'spot_the_bug' && attempt.reveal && 'correct_lines' in attempt.reveal) {
+            const marks = getSpotTheBugCodeMarks(attempt.reveal as STBReveal, userAnswer);
+            markLines = marks.markLines;
+            notedLines = marks.notedLines;
+          }
+          return <CodeBlock code={exercise.payload.code} markLines={markLines} notedLines={notedLines} />;
+        })()}
+      </div>
 
-      {exercise.type === 'spot_the_bug' ? (
-        <SpotTheBugRevealView
-          code={exercise.payload.code}
-          reveal={attempt.reveal as STBReveal}
-          answer={userAnswer}
-          reasonOptions={exercise.payload.reason_options ?? undefined}
-        />
-      ) : exercise.type === 'trace' ? (
-        <TraceRevealView code={exercise.payload.code} reveal={attempt.reveal as TraceReveal} answer={userAnswer} />
-      ) : exercise.type === 'predict_the_fix' ? (
-        <PredictTheFixRevealView
-          reveal={attempt.reveal as PredictTheFixReveal}
-          answer={userAnswer}
-          choices={exercise.payload.choices ?? undefined}
-        />
-      ) : (
-        <SummarizeRevealView attempt={attempt} />
-      )}
+      {/* Right Column: Interaction */}
+      <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-6">
+        <VerdictText verdict={verdict} />
 
-      {explanation && exercise.type !== 'summarize' ? (
-        <ExplanationSummary summary={explanation.summary} principle={explanation.principle} />
-      ) : null}
+        {exercise.type === 'spot_the_bug' ? (
+          <SpotTheBugRevealView
+            code={exercise.payload.code}
+            reveal={attempt.reveal as STBReveal}
+            answer={userAnswer}
+            reasonOptions={exercise.payload.reason_options ?? undefined}
+          />
+        ) : exercise.type === 'trace' ? (
+          <TraceRevealView code={exercise.payload.code} reveal={attempt.reveal as TraceReveal} answer={userAnswer} />
+        ) : exercise.type === 'predict_the_fix' ? (
+          <PredictTheFixRevealView
+            reveal={attempt.reveal as PredictTheFixReveal}
+            answer={userAnswer}
+            choices={exercise.payload.choices ?? undefined}
+          />
+        ) : (
+          <SummarizeRevealView attempt={attempt} />
+        )}
 
-      <PercentileLine percentile={attempt.percentile} />
-      <StreakLine streak={attempt.streak} />
+        {explanation && exercise.type !== 'summarize' ? (
+          <ExplanationSummary summary={explanation.summary} principle={explanation.principle} />
+        ) : null}
 
-      <div className="flex items-center justify-between gap-4 pt-2">
-        <button type="button" onClick={onDispute} className="text-sm text-ink-muted underline hover:text-ink">
-          Something wrong with this exercise?
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="rounded-soft bg-action px-6 py-3 font-ui text-base font-medium text-surface-reading transition-colors duration-fast hover:bg-action-hover"
-        >
-          Next
-        </button>
+        <PercentileLine percentile={attempt.percentile} />
+        <StreakLine streak={attempt.streak} />
+
+        <div className="flex items-center justify-between gap-4 pt-2">
+          <button type="button" onClick={onDispute} className="text-sm text-ink-muted underline hover:text-ink">
+            Something wrong with this exercise?
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            className="rounded-soft bg-action px-6 py-3 font-ui text-base font-medium text-surface-reading transition-colors duration-fast hover:bg-action-hover"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );
