@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import logging
 import re
@@ -85,9 +86,15 @@ async def _check_postgres(settings: Settings) -> None:
     # DATABASE_URL names the driver -- the form create_async_engine() requires
     # -- would have reported postgres permanently unhealthy here, and
     # _collect_failures() would have swallowed the reason (D-112).
-    connection = await asyncpg.connect(**asyncpg_connect_kwargs(settings.DATABASE_URL))
+    # 5s timeout: Neon free tier cold-starts can take several seconds. Without
+    # a bound, the healthz probe hangs indefinitely and FastAPI Cloud marks the
+    # deployment verifying_failed before the DB ever wakes up.
+    connection = await asyncio.wait_for(
+        asyncpg.connect(**asyncpg_connect_kwargs(settings.DATABASE_URL)),
+        timeout=5.0,
+    )
     try:
-        await connection.execute("SELECT 1")
+        await asyncio.wait_for(connection.execute("SELECT 1"), timeout=5.0)
     finally:
         await connection.close()
 
@@ -95,7 +102,7 @@ async def _check_postgres(settings: Settings) -> None:
 async def _check_redis(settings: Settings) -> None:
     client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
     try:
-        await client.ping()
+        await asyncio.wait_for(client.ping(), timeout=5.0)
     finally:
         await client.aclose()
 
