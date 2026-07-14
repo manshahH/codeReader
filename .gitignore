@@ -1,6 +1,11 @@
 .env
 .env.*
 !.env.example
+# D-114: holds no secret (VITE_API_BASE_URL is deliberately empty, so the SPA
+# calls the API same-origin through the vercel.json rewrite). Must be tracked --
+# Vercel builds from git, and an untracked file means the production build
+# silently falls back to http://localhost:8000.
+!frontend/.env.production
 __pycache__/
 *.py[cod]
 .pytest_cache/

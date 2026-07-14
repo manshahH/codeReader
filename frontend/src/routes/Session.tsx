@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { DisputeModal } from '../components/DisputeModal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { Navigate } from 'react-router-dom';
 import { Reveal } from '../components/session/Reveal';
-import { SessionComplete } from '../components/session/SessionComplete';
 import { SessionProgressRail } from '../components/session/SessionProgressRail';
 import { PredictTheFixAnswer } from '../components/session/PredictTheFixAnswer';
 import { SpotTheBugAnswer } from '../components/session/SpotTheBugAnswer';
@@ -128,17 +128,7 @@ export function Session() {
     return <p className="p-6 text-ink-muted">Nothing to read just yet. Check back in a little while.</p>;
   }
   if (currentIndex >= session.exercises.length) {
-    // Only claim a correct/total tally when every exercise was actually
-    // played this page load; a reload of an already-completed session has
-    // no per-exercise history to reconstruct it from.
-    const fullyPlayedThisLoad = attemptedThisLoad === session.exercises.length;
-    return (
-      <SessionComplete
-        total={session.exercises.length}
-        correct={fullyPlayedThisLoad ? correctCount : null}
-        currentStreak={latestStreak?.current ?? null}
-      />
-    );
+    return <Navigate to="/" replace />;
   }
 
   const exercise = session.exercises[currentIndex];

@@ -4,9 +4,11 @@ import { NavBar } from './NavBar';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-surface-reading">
+    <div className="flex h-screen flex-col overflow-hidden bg-surface-reading">
       <NavBar />
-      {children}
+      <main className="flex-1 overflow-hidden">
+        {children}
+      </main>
     </div>
   );
 }

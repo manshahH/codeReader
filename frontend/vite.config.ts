@@ -8,6 +8,14 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
+      workbox: {
+        // D-114: the API is same-origin in production (vercel.json rewrites
+        // /v1/* to the backend). /v1/auth/github/start is therefore a
+        // same-origin top-level navigation, and workbox's default
+        // navigateFallback would answer it with the SPA shell -- OAuth would
+        // never leave the page. Hand every /v1/* request to the network.
+        navigateFallbackDenylist: [/^\/v1\//],
+      },
       manifest: {
         name: 'Code Reader',
         short_name: 'Code Reader',

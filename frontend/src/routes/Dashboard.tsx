@@ -53,14 +53,14 @@ export function Dashboard() {
   const showCta = !(session.status === 'ok' && total === 0);
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-10">
-      <header>
+    <div className="mx-auto flex h-full max-w-6xl flex-col gap-10 px-6 py-10">
+      <header className="shrink-0">
         <p className="text-sm text-ink-muted">{timeOfDayGreeting()}</p>
         <h1 className="font-explanation text-3xl text-ink">{user?.display_name ?? user?.username}</h1>
       </header>
 
-      <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-2">
-        <section className="flex flex-col gap-4 rounded-loose bg-surface-raised p-7 lg:col-span-2">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr] gap-x-10 gap-y-8 lg:grid-cols-2">
+        <section className="flex shrink-0 flex-col gap-4 rounded-loose bg-surface-raised p-7 lg:col-span-2">
           <p className="text-sm text-ink-muted">{todayState}</p>
           {showCta ? (
             <>
@@ -81,14 +81,18 @@ export function Dashboard() {
           )}
         </section>
 
-        <section className="flex flex-col gap-3">
-          <p className="text-sm text-ink-muted">Upcoming reviews</p>
-          <UpcomingReviews panel={concepts} />
+        <section className="flex min-h-0 flex-col gap-3">
+          <p className="shrink-0 text-sm text-ink-muted">Upcoming reviews</p>
+          <div className="flex-1 overflow-y-auto pr-2">
+            <UpcomingReviews panel={concepts} />
+          </div>
         </section>
 
-        <section className="flex flex-col gap-3">
-          <p className="text-sm text-ink-muted">Recent sessions</p>
-          <RecentSessions panel={recentSessions} />
+        <section className="flex min-h-0 flex-col gap-3">
+          <p className="shrink-0 text-sm text-ink-muted">Recent sessions</p>
+          <div className="flex-1 overflow-y-auto pr-2">
+            <RecentSessions panel={recentSessions} />
+          </div>
         </section>
       </div>
     </div>

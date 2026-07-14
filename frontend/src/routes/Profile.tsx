@@ -265,8 +265,8 @@ export function Profile() {
     daysSince(reviewStatus.review.updated_at) >= REVIEW_AGAIN_THRESHOLD_DAYS;
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-10">
-      <div className="flex items-center justify-between gap-4">
+    <div className="mx-auto flex h-full max-w-6xl flex-col gap-10 overflow-y-auto px-6 py-10">
+      <div className="flex shrink-0 items-center justify-between gap-4">
         <div>
           <p className="text-sm text-ink-muted">Signed in as</p>
           <p className="font-ui text-lg text-ink">{user?.display_name ?? user?.username}</p>

@@ -2667,3 +2667,55 @@ D-113 backend depends on `fastapi[standard]`, not bare `fastapi`. The FastAPI
      NOT A D-112 PROBLEM. This is an entrypoint/packaging defect and shares no
      cause with the DATABASE_URL work; recorded separately so the two are not
      conflated when someone reads back the deploy history.
+
+D-114 The frontend is served same-origin with the API, via a Vercel rewrite.
+     The MVP splits the deploy across two hosts: the API on FastAPI Cloud
+     (codereader.fastapicloud.dev) and the SPA on a static host. The obvious
+     wiring -- SPA on *.pages.dev calling the API on *.fastapicloud.dev --
+     cannot log in, and fails silently.
+     WHY: the `rt` refresh cookie is SameSite=Lax (auth/router.py
+     _refresh_cookie_kwargs). Lax sends a cookie cross-site ONLY on top-level
+     GET navigations, never on a cross-site fetch. auth-context.tsx boots by
+     POSTing /v1/auth/refresh. Two different registrable domains makes that a
+     cross-site POST, so the browser withholds `rt`, refresh 401s, and the app
+     lands back on /login rendering "Sign-in failed." No CORS error, no console
+     warning -- CORS is already correct (allow_credentials=True, APP_ORIGIN in
+     allow_origins) and the client already sends credentials:'include'. Nothing
+     rejects the request; the cookie is simply never attached. This works on
+     localhost only because :5173 and :8000 are the same site (port is not part
+     of "site").
+     REJECTED: SameSite=None; Secure. It works, on Chrome. It makes `rt` a
+     third-party cookie, which Safari has blocked outright since 2020, Firefox
+     partitions under Total Cookie Protection, and Chrome itself blocks in
+     Incognito. Shipping a daily-habit PWA that cannot log in on any iPhone, to
+     save a config file, is not a trade -- and the eventual fix would be this
+     same change, made later with users already on it.
+     REJECTED: custom domain with app./api. subdomains. Correct, and strictly
+     the cleanest (same site, no proxy hop, Lax unchanged). Deferred only
+     because it costs a domain purchase and DNS setup, and it is not mutually
+     exclusive with this: moving to it later changes DNS and two env vars, not
+     the auth model.
+     CHANGE: frontend/vercel.json rewrites /v1/* to the FastAPI Cloud origin.
+     The browser then only ever talks to the Vercel origin. The backend's
+     Set-Cookie carries no Domain attribute, so `rt` lands host-only and
+     FIRST-PARTY on the Vercel host, and SameSite=Lax is not merely tolerable
+     but correct. No third-party cookie exists anywhere in the flow, so Safari,
+     Firefox and Incognito all work. CORS becomes moot (same-origin, no
+     preflight). No change to the cookie flags, to tokens.py, or to CORS.
+     VITE_API_BASE_URL is set to the EMPTY STRING in frontend/.env.production
+     (committed; it holds no secret), making every fetch a same-origin relative
+     path. Empty string, NOT "/": api.ts uses `?? `, which only falls back on
+     null/undefined, so '' survives -- while "/" would build "//v1/auth/refresh",
+     a protocol-relative URL pointing at a host named `v1`.
+     GITHUB_REDIRECT_URI and APP_ORIGIN must both name the VERCEL origin, not
+     the FastAPI Cloud one. The OAuth callback has to return THROUGH the proxy,
+     or the backend sets `rt` on fastapicloud.dev and the bug is back.
+     SERVICE-WORKER TRAP, found before it bit: vite-plugin-pwa defaults to
+     workbox navigateFallback: 'index.html'. /v1/auth/github/start is now a
+     same-origin top-level navigation (the login link), so the SW would have
+     served the SPA shell instead of letting it reach the proxy, and OAuth would
+     never start. vite.config.ts now sets navigateFallbackDenylist: [/^\/v1\//].
+     KNOWN LIMIT: preview deployments get unique *.vercel.app subdomains and a
+     GitHub OAuth app has one fixed callback URL, so OAuth only works on the
+     production URL. Previews render but cannot log in. True of the custom-domain
+     route too; not introduced by this decision.

@@ -20,6 +20,7 @@ against the roadmap in docs/06.
 - docs/06-implementation-plan.md  milestones M0-M8 with acceptance criteria
 - docs/07-decisions.md        decision log; divergences are recorded here FIRST
 - docs/08-frontend-design.md  binding design direction; M6 cannot start without it
+- docs/09-fastapi-cloud-deployment.md deployment runbook for backend and OAuth
 - prompts/                    generator + gate templates; dryrun_stb_validation.py
                               is the executable reference for the sandbox gate
 
