@@ -40,5 +40,8 @@ pythonpath = ['.']
 line-length = 100
 target-version = 'py312'
 
+[tool.fastapi]
+entrypoint = "app.main:app"
+
 [tool.ruff.lint]
 select = ['E', 'F', 'I', 'UP', 'B']
