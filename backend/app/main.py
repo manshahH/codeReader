@@ -24,7 +24,7 @@ from app.core.errors import ApiError, api_error_handler, error_body, request_id
 from app.core.network import resolve_client_ip
 from app.core.ratelimit import check_token_bucket
 from app.core.sentry import init_sentry
-from app.db import create_engine, create_session_factory
+from app.db import asyncpg_connect_kwargs, create_engine, create_session_factory
 from app.disputes.router import router as disputes_router
 from app.jobs.runner import build_scheduler
 from app.reviews.router import router as reviews_router
@@ -80,7 +80,12 @@ def _configure_structured_logging() -> None:
 
 
 async def _check_postgres(settings: Settings) -> None:
-    connection = await asyncpg.connect(settings.DATABASE_URL)
+    # NOT asyncpg.connect(settings.DATABASE_URL): asyncpg's DSN parser rejects
+    # the `postgresql+asyncpg://` scheme outright, so a deploy whose
+    # DATABASE_URL names the driver -- the form create_async_engine() requires
+    # -- would have reported postgres permanently unhealthy here, and
+    # _collect_failures() would have swallowed the reason (D-112).
+    connection = await asyncpg.connect(**asyncpg_connect_kwargs(settings.DATABASE_URL))
     try:
         await connection.execute("SELECT 1")
     finally:

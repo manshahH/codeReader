@@ -2539,3 +2539,94 @@ D-111 The session gate is removed: reaching /session now opens the player
      NOTE (pre-existing, not fixed here): onboarding-gate.spec.ts:51 hardcodes
      `localhost:5173` in a toHaveURL assertion instead of deriving it from
      baseURL, so it fails on any other port even though the app is fine.
+
+D-112 DATABASE_URL is normalised in code, not by hand. Preparing the backend
+     for a managed Postgres (Neon) surfaced a first-boot failure that no test
+     covered: every managed provider hands out a libpq URL, e.g.
+       postgresql://u:p@ep-x.us-east-1.aws.neon.tech/neondb
+         ?sslmode=require&channel_binding=require
+     and SQLAlchemy's asyncpg dialect forwards EVERY query param straight to
+     asyncpg.connect() as a keyword argument (create_connect_args does a bare
+     `opts.update(url.query)`, no translation whatsoever). asyncpg has no
+     `sslmode` kwarg and no `channel_binding` kwarg, so that URL is
+       TypeError: connect() got an unexpected keyword argument 'sslmode'
+     raised from inside the connection pool on the first request. The old
+     sqlalchemy_database_url() made this WORSE, not better: it rewrote the
+     scheme to +asyncpg and ignored the query string, so the URL looked
+     handled right up until it wasn't.
+     The alternative was to make the operator hand-convert the string on every
+     deploy. Rejected: a deploy that depends on editing a connection string by
+     hand is a deploy that breaks at 2am, and the failure mode is a stack trace
+     that names neither the URL nor the offending param.
+     CHANGE: normalize_database_url(url) -> (url, connect_args) in app/db.py is
+     now the single door. It (1) accepts postgres://, postgresql:// or an
+     already-correct postgresql+asyncpg:// and always emits +asyncpg;
+     (2) translates sslmode/ssl into a connect_args["ssl"]; (3) DROPS query
+     params asyncpg cannot accept, logging each one by name rather than failing
+     opaquely; (4) disables BOTH statement caches when the host is a
+     transaction pooler. create_engine(), alembic/env.py and main.py's healthz
+     probe all feed from it, so `alembic upgrade head`, the app and the health
+     check can never disagree about a URL.
+     THE TRAP IS WORSE THAN IT LOOKS, and this is what settles the question:
+     main.py's _check_postgres() did `asyncpg.connect(settings.DATABASE_URL)`,
+     handing the env var straight to asyncpg as a DSN. asyncpg's DSN parser
+     accepts libpq's sslmode/channel_binding happily, but rejects the driver
+     outright: `invalid DSN: scheme is expected to be either "postgresql" or
+     "postgres", got 'postgresql+asyncpg'`. So the two code paths have EXACTLY
+     OPPOSITE requirements -- the engine needs +asyncpg and dies on sslmode,
+     the probe dies on +asyncpg and accepts sslmode -- and therefore NO single
+     string in DATABASE_URL satisfies both. Verified both directions. Asking
+     the operator to hand-convert the URL was never merely fragile; it was
+     impossible, and the failure was silent, because _collect_failures()
+     records only a failed check's NAME and swallows the exception. The symptom
+     would have been readiness pinned red forever with nothing saying why.
+     _check_postgres() now builds its kwargs from asyncpg_connect_kwargs(),
+     which routes through the same normalizer, so the probe tests the
+     connection settings the app actually runs with.
+     ALEMBIC WAS DISABLING APP LOGGING: alembic/env.py called
+     fileConfig(config.config_file_name), whose disable_existing_loggers
+     defaults to True. That disables every logger already imported in the
+     process -- i.e. all of `app.*`. It is why the dropped-param warning above
+     tested as silent, and it would have silenced it in any process that loaded
+     Alembic first. Now passes disable_existing_loggers=False.
+     WHY AN ALLOWLIST, NOT A DENYLIST: the set of params to keep is derived at
+     runtime from inspect.signature(asyncpg.connect), not hardcoded. A
+     hardcoded denylist of libpq params is wrong the day a provider adds a new
+     one, and it is wrong silently -- in the same TypeError-at-first-connect
+     way this entry exists to kill. Consistent with the response-schema rule in
+     CLAUDE.md: allowlists, never denylists.
+     SSL DEFAULT IS verify-full FOR REMOTE HOSTS: a URL with no sslmode whose
+     host is a dotted FQDN gets ssl.create_default_context() (check_hostname=
+     True, verify_mode=CERT_REQUIRED, OS trust store). Two reasons. First, the
+     obvious hand-written form `?ssl=require` yields check_hostname=False and
+     verify_mode=CERT_NONE -- encrypted, but any MITM presenting any
+     certificate is accepted, over the public internet. Second, the intuitive
+     fix `?sslmode=verify-full` does NOT work as a bare string: asyncpg goes
+     looking for ~/.postgresql/root.crt and raises ClientConfigurationError
+     when it is absent, which it always is in a container. Real verification is
+     only reachable through connect_args, which is exactly why connect_args had
+     to exist. An explicit sslmode in the URL is always honoured, so
+     `?sslmode=require` still downgrades to encrypt-only on request.
+     LOCAL IS UNTOUCHED: "local" = a loopback IP or a host with no dot in it,
+     which covers localhost, CI, and docker-compose service names (`postgres`).
+     Managed providers are all dotted FQDNs. A local URL with no sslmode gets
+     no `ssl` connect_arg at all, so compose and CI keep connecting exactly as
+     before. This is the reason for the no-dot rule rather than a plain
+     localhost check: `postgresql://...@postgres:5432/...` in docker-compose.yml
+     would otherwise have started demanding TLS from a container that has none.
+     POOLER: Neon's -pooler host is PgBouncer in transaction mode, which hands
+     each transaction a different backend, so a prepared statement made on one
+     is gone on the next (InvalidSQLStatementNameError: prepared statement
+     "__asyncpg_stmt_1__" does not exist). BOTH caches must die: asyncpg's own
+     (statement_cache_size, a connect_args kwarg) and SQLAlchemy's dialect
+     cache (prepared_statement_cache_size, a URL param). Killing only one -- the
+     common half-fix -- still fails. Detected from the host (-pooler./.pooler./
+     pgbouncer) or an explicit ?pgbouncer=true.
+     REDIS NEEDED NO CHANGE, and this was verified rather than assumed:
+     redis.asyncio's Redis.from_url() maps the rediss:// scheme to
+     SSLConnection natively, so an Upstash URL drops into core/redis.py as-is.
+     A test pins that so nobody "helpfully" adds TLS plumbing later.
+     NOT CHANGED: config.py still types DATABASE_URL as a plain str. Validation
+     belongs at the one place that builds an engine, and main.py's lifespan
+     calls create_engine() at startup, so a bad URL still fails at boot rather
+     than on first request.
