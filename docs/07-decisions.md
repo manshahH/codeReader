@@ -2630,3 +2630,40 @@ D-112 DATABASE_URL is normalised in code, not by hand. Preparing the backend
      belongs at the one place that builds an engine, and main.py's lifespan
      calls create_engine() at startup, so a bad URL still fails at boot rather
      than on first request.
+
+D-113 backend depends on `fastapi[standard]`, not bare `fastapi`. The FastAPI
+     Cloud deploy BUILT cleanly and then died at RUNTIME with
+       RuntimeError: To use the fastapi command, please install
+       "fastapi[standard]": pip install "fastapi[standard]"
+       File "/app/.venv/bin/fastapi", line 10, in <module>
+     FastAPI Cloud starts the app with the `fastapi` CLI (`fastapi run`). That
+     CLI is packaged separately, as fastapi-cli, and is pulled in ONLY by the
+     `standard` extra. backend/pyproject.toml asked for bare `fastapi`, so the
+     deployed venv had the library but not the command that launches it.
+     WHY IT WAS BARE, and why that looked fine: docker-compose runs the app with
+     an explicit `uvicorn app.main:create_app --factory` command, never through
+     the CLI, so uvicorn was pinned directly and the CLI was never missed. Local
+     dev, CI and the container all exercised the uvicorn entrypoint. Nothing in
+     the repo exercised the entrypoint the production host actually uses, which
+     is why a build-green deploy could still be a runtime crash.
+     CHANGE: 'fastapi>=0.115,<1.0' -> 'fastapi[standard]>=0.115,<1.0'. Same
+     version constraint; the extra is additive.
+     uvicorn[standard] IS DELIBERATELY KEPT, even though fastapi[standard] pulls
+     uvicorn in transitively. docker-compose.yml invokes uvicorn by name, so it
+     is a first-class dependency of the local stack, not an incidental one.
+     Dropping it would make compose depend on a transitive package -- fine until
+     the day the extra's contents change under us.
+     RESOLUTION VERIFIED, not assumed: a full resolve of the dependency set with
+     the extra applied yields 67 packages and no conflicts. Every existing pin
+     still resolves inside its declared range (uvicorn 0.51.0 in >=0.34,<1.0;
+     httpx 0.28.1 in >=0.28,<1.0; pydantic-settings 2.14.2 in >=2.7,<3.0; redis
+     5.3.1 in >=5.2,<6.0). New arrivals are fastapi-cli (the actual fix),
+     fastapi-cloud-cli, fastar, jinja2, python-multipart, email-validator,
+     pydantic-extra-types, rich-toolkit and typer.
+     LOCAL DEV IS UNBROKEN, and this was checked in the real container rather
+     than reasoned about: the api image rebuilds, GET /healthz returns 200, and
+     `fastapi --version` now answers inside the image (0.0.29) where it
+     previously would not have existed. Backend suite: 427 passed, unchanged.
+     NOT A D-112 PROBLEM. This is an entrypoint/packaging defect and shares no
+     cause with the DATABASE_URL work; recorded separately so the two are not
+     conflated when someone reads back the deploy history.
