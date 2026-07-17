@@ -47,7 +47,7 @@ function readable(concept: string): string {
 
 function StreakSection({ stats }: { stats: MeStats }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col rounded-soft border border-border bg-surface-raised p-6 gap-3">
       <p className="text-sm text-ink-muted">Streak</p>
       <div className="flex items-end gap-8">
         <div>
@@ -75,10 +75,12 @@ function StreakSection({ stats }: { stats: MeStats }) {
 
 function ActivitySection({ days, from, to }: { days: ActivityDay[]; from: string; to: string }) {
   return (
-    <section className="lg:col-span-2">
-      <p className="mb-3 text-sm text-ink-muted">Activity, last {pluralizeDays(ACTIVITY_WINDOW_DAYS)}</p>
-      <ActivityHeatmap days={days} from={from} to={to} />
-      <div className="mt-3 flex items-center gap-5 text-sm text-ink-muted">
+    <section className="flex flex-col rounded-soft border border-border bg-surface-raised p-6 lg:col-span-2">
+      <p className="mb-3 text-sm text-ink-muted shrink-0">Activity, last {pluralizeDays(ACTIVITY_WINDOW_DAYS)}</p>
+      <div className="shrink-0">
+        <ActivityHeatmap days={days} from={from} to={to} />
+      </div>
+      <div className="mt-3 flex shrink-0 items-center gap-5 text-sm text-ink-muted">
         <span className="flex items-center gap-2">
           <GutterCell cellKey="legend-none" state="empty" /> No session
         </span>
@@ -96,14 +98,14 @@ function ActivitySection({ days, from, to }: { days: ActivityDay[]; from: string
 function AccuracySection({ accuracyByType }: { accuracyByType: Record<string, number> }) {
   const entries = Object.entries(accuracyByType);
   return (
-    <section className="flex flex-col gap-3">
-      <p className="text-sm text-ink-muted">Accuracy by type</p>
+    <section className="flex flex-col rounded-soft border border-border bg-surface-raised p-6 gap-3">
+      <p className="text-sm text-ink-muted shrink-0">Accuracy by type</p>
       <div className="flex flex-col gap-2">
         {entries.length === 0 ? (
           <p className="text-sm text-ink-muted">No attempts yet.</p>
         ) : (
           entries.map(([type, accuracy]) => (
-            <div key={type} className="flex items-center justify-between border-b border-border py-2">
+            <div key={type} className="flex shrink-0 items-center justify-between border-b border-border py-2">
               <span className="font-code text-sm capitalize text-ink">{type.replace(/_/g, ' ')}</span>
               <span className="font-code text-sm text-ink-muted">{Math.round(accuracy * 100)}%</span>
             </div>
@@ -116,9 +118,11 @@ function AccuracySection({ accuracyByType }: { accuracyByType: Record<string, nu
 
 function AccuracyHistorySection({ history }: { history: AccuracyHistoryDay[] }) {
   return (
-    <section className="flex flex-col gap-3">
-      <p className="text-sm text-ink-muted">Average accuracy over time</p>
-      <AccuracyLine data={history} />
+    <section className="flex flex-col rounded-soft border border-border bg-surface-raised p-6 gap-3">
+      <p className="text-sm text-ink-muted shrink-0">Average accuracy over time</p>
+      <div>
+        <AccuracyLine data={history} />
+      </div>
     </section>
   );
 }
@@ -128,14 +132,14 @@ function ConceptMasterySection({ concepts }: { concepts: ConceptMastery[] }) {
   const shown = expanded ? concepts : concepts.slice(0, DEFAULT_CONCEPT_ROWS);
 
   return (
-    <section className="flex flex-col gap-3">
-      <p className="text-sm text-ink-muted">Needs review</p>
+    <section className="flex flex-col rounded-soft border border-border bg-surface-raised p-6 gap-3">
+      <p className="text-sm text-ink-muted shrink-0">Needs review</p>
       <div className="flex flex-col gap-2">
         {shown.length === 0 ? (
           <p className="text-sm text-ink-muted">Not enough data yet.</p>
         ) : (
           shown.map((concept) => (
-            <div key={concept.concept} className="flex items-center justify-between border-b border-border py-2">
+            <div key={concept.concept} className="flex shrink-0 items-center justify-between border-b border-border py-2">
               <span className="text-sm text-ink">{readable(concept.concept)}</span>
               <span className="flex items-center gap-3">
                 <span className="font-code text-xs text-ink-muted">{formatRelativeDate(concept.next_review_at)}</span>
@@ -149,7 +153,7 @@ function ConceptMasterySection({ concepts }: { concepts: ConceptMastery[] }) {
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          className="self-start text-sm text-ink-muted underline hover:text-ink"
+          className="self-start shrink-0 text-sm text-ink-muted underline hover:text-ink"
         >
           {expanded ? 'Show fewer' : `Show all ${concepts.length}`}
         </button>
@@ -160,14 +164,14 @@ function ConceptMasterySection({ concepts }: { concepts: ConceptMastery[] }) {
 
 function RecentSessionsSection({ sessions }: { sessions: MeSessionSummary[] }) {
   return (
-    <section className="lg:col-span-2">
-      <p className="mb-3 text-sm text-ink-muted">Recent sessions</p>
+    <section className="flex flex-col rounded-soft border border-border bg-surface-raised p-6 lg:col-span-2">
+      <p className="mb-3 text-sm text-ink-muted shrink-0">Recent sessions</p>
       {sessions.length === 0 ? (
-        <p className="text-sm text-ink-muted">No sessions yet.</p>
+        <p className="text-sm text-ink-muted shrink-0">No sessions yet.</p>
       ) : (
-        <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+        <div className="flex flex-col gap-2">
           {sessions.map((entry) => (
-            <div key={entry.session_date} className="flex flex-col gap-1 border-b border-border py-2">
+            <div key={entry.session_date} className="flex shrink-0 flex-col gap-1 border-b border-border py-2">
               <div className="flex items-center justify-between">
                 <span className="font-code text-sm text-ink">{entry.session_date}</span>
                 <span className="font-code text-sm text-ink-muted">
@@ -196,9 +200,9 @@ function FallbackSection({
   className?: string;
 }) {
   return (
-    <section className={className ?? 'flex flex-col gap-3'}>
-      <p className="text-sm text-ink-muted">{label}</p>
-      <p className="text-sm text-ink-muted">{text}</p>
+    <section className={`flex flex-col rounded-soft border border-border bg-surface-raised p-6 gap-3 ${className ?? ''}`}>
+      <p className="text-sm text-ink-muted shrink-0">{label}</p>
+      <p className="text-sm text-ink-muted shrink-0">{text}</p>
     </section>
   );
 }
@@ -265,27 +269,32 @@ export function Profile() {
     daysSince(reviewStatus.review.updated_at) >= REVIEW_AGAIN_THRESHOLD_DAYS;
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col gap-10 overflow-y-auto px-6 py-10">
+    <div className="mx-auto flex h-full max-w-7xl flex-col gap-8 overflow-y-auto px-4 py-8 lg:px-8">
       <div className="flex shrink-0 items-center justify-between gap-4">
         <div>
           <p className="text-sm text-ink-muted">Signed in as</p>
           <p className="font-ui text-lg text-ink">{user?.display_name ?? user?.username}</p>
         </div>
-        {showReviewAgain ? (
-          <div className="flex items-center gap-3">
-            <p className="text-sm text-ink-muted">Been using this for a while?</p>
-            <button
-              type="button"
-              onClick={() => setShowReviewModal(true)}
-              className="rounded-soft border border-border px-4 py-2 text-sm font-medium text-ink transition-colors duration-fast hover:border-action hover:text-action"
-            >
-              Review us again
-            </button>
-          </div>
-        ) : null}
+        <div className="flex items-center gap-6">
+          {showReviewAgain ? (
+            <div className="flex items-center gap-3 hidden sm:flex">
+              <p className="text-sm text-ink-muted">Been using this for a while?</p>
+              <button
+                type="button"
+                onClick={() => setShowReviewModal(true)}
+                className="rounded-soft border border-border px-4 py-2 text-sm font-medium text-ink transition-colors duration-fast hover:border-action hover:text-action"
+              >
+                Review us again
+              </button>
+            </div>
+          ) : null}
+          <button type="button" onClick={handleLogout} className="text-sm text-ink-muted underline hover:text-ink">
+            Sign out
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {withPanel(
           activity,
           'Activity',
@@ -312,9 +321,6 @@ export function Profile() {
         )}
       </div>
 
-      <button type="button" onClick={handleLogout} className="self-start text-sm text-ink-muted underline hover:text-ink">
-        Sign out
-      </button>
 
       {showReviewModal ? (
         <ReviewPromptModal
