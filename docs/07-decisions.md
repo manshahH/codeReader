@@ -2719,3 +2719,22 @@ D-114 The frontend is served same-origin with the API, via a Vercel rewrite.
      GitHub OAuth app has one fixed callback URL, so OAuth only works on the
      production URL. Previews render but cannot log in. True of the custom-domain
      route too; not introduced by this decision.
+
+D-115 The soft-launch ships spot_the_bug + trace + predict_the_fix; summarize is
+     built but OFF. docs/03 and docs/01 still describe the MVP type set as
+     spot_the_bug + trace + summarize, and docs/03 puts summarize inline grading
+     in scope. That is now stale. Reality (verified in code): sessions/sampler.py
+     DETERMINISTIC_TYPES = (spot_the_bug, trace, predict_the_fix); summarize is in
+     ALL_CANDIDATE_TYPES but is not sampled into the shipped set, and the pipeline
+     generates predict_the_fix (publish.py).
+     WHY: summarize is the only type with a per-answer LLM cost and the only one
+     that puts a rubric/grader on the hot path (a prompt-injection surface and a 6s
+     timeout). predict_the_fix is deterministically graded (grading.py
+     DETERMINISTIC_TYPES) with ground truth from the sandbox: every distractor fix
+     is executed and must still fail the test. So dropping summarize and adding
+     predict_the_fix removes all per-answer LLM cost and the injection surface while
+     keeping three types. predict_the_fix was a post-MVP flagship in docs/00; it is
+     now shipped.
+     CHANGE: HANDOFF.md already reflects this. docs/03 and docs/01 are corrected by
+     pointer to this entry rather than rewritten, since 03 is a historical MVP-scope
+     doc. If summarize is ever turned back on, that is a new decision, not a revert.

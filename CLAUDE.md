@@ -1,14 +1,16 @@
 # CLAUDE.md
 
 Daily code-reading practice app for working developers ("Duolingo for reading,
-reviewing, and debugging code"). You are building the MVP defined in docs/03
-against the roadmap in docs/06.
+reviewing, and debugging code"). The MVP (docs/03) is BUILT and DEPLOYED
+(soft launch). Current work is the retention/gamification layer in docs/10.
 
 ## Read order
 1. This file
-2. docs/06-implementation-plan.md (roadmap, repo layout, stack, milestones)
-3. The reference doc named by the milestone you are working on
-4. docs/07-decisions.md before proposing any design change
+2. HANDOFF.md (what is built, what is live, known issues, current content state)
+3. docs/10-roadmap-retention.md (what we build next, phased) for feature work
+4. The reference doc for the subsystem you touch (01 content, 04 db + db/schema.sql,
+   05 api, 08/08b frontend, 09 deploy); docs/06 for the original MVP milestones
+5. docs/07-decisions.md before proposing any design change (D-1..D-115)
 
 ## Doc map
 - docs/00-product.md          what we are building and why
@@ -20,8 +22,15 @@ against the roadmap in docs/06.
 - docs/06-implementation-plan.md  milestones M0-M8 with acceptance criteria
 - docs/07-decisions.md        decision log; divergences are recorded here FIRST
 - docs/08-frontend-design.md  binding design direction; M6 cannot start without it
+- docs/09-fastapi-cloud-deployment.md  deploy runbook (FastAPI Cloud/Vercel/Neon)
+- docs/10-roadmap-retention.md  what we build next: retention/gamification, phased
+- HANDOFF.md                   current state: built, deployed, live, known issues
 - prompts/                    generator + gate templates; dryrun_stb_validation.py
                               is the executable reference for the sandbox gate
+
+NOTE: docs/03 and docs/06 describe the ORIGINAL MVP plan and are partly historical
+(see D-115: summarize is off, predict_the_fix shipped). HANDOFF.md is the truth for
+current state.
 
 ## Non-negotiable invariants (test these, never weaken them)
 1. No LLM claim is ever ground truth. Exercise answers come from sandbox

@@ -12,7 +12,7 @@ invariant:
 {
   "id": "uuid",
   "version": 3,
-  "type": "spot_the_bug | trace | summarize | ...",
+  "type": "spot_the_bug | trace | predict_the_fix | summarize(OFF, D-115)",
   "language": "python",
   "language_version": "3.12",
   "difficulty": { "authored": 4, "empirical": null },

@@ -1,7 +1,10 @@
 # CodeReader — Handoff Brief
 
 Paste this into a new chat to resume. Everything else lives in the repo
-(`CLAUDE.md`, `docs/00`–`docs/08b`, `docs/07-decisions.md` = D-1..D-87).
+(`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-114).
+Forward plan (what to build next) lives in `docs/10-roadmap-retention.md`.
+
+Last refreshed: 2026-07-18 (was frozen at the D-87 / pre-deploy era before this).
 
 ---
 
@@ -16,16 +19,29 @@ execution. That's the whole product.
 
 Stack: FastAPI + Postgres 16 + Redis, React 18/Vite/TS/Tailwind, a content
 pipeline with a Docker sandbox and adversarial LLM gates. Repo:
-`D:\projects\codereader`. Windows host, everything runs via Docker Compose.
+`D:\projects\codereader`. Windows host; local dev runs via Docker Compose.
+
+**Deployed (soft launch live):**
+- Backend: FastAPI Cloud, `https://codereader.fastapicloud.dev`
+- Frontend: Vercel, `https://codereader-eight.vercel.app`
+- DB: Neon Postgres (free tier). Frontend proxies `/v1/*` to the backend via a
+  Vercel rewrite so the API is same-origin (D-114); this is what makes the OAuth
+  refresh cookie work. Deploy gotchas are in `docs/09`.
 
 ---
 
-## Status: M0–M8 built and working
+## Status: MVP built, deployed, and in soft launch
 
-All milestones complete. App runs end to end: GitHub OAuth login, onboarding,
-daily session, instant deterministic grading, streaks, spaced repetition, stats,
-disputes. Frontend passed a full Playwright session smoke test and scored 0/16 on
-the anti-slop audit across every screen. ~327 backend tests green.
+All milestones M0-M8 complete and the app is live end to end in production:
+GitHub OAuth login, onboarding, daily session, instant deterministic grading,
+streaks, spaced repetition, stats, disputes. The session gate was removed so
+reaching `/session` opens the player directly (D-111). Frontend passed a full
+Playwright session smoke test and scored 0/16 on the anti-slop audit across every
+screen; the Review/Dashboard/Profile screens got a dual-pane + glassmorphism
+polish pass (see `docs/ops-incident-report-july-2026.md`). ~327 backend tests green.
+
+The retention/gamification layer (streaks aside) is NOT built yet. That is the
+next body of work; the plan is `docs/10-roadmap-retention.md`.
 
 Three exercise types, **all deterministically graded (zero per-answer LLM cost)**:
 - `spot_the_bug` — tap the buggy line + pick why (the flagship)
@@ -38,46 +54,45 @@ from the soft launch** — it's the only type with a per-answer LLM cost.
 
 ---
 
-## 🔴 URGENT — do these first
+## Resolved since the last handoff (kept for history)
 
-### 1. `pytest` silently wipes the live database
+- ✅ **pytest DB-wipe guard (D-88).** `conftest.py` now calls
+  `assert_disposable_test_database()` and refuses to run unless the target DB is
+  an explicit `_test` database. The "every test run destroys content" footgun is
+  closed.
+- ✅ **Content restored and grown.** The corpus is now ~109 exercises in
+  production (D-110 review pass reviewed 77, killed 4). No longer 6 rows.
+- ⚠️ **Secrets:** prod uses its own cryptographic keys, separate from the dummy
+  local `.env` values (incident report §3). VERIFY the July-12 burned OpenAI /
+  GitHub keys were actually rotated at the provider, not just left unused.
 
-`backend/tests/conftest.py`'s `migrated_db` fixture is session-scoped,
-`autouse=True`, and runs `DROP SCHEMA public CASCADE` against whatever
-`DATABASE_URL` resolves to. Root `.env` and `backend/.env` both point at the
-**same** `localhost:5433/codereader` the app and pipeline use.
+## Known production issues (low severity, understood)
 
-**Every test run destroys all content.** This has already eaten ~37 exercises,
-then another 24. It will keep happening until it's guarded.
-
-Fix: require an explicit test database (name ends `_test`, or
-`CODEREADER_TEST_DB=1`), fail loudly otherwise. Mirror the
-`CODEREADER_ALLOW_SEED=1` pattern from D-62. Add a test proving the guard fires.
-
-### 2. Restore the backup
-
-24 LLM-origin exercises live only in
-`backend/data/backups/codereader_2026-07-12T0303Z.dump`. Restore into the live DB
-alongside the 6 current rows (different UUIDs, no conflict).
-
-### 3. Rotate secrets
-
-The OpenAI key and GitHub client secret in `docker-compose.override.yml` were
-pasted into a chat many times. Treat as burned.
+From `docs/ops-incident-report-july-2026.md`:
+- **Profile "Couldn't load..."** = token-refresh race: the page fires 5 concurrent
+  calls; on an expired token + a Neon free-tier pool timeout they can all 401 at
+  once. Handled gracefully section-by-section (`usePanel`); a reload fixes it.
+  Real fix is upgrading the Neon tier for more pooled connections.
+- **"Something went wrong" mid-session** = a 403 `exercise_not_in_session` thrown
+  on a transient DB timeout during submit; `api.ts` falls through to the generic
+  catch-all because that 403 lacks an `{error: ...}` body. Data is healthy; the
+  user just reopens. Worth giving that 403 a JSON body so the UI can message it.
 
 ---
 
 ## Current content state
 
-| origin | type | status | n |
-|---|---|---|---|
-| handauthored_claude | spot_the_bug | in_review | 5 |
-| llm | predict_the_fix | in_review | 1 |
+~109 exercises in production across `spot_the_bug`, `trace`, and
+`predict_the_fix` (all Python). D-110 was the first full human-review gate run
+(77 reviewed, 4 killed). For the live breakdown, always query rather than trust
+this doc:
 
-**6 in the DB.** +24 recoverable from backup = 30. **Target: 80 for soft launch.**
+```powershell
+docker compose exec postgres psql -U codereader -d codereader -c "SELECT source->>'origin' AS origin, type, status, count(*) FROM exercises GROUP BY 1,2,3 ORDER BY 1,2;"
+```
 
-Nothing is `live`. Human review via `review_cli` is the last gate and has not
-been done. Do not bulk-flip to live.
+Human review via `review_cli packet` is the last gate before `live`. Do not bulk
+-flip to live.
 
 ---
 
@@ -204,8 +219,8 @@ be *cleanly false*, not "true but less relevant."
   difficulty bands (D-58..D-62)
 - ✅ Sentry (D-63), rate limits, concurrency locks, streak reconciliation,
   partition recovery, security headers, backup/restore drill (D-64..D-73)
-- ❌ **conftest DB wipe** (above)
-- ❌ **rotate secrets** (above)
+- ✅ **conftest DB wipe** guarded (D-88)
+- ⚠️ **rotate secrets** — verify the burned July-12 keys were rotated at provider
 - ⚠️ `/admin/metrics` uses a shared-secret token, not real auth (fine for a 20–30
   person beta, flagged)
 - ⚠️ alert catalog is **log-only** — nothing actually pages anyone
@@ -226,7 +241,13 @@ sessions with **zero manual intervention**.
 
 ## Commands
 
-**Start:**
+**Production:** frontend `https://codereader-eight.vercel.app`, backend
+`https://codereader.fastapicloud.dev`, DB on Neon. Backend redeploy:
+`fastapi cloud deploy backend` with the App Root Directory set to `.` (see
+`docs/09` for the directory / wheel / OAuth-cookie gotchas). The commands below
+are for LOCAL development.
+
+**Start (local):**
 ```powershell
 docker compose up -d postgres redis api
 docker compose exec api alembic upgrade head

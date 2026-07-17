@@ -1,5 +1,10 @@
 # 03 : MVP Scope
 
+> STALE IN ONE PLACE (see D-115): the shipped type set is spot_the_bug + trace +
+> predict_the_fix. summarize was built but is OFF; predict_the_fix replaced it.
+> Ignore the "summarize" references below. Current state lives in HANDOFF.md.
+
+
 Cut rule: ship anything whose absence breaks trust (wrong answers, lost
 streaks, leaked answer keys); defer anything whose absence just means smaller.
 Where a cheap decision now avoids a painful migration, build the seam, not the
