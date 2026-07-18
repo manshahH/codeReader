@@ -32,6 +32,12 @@ pipeline with a Docker sandbox and adversarial LLM gates. Repo:
 
 ## Status: MVP built, deployed, and in soft launch
 
+**Production and `master` are NOT the same thing right now.** LIVE IN
+PRODUCTION: the MVP only (M0-M8, soft launch). ON `master`, MERGED AND
+UNRELEASED: the whole retention layer so far, A1 (streak safety net) and A2
+(email capture), plus D-119/D-121/D-122. Nothing below describing A1 or A2 is
+running in production yet.
+
 All milestones M0-M8 complete and the app is live end to end in production:
 GitHub OAuth login, onboarding, daily session, instant deterministic grading,
 streaks, spaced repetition, stats, disputes. The session gate was removed so
