@@ -3279,3 +3279,99 @@ D-122 First-of-day session creation is serialized by a per-(user, day) advisory
      in a FINISHED five-slot session. Corrected here rather than deleted,
      because that misreading is what made the remaining half look like a
      backend bug for longer than it should have.
+
+D-123 summarize is OFF, and the switch now ENFORCES it. D-115 said summarize was
+     off and claimed, "verified in code", that the sampler already excluded it.
+     THAT CLAIM WAS FALSE. sessions/sampler.py's DETERMINISTIC_TYPES does exclude
+     summarize, but sessions/service.py chose
+       DETERMINISTIC_TYPES if degraded else ALL_CANDIDATE_TYPES
+     so a HEALTHY grader pulled summarize into the candidate pool. The only thing
+     standing between a user and a summarize exercise was the absence of live
+     summarize content, which is not a control.
+     FOUND BY USING THE APP, not by a test. A summarize exercise was served in a
+     real local session and graded by a real OpenAI call.
+     PRODUCTION WAS EXPOSED, and this is the part that matters: prod has ONE live
+     summarize row and has had it throughout the soft launch, so a summarize
+     exercise was samplable at any time. Measured at the same time: ZERO
+     summarize attempts have ever been recorded in production, so no real user
+     hit it, no LLM spend was incurred, and the injection surface was never
+     exercised. Exposed but not hit. That is luck, not design: 1 live summarize
+     row against 97 live deterministic rows, sampled into 3-5 slots.
+     WHY IT MATTERS BEYOND ONE TYPE: summarize is the only type with a
+     per-answer LLM cost and the only one that puts a grader on the REQUEST path,
+     which is the prompt-injection surface invariant 6 exists for. Both of those
+     were live in production for weeks on an unexercised path.
+     CHANGE: new setting SUMMARIZE_ENABLED, default FALSE. The exclusion is
+     applied to the SQL type filter in fetch_candidates, so it holds regardless
+     of what is in the exercises table: a live summarize row is simply never a
+     candidate. The degraded-grader rule (docs/05 section 4) still applies on
+     top, for when summarize is deliberately enabled.
+     REJECTED: retiring the live summarize rows and calling it fixed. That is
+     what the previous state effectively relied on, and it fails the moment
+     anyone publishes summarize content again. Data is not a control.
+     REJECTED: deleting summarize from the codebase. It is built, tested and
+     hardened (M5), and A-phase may want it back; the decision is to not SHIP it,
+     not to not HAVE it.
+     TESTS: a live summarize row plus a healthy grader is never sampled; it is
+     excluded even when it is the ONLY live content (the degradation pad must not
+     be a back door -- correct outcome is an empty, transient session per D-59);
+     and a positive control proving the switch is what does the work, so a
+     sampler broken for every type could not pass as a fix. Verified to fail
+     against the pre-fix code (2 of 4 failed).
+     STILL OPEN, needs a human decision: production's one live summarize row is
+     untouched. Retiring it is a data change in production and was not made
+     unilaterally. With SUMMARIZE_ENABLED=false it is now inert either way.
+
+D-124 A repair that would not beat the current streak is never offered, and is
+     refused if requested. Found by using the app: the dashboard read "Restore
+     your 1-day streak" to a user whose current streak was already 1.
+     WHY IT IS NOT COSMETIC: a reset is repairable AT MOST ONCE (D-116). Taking
+     that offer would have spent the user's only repair of that reset to move
+     their streak from 1 to 1. The affordance was not merely useless, it was
+     actively harmful, and it was pointed at exactly the busy-professional
+     audience A1 exists to protect.
+     CAUSE: repair_available was defined as "a repairable reset exists"
+     (restores_to is not None) and never compared the restore value against the
+     streak the user already has.
+     DECIDED: gate it in the API, not the UI. Two reasons. First, a client must
+     not be ABLE to render a meaningless offer; putting the rule in the client
+     means every future client (and the next screen that reads these fields)
+     re-derives it or forgets. Second, and stronger: hiding an affordance is not
+     preventing an action, so POST /v1/streak/repair ALSO refuses with the
+     existing 409 not_repairable. A stale tab, a replay, or a hand-rolled client
+     cannot spend the one-shot on a no-op. The UI needs no change at all, which
+     is the tell that the API was the right layer.
+     D-116(b)'s identity is preserved deliberately: repair_available is still
+     exactly (repair_restores_to is not None), because restorable_value() itself
+     now returns None when the restore would not gain anything. Keeping the two
+     in one place is what stops them disagreeing; a test asserts it.
+     TESTS: the reported case (restore 1 vs streak 1) advertises nothing; the
+     route refuses it even when called directly; and a positive control (restore
+     8 vs streak 1) is still offered, still succeeds, and is then correctly
+     no longer offered because the one-shot is spent.
+
+D-125 Every full-height screen owns its own scroll container, and that is now
+     tested. AppLayout's <main> is overflow-hidden, so each route must provide
+     `overflow-y-auto` itself. Profile.tsx always did. Dashboard.tsx did not, and
+     once A1 added the welcome-back panel the page grew past the fold and
+     "Upcoming reviews" and "Recent sessions" became UNREACHABLE, not merely
+     below the fold. One utility class.
+     WHY 517 TESTS MISSED IT, and this is the general lesson: Playwright
+     locators resolve and even CLICK elements that are clipped out of view, and
+     nothing in the suite ever asserted layout. A screen can be completely
+     unusable while every selector-based assertion stays green. The assertion has
+     to be about SCROLLABILITY (scrollHeight > clientHeight, computed overflow-y,
+     and scrollTop actually moving), not about presence.
+     TEST: a hermetic spec at a laptop-height viewport WITH the welcome-back
+     panel rendered, since that panel is what tips the page over. Profile is kept
+     as the control so a future layout change cannot silently break both.
+     Verified to fail against the unfixed code (computed overflow-y was not
+     auto/scroll and scrollTop stayed 0).
+     ALSO FOUND, and worth knowing before debugging anything else locally: the
+     dockerised vite dev server does NOT hot-reload host edits on Windows (the
+     bind mount does not deliver file-watch events into the container). The fix
+     was on disk and the served module was stale, which is exactly the
+     "testing stale bytes" hazard the Playwright webServer block was added to
+     prevent. Restart the frontend container after editing frontend source, or
+     run vite on the host.
+

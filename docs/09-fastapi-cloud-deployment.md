@@ -31,10 +31,63 @@ CodeReader's frontend is hosted on Vercel (codereader-eight.vercel.app) and the 
 
 This architectural decision heavily impacts OAuth flows:
 
-*   **The Problem:** If GITHUB_REDIRECT_URI is set to the backend domain (https://codereader.fastapicloud.dev/v1/auth/github/callback), GitHub redirects the user there after login. The backend issues a Set-Cookie header for the efresh_token attached to the astapicloud.dev domain (with SameSite=lax and Secure=true). It then redirects the user to the frontend app. When the frontend attempts to call POST /v1/auth/refresh on its own domain (via the proxy), the browser **will not send the cookie** because the domains do not match. The API rejects the request with 401 Unauthorized.
+*   **The Problem:** If GITHUB_REDIRECT_URI is set to the backend domain (https://codereader.fastapicloud.dev/v1/auth/github/callback), GitHub redirects the user there after login. The backend issues a Set-Cookie header for the 
+efresh_token attached to the astapicloud.dev domain (with SameSite=lax and Secure=true). It then redirects the user to the frontend app. When the frontend attempts to call POST /v1/auth/refresh on its own domain (via the proxy), the browser **will not send the cookie** because the domains do not match. The API rejects the request with 401 Unauthorized.
 *   **The Fix:** GITHUB_REDIRECT_URI MUST be set to the frontend proxy domain:
     \GITHUB_REDIRECT_URI=https://<frontend-domain>.vercel.app/v1/auth/github/callback\
     This forces the OAuth callback to flow through the Vercel proxy. The backend processes it and sends the Set-Cookie header, but because the browser is interacting with the Vercel domain, it associates the cookie with the frontend domain. Subsequent API calls will successfully include the cookie.
+
+## 3b. Local-dev GitHub OAuth (a SECOND OAuth app)
+
+A GitHub OAuth app accepts ONE callback URL. Section 3 pins production's to the
+Vercel proxy host, so local dev cannot share it: hitting
+`/v1/auth/github/start` locally returns GitHub's
+`redirect_uri is not associated with this application`. This is the documented
+limit of D-114, and it needs a second, dev-only OAuth app. Do NOT repoint the
+production app.
+
+**1. Create it** at <https://github.com/settings/developers> -> New OAuth App.
+- Application name: anything, e.g. `CodeReader (local dev)`
+- Homepage URL: `http://localhost:5173`
+- **Authorization callback URL: `http://localhost:8000/v1/auth/github/callback`**
+  This is the BACKEND, not the frontend. Locally there is no same-origin
+  rewrite, so the callback must land on the API that will set the cookie.
+- Generate a client secret.
+
+**2. Set these in your local `.env`** (or `docker-compose.override.yml`, which
+wins over `.env` for the api container, and is gitignored):
+
+```
+GITHUB_CLIENT_ID=<the dev app's client id>
+GITHUB_CLIENT_SECRET=<the dev app's client secret>
+GITHUB_REDIRECT_URI=http://localhost:8000/v1/auth/github/callback
+APP_ORIGIN=http://localhost:5173
+```
+
+`APP_ORIGIN` is doing two jobs and both matter: it is the CORS allowlist entry
+(the SPA on :5173 calling the API on :8000 is cross-origin) and the base for
+the post-callback redirect and A2's verification links.
+
+Restart the api container after changing these; Settings is `@lru_cache`d.
+
+**3. Why the refresh cookie still works locally, despite section 3.** Section 3
+exists because production's frontend and backend are different REGISTRABLE
+DOMAINS, so a cookie set by the backend domain is not sent to the frontend
+domain. Locally they are the same host, `localhost`, differing only by PORT, and
+**cookies do not include the port in their scope** (RFC 6265: same-origin rules
+apply to schemes and hosts, not ports). So the `rt` cookie the backend sets is
+sent back on the SPA's `POST /v1/auth/refresh` even though the SPA is served
+from :5173. The Vercel rewrite is a production-only requirement, and no local
+proxy is needed.
+
+Two things that DO have to line up locally, both already correct in the
+committed config: CORS must allow `http://localhost:5173` with
+`allow_credentials=true` (it does, from `APP_ORIGIN`), and the SPA must send
+`credentials: 'include'` (it does, in `api.ts`).
+
+**4. Verify.** `curl -si localhost:8000/v1/auth/github/start | grep -i location`
+should show `redirect_uri=http%3A%2F%2Flocalhost%3A8000%2F...` matching the dev
+app's registered callback exactly, including scheme and port.
 
 ## 4. Background Jobs & Database Connections
 
