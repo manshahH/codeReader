@@ -4,7 +4,7 @@ Paste this into a new chat to resume. Everything else lives in the repo
 (`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-122).
 Forward plan (what to build next) lives in `docs/10-roadmap-retention.md`.
 
-Last refreshed: 2026-07-18 (A1 streak safety net shipped; D-116..D-119).
+Last refreshed: 2026-07-18 (A1 and A2 both merged to master; D-116..D-122).
 
 ---
 
@@ -43,22 +43,72 @@ polish pass (see `docs/ops-incident-report-july-2026.md`). 517 backend tests gre
 close added 3). The Playwright suite is 14 passed / 0 skipped: the last
 test.fixme was removed when D-119 closed.
 
-**Retention layer: A1 (streak safety net) is BUILT; A2 onward is not.** A1 added
-freeze accrual and consumption, repair / earn-back, an ops outage freeze, and a
-"welcome back" state in place of guilt copy. The load-bearing decision is D-116:
-a "covered day" is read from the `streak_events` ledger, not inferred from the
-freeze balance, so an outage fills a day for everyone without spending anyone's
-balance. New routes: `POST /v1/streak/repair` (idempotent, advisory-locked) and
-two admin ops routes (`/admin/streak/outage-freeze`,
-`/admin/streak/grant-initial-freezes`). `/v1/me/stats` gained `repair_available`
-and `repair_restores_to`. Also D-117 (both `.env.example` files are drift-checked
-now; the root one had already drifted) and D-118 (one-time backfill of the
-starting freeze balance for pre-A1 accounts, run once after deploy).
-**A2 (email capture) is next**; the plan is `docs/10-roadmap-retention.md`.
+**Retention layer: A1 and A2 are BUILT and MERGED TO MASTER. A3 is next.**
 
-A1 is **merged but NOT deployed** (plan: build more of Phase A, ship as v2). The
-release checklist lives in `docs/09` section 5: backend deploys before frontend,
-no migration, no new required env, and one post-deploy backfill call.
+A1 (streak safety net) added freeze accrual and consumption, repair / earn-back,
+an ops outage freeze, and a "welcome back" state in place of guilt copy. The
+load-bearing decision is D-116: a "covered day" is read from the `streak_events`
+ledger, not inferred from the freeze balance, so an outage fills a day for
+everyone without spending anyone's balance. New routes: `POST /v1/streak/repair`
+(idempotent, advisory-locked) and two admin ops routes
+(`/admin/streak/outage-freeze`, `/admin/streak/grant-initial-freezes`).
+`/v1/me/stats` gained `repair_available` and `repair_restores_to`. Also D-117
+(both `.env.example` files are drift-checked now; the root one had already
+drifted) and D-118 (one-time backfill of the starting freeze balance for pre-A1
+accounts, run once after deploy).
+
+A2 (email capture) added in-app email capture with verification, so A3 has a
+notification channel. GitHub OAuth stays scoped `read:user`. D-120 covers it:
+capture in-app rather than widening the scope (widening would force re-consent
+on every existing user); a new address waits in `pending_email` so a typo cannot
+take a working address offline; uniqueness is a PARTIAL index (verified and not
+soft-deleted) so an address cannot be squatted by typing it; tokens are hashed,
+single-use and expiring, matching refresh-token storage; every verification
+failure returns ONE generic response so nothing is an enumeration oracle. New
+routes: `POST /v1/me/email`, `POST /v1/me/email/verify`,
+`POST /v1/me/email/resend`, `DELETE /v1/me/email`. `GET /me` gained `email`,
+`email_verified` and `pending_email`. **Migration 0009** adds `users.email` /
+`email_verified_at` / `pending_email` plus `email_verification_tokens`; no
+backfill needed. This is the first migration in the retention work, so A2's
+release is NOT the no-migration shape A1's was.
+
+**A3 (reminders + weekly recap) HAS A HARD PREREQUISITE, name it before
+planning:** Resend will only send from a verified domain, needing SPF, DKIM, MX
+and DMARC records. `EMAIL_FROM` currently points at
+`no-reply@codereader.dev`, **a placeholder nobody owns**, and neither
+`codereader-eight.vercel.app` nor `codereader.fastapicloud.dev` can be used
+(you cannot add DNS records to a domain you do not control). D-114 deferred
+buying a domain; A3 cannot ship until that is reversed, and DNS propagation plus
+verification is a lead-time item. `APP_ORIGIN` should move at the same time,
+since verification links are built from it, and a domain change touches D-114's
+same-origin rewrite and the `GITHUB_REDIRECT_URI` rule in docs/09 section 3.
+`EMAIL_SENDING_ENABLED` defaults false, so nothing sends until deliberately
+enabled.
+
+**Three fixes rode in on the A2 branch, unrelated to email** (deliberately not
+split out; see the A2 merge commit):
+- **D-122**: first-of-day session creation is serialized by a per-(user, day)
+  advisory lock (D-104's lock class, third application). Two concurrent
+  `GET /v1/session/today` both inserted `daily_sessions`; the loser hit the PK
+  and the IntegrityError recovery then failed on its own re-read, returning 500.
+  The MissingGreenlet that recovery raised is UNEXPLAINED and deliberately
+  unfixed: the lock makes it unreachable, and that branch firing again is
+  evidence the lock was bypassed, not a licence to catch the symptom.
+- **D-121**: an unhandled exception now reaches the browser AS a 500, with a
+  JSON body and CORS headers. It was generated outside `CORSMiddleware`, so the
+  browser saw a rejected fetch and the SPA said "Could not reach the server".
+  That disguise cost two misdiagnoses.
+- **D-119**: CLOSED. `session.spec.ts` asserted a "Session complete" screen that
+  does not exist, so it failed 8 of 8 on a confusing selector. Fixed to assert
+  the real completion signal. No `test.fixme` remains in the Playwright suite.
+
+**Both A1 and A2 are merged to master but NOT DEPLOYED**, and merging ships
+nothing: Vercel is CLI-only and the backend deploys separately. Branches
+`a1-streak-safety-net` and `a2-email-capture` are retained, not deleted, and
+master is 25 commits ahead of `origin/master` and unpushed. The A1 release
+checklist is in `docs/09` section 5 (backend before frontend, no migration, no
+new required env, one post-deploy backfill call); A2 adds migration 0009 and the
+`EMAIL_*` env knobs to that list.
 
 Deferred out of A1, deliberately: there is **no session-complete screen**.
 `Session.tsx` redirects to the Dashboard when the last exercise is done, so A1's

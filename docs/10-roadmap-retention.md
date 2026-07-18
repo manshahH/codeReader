@@ -1,8 +1,12 @@
 # 10 : Roadmap (Retention & Gamification)
 
-Status: A1 IS BUILT AND SHIPPED (2026-07-18). Everything from A2 onward is still
-planning. This is the "what we build next" doc; `HANDOFF.md` is the "what is
-already built" doc. Read both before starting. **A2 (email capture) is next.**
+Status: A1 AND A2 ARE BUILT AND MERGED TO MASTER (2026-07-18, not deployed).
+Everything from A3 onward is still planning. This is the "what we build next"
+doc; `HANDOFF.md` is the "what is already built" doc. Read both before starting.
+**A3 (reminders + weekly recap) is next, and it is BLOCKED on a sending domain:
+Resend needs a verified domain (SPF/DKIM/MX/DMARC) and `EMAIL_FROM` currently
+names a placeholder nobody owns. D-114 deferred buying one; that has to be
+reversed before A3 can ship. See HANDOFF for the full dependency.**
 
 The MVP proved the hard part (execution-validated content, the daily loop). This
 layer is the retention engine. It is backed by research on Duolingo, Habitica,
@@ -46,9 +50,14 @@ Do these first. They move retention in weeks and answer beta-user feedback direc
   daily goal (one exercise = one day). Auto-freeze everyone on a service outage
   (Duolingo's "big red button"). Why: loss aversion without a safety net churns a
   busy-professional audience; freezes raise 7-day-plus streak length ~48%.
-- A2 Email capture: an in-app profile prompt ("add email for reminders and your
-  weekly recap"). Why: GitHub OAuth scope is `read:user`, so we have no email, and
-  the whole notification channel depends on one. Seam: add a verified email field.
+- A2 Email capture (**SHIPPED**, D-120): an in-app profile prompt ("add email for
+  reminders and your weekly recap"). Why: GitHub OAuth scope is `read:user`, so we
+  have no email, and the whole notification channel depends on one. Built as
+  `users.email` (verified addresses only) + `pending_email` + hashed single-use
+  verification tokens, with a partial unique index so an address cannot be
+  squatted. A3 reads `users.email` and sees either a deliverable address or NULL,
+  never a maybe. The Resend client and the verification email exist; reminder
+  scheduling and recap content were deliberately left to A3.
 - A3 Reminders + weekly recap email: built on `reminder_local_time`. Optimise copy
   and timing, never frequency ("protect the channel"), and drop all guilt tone.
 - A4 Peek at tomorrow: a teaser of tomorrow's set. Why: a reason to return that the
