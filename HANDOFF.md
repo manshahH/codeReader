@@ -1,10 +1,10 @@
 # CodeReader — Handoff Brief
 
 Paste this into a new chat to resume. Everything else lives in the repo
-(`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-118).
+(`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-119).
 Forward plan (what to build next) lives in `docs/10-roadmap-retention.md`.
 
-Last refreshed: 2026-07-18 (A1 streak safety net shipped; D-116..D-118).
+Last refreshed: 2026-07-18 (A1 streak safety net shipped; D-116..D-119).
 
 ---
 
