@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { seedAuthCookie } from './_seed';
+import { localStackIsUp, seedAuthCookie, STACK_REQUIRED } from './_seed';
 
 // Auth: no real GitHub OAuth here. seedAuthCookie() seeds a fresh user and
 // issues a refresh token through the exact same app.auth.tokens code the real
@@ -11,6 +11,8 @@ import { seedAuthCookie } from './_seed';
 test('full session: login (seed) -> one of each type -> reveal -> complete', async ({ page, context }) => {
   const MAX_EXERCISES = 8; // sampler may add a boss slot; never more than MIN_SLOTS..MAX_NON_BOSS_SLOTS+1
   page.on('console', (msg) => console.log(`[browser:${msg.type()}] ${msg.text()}`));
+  test.skip(!(await localStackIsUp()), STACK_REQUIRED);
+
   page.on('pageerror', (err) => console.log(`[pageerror] ${err.message}`));
   page.on('requestfailed', (req) => console.log(`[requestfailed] ${req.url()} ${req.failure()?.errorText}`));
   page.on('response', (res) => {
