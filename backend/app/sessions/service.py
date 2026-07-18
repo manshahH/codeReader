@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.attempts.grading import DETERMINISTIC_TYPES as GRADED_DETERMINISTIC_TYPES
 from app.attempts.grading import build_reveal
 from app.attempts.rubric import build_summarize_reveal
+from app.config import get_settings
 from app.core import grader_health
 from app.core.metrics import record_outcome
 from app.core.timezones import local_date_for, local_day_end_utc
@@ -112,11 +113,22 @@ async def _build_and_persist_session(
         # session rather than two independently sampled ones.
         return slots_from_dicts(winner.exercise_list)
 
-    # docs/05 section 4: a degraded grader excludes summarize from newly
-    # built sessions; already-issued sessions are unaffected since this only
-    # runs on first-of-day sampling.
+    # D-123: summarize is OFF by default (D-115) and this is where that is
+    # ENFORCED, not merely intended. This line used to read
+    #   candidate_types = DETERMINISTIC_TYPES if degraded else ALL_CANDIDATE_TYPES
+    # so a healthy grader pulled summarize into the candidate pool, and a single
+    # live summarize row was enough to serve one. D-115 asserted the sampler
+    # already excluded it; that was never true.
+    #
+    # The exclusion is applied to the SQL type filter in fetch_candidates, so it
+    # holds regardless of what is in the exercises table: a live summarize row is
+    # simply never a candidate. The degraded-grader rule (docs/05 section 4) still
+    # applies on top, for the case where summarize is deliberately enabled.
+    # Already-issued sessions are unaffected either way; this only runs on
+    # first-of-day sampling.
     degraded = await grader_health.is_degraded(redis)
-    candidate_types = DETERMINISTIC_TYPES if degraded else ALL_CANDIDATE_TYPES
+    summarize_allowed = get_settings().SUMMARIZE_ENABLED and not degraded
+    candidate_types = ALL_CANDIDATE_TYPES if summarize_allowed else DETERMINISTIC_TYPES
     candidates = await fetch_candidates(db, types=candidate_types)
 
     due_cutoff = local_day_end_utc(user.timezone, today)

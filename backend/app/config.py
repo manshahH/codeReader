@@ -93,6 +93,17 @@ class Settings(BaseSettings):
     # converge on one mailbox.
     EMAIL_VERIFICATION_RESEND_COOLDOWN_S: int = 60
     EMAIL_VERIFICATION_SENDS_PER_HOUR: int = 5
+    # D-123. summarize is OFF (D-115) and this is the switch that enforces it.
+    # It defaults FALSE, so summarize is excluded from sampling regardless of
+    # what is in the exercises table: a live summarize row is no longer enough
+    # to get one served. D-115 claimed the sampler already did this; it did not
+    # (sessions/service.py used ALL_CANDIDATE_TYPES on the healthy-grader path),
+    # and a live summarize row reached a real local session.
+    # Turning this on re-enables the ONLY type with a per-answer LLM cost and
+    # the only one that puts a grader on the hot path, which is the
+    # prompt-injection surface invariant 6 exists for. Do not flip it without
+    # re-reading D-115.
+    SUMMARIZE_ENABLED: bool = False
     JOBS_ENABLED: bool = True
     JOB_GRADING_RETRY_INTERVAL_S: float = 30.0
     JOB_PERCENTILES_INTERVAL_S: float = 3600.0

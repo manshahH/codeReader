@@ -18,6 +18,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.attempts.grader_client import ScriptedGraderClient
+from app.config import get_settings
 from app.jobs.grading_retry import resolve_pending_summarize_grades
 from app.main import create_app
 from tests.factories_m4 import (
@@ -30,6 +31,17 @@ from tests.factories_m4 import (
     make_summarize_exercise,
     make_user,
 )
+
+
+@pytest.fixture(autouse=True)
+def _enable_summarize(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D-123: summarize is OFF by default now, and these tests are ABOUT
+    summarize, so they opt in explicitly. Without this they would be asserting
+    behaviour the shipped configuration deliberately does not have."""
+    monkeypatch.setenv("SUMMARIZE_ENABLED", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture

@@ -27,6 +27,17 @@ from tests.factories_m4 import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _enable_summarize(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D-123: summarize is OFF by default now, and these tests are ABOUT
+    summarize, so they opt in explicitly. Without this they would be asserting
+    behaviour the shipped configuration deliberately does not have."""
+    monkeypatch.setenv("SUMMARIZE_ENABLED", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 def _walk_keys(node: object) -> set[str]:
     keys: set[str] = set()
     if isinstance(node, dict):
