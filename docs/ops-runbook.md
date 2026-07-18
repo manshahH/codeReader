@@ -23,6 +23,47 @@ docs/07-decisions.md D-64.
   prunes backups older than `RETENTION_DAYS` (default 14). Works against
   either a docker-compose container (`POSTGRES_CONTAINER=<name>`) or a
   managed Postgres via `DATABASE_URL`.
+**THE CLIENT VERSION MUST BE >= THE SERVER VERSION. Check this BEFORE you need
+a backup, not during an incident.** `pg_dump` refuses outright on a server newer
+than itself:
+
+```
+pg_dump: error: aborting because of server version mismatch
+pg_dump: detail: server version: 18.4; pg_dump version: 16.14
+```
+
+It fails fast and writes a ZERO-BYTE file, so a scripted backup can look like it
+ran and leave you with nothing. Anything that reports success without checking
+the output size is not a backup.
+
+As of 2026-07-18: **production (Neon) is Postgres 18.4**, while the local
+docker-compose Postgres and its bundled `pg_dump` are **16.x**. So the
+compose container CANNOT dump production, and neither can a workstation whose
+`pg_dump` came from a 16.x install. Hit for real while backing up prod before
+the D-123 summarize fix.
+
+Use a matching client. The least fragile way, needing nothing installed:
+
+```bash
+PRODURL=$(grep '^DATABASE_URL=' backend/.env.production | cut -d= -f2-)
+docker run --rm -e PGURL="$PRODURL" -v "$(pwd)/backend/data/backups:/out" postgres:18   sh -c 'pg_dump "$PGURL" -F c -f /out/codereader_prod_$(date -u +%Y-%m-%dT%H%MZ).dump'
+```
+
+Then ALWAYS verify before trusting it, which also catches the zero-byte case:
+
+```bash
+docker run --rm -v "$(pwd)/backend/data/backups:/out" postgres:18   sh -c 'pg_restore -l /out/<file>.dump' | grep -c 'TABLE DATA'
+```
+
+A healthy full dump lists ~17 TABLE DATA entries and includes
+`public exercises`, `public users` and the `attempts_*` partitions. Bump the
+image tag whenever Neon upgrades its major version; a client that is too NEW is
+fine, one that is too old is not.
+
+Note `pg_dump` takes the libpq URL verbatim, including
+`?sslmode=require&channel_binding=require`. Do NOT hand it the normalised
+asyncpg form, and do not strip params (D-112 normalises only for the app).
+
 - `backend/scripts/restore_db.sh <dump-file> [--replace]` -- restores into
   `TARGET_DB_NAME` (default `codereader_restore_drill`, a SCRATCH database;
   pass `--replace` to drop-and-recreate the target in place for a real
