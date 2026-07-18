@@ -59,7 +59,14 @@ export function Onboarding() {
         type="button"
         onClick={submit}
         disabled={!level || saving}
-        className="self-start rounded-soft bg-action px-6 py-3 font-ui text-base font-medium text-surface-reading disabled:opacity-40"
+        // Disabled must READ as disabled. `opacity-40` on a filled primary kept
+        // the "solid block = actionable" signal while pushing the label under
+        // WCAG AA (docs/08), so it looked clickable and merely dim. Disabled
+        // now drops the fill entirely and becomes a quiet outline: different in
+        // KIND, not just in brightness, and the muted label keeps AA contrast.
+        // The transparent border on the enabled state keeps the box stable, so
+        // nothing shifts when it flips.
+        className="self-start rounded-soft border border-transparent bg-action px-6 py-3 font-ui text-base font-medium text-surface-reading transition-colors duration-fast disabled:cursor-not-allowed disabled:border-border disabled:bg-transparent disabled:text-ink-muted"
       >
         {saving ? 'Saving…' : 'Start today’s session'}
       </button>
