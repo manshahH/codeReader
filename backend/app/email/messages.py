@@ -44,4 +44,4 @@ def build_verification_email(*, to: str, token: str, ttl_hours: int) -> Outbound
         "<p>If you did not ask for this, ignore it. No address is added unless the "
         "link is opened.</p>"
     )
-    return OutboundEmail(to=to, subject=SUBJECT, text=text, html=html)
+    return OutboundEmail(to=to, subject=SUBJECT, text=text, html=html, dev_link=link)

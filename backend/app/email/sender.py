@@ -44,6 +44,10 @@ class OutboundEmail:
     subject: str
     text: str
     html: str
+    # D-126: the actionable link, carried separately so DisabledEmailSender can
+    # log it in local dev without regex-scraping the body. Never read by the
+    # real sender, and never included in the provider payload.
+    dev_link: str | None = None
 
 
 class EmailSender(Protocol):
@@ -66,6 +70,19 @@ class DisabledEmailSender:
             "email.send.suppressed",
             extra={"to": mask_email(message.to), "subject": message.subject},
         )
+        # D-126: with sending off, no mail exists, so the verification link is
+        # otherwise unrecoverable -- the token is sha256-hashed at rest and
+        # deliberately never logged (D-120), which left no way to walk the
+        # verify path locally.
+        #
+        # DOUBLE-GATED, and the first gate is structural: this class is only
+        # ever constructed by get_email_sender() when EMAIL_SENDING_ENABLED is
+        # false, so production never reaches this code at all. The explicit
+        # re-check below covers the one way that could be defeated -- someone
+        # constructing DisabledEmailSender directly -- so a token can never be
+        # logged on a sending deploy even by mistake.
+        if message.dev_link and not get_settings().EMAIL_SENDING_ENABLED:
+            logger.warning("email.verification.dev_link link=%s", message.dev_link)
 
 
 class ResendEmailSender:

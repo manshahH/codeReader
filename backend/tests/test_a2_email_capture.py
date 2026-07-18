@@ -751,3 +751,64 @@ async def test_email_routes_require_authentication(client: AsyncClient) -> None:
         # takes no body.
         response = await client.request(method, path, json={"email": "a@b.io", "token": "x"})
         assert response.status_code == 401, path
+
+
+# --------------------------------------------------------------------------
+# D-126: the dev-only verification link log
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dev_link_is_logged_when_sending_is_disabled(caplog) -> None:
+    """With sending off there is no mail, and the token is sha256-hashed at
+    rest and never logged (D-120), so the verify path was unwalkable locally."""
+    import logging
+
+    from app.email.messages import build_verification_email
+
+    sender = DisabledEmailSender()
+    message = build_verification_email(to="dev@example.com", token="tok-123", ttl_hours=24)
+
+    with caplog.at_level(logging.WARNING, logger="app.email.sender"):
+        await sender.send(message)
+
+    assert "email.verification.dev_link" in caplog.text
+    assert "/verify-email?token=tok-123" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_dev_link_is_NOT_logged_when_sending_is_enabled(caplog, monkeypatch) -> None:
+    """THE NEGATIVE THAT MATTERS: production must never log a token.
+
+    Constructs DisabledEmailSender DIRECTLY with sending enabled -- the one way
+    the structural gate (get_email_sender only builds this class when the
+    switch is off) could be bypassed. The explicit re-check must still refuse.
+    """
+    import logging
+
+    from app.email.messages import build_verification_email
+
+    monkeypatch.setenv("EMAIL_SENDING_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        sender = DisabledEmailSender()
+        message = build_verification_email(to="dev@example.com", token="tok-secret", ttl_hours=24)
+
+        with caplog.at_level(logging.DEBUG, logger="app.email.sender"):
+            await sender.send(message)
+
+        assert "dev_link" not in caplog.text
+        assert "tok-secret" not in caplog.text
+    finally:
+        get_settings.cache_clear()
+
+
+def test_get_email_sender_never_returns_the_logging_sender_when_enabled(monkeypatch) -> None:
+    """The structural gate itself: with sending on, the class that can log a
+    link is not even constructed."""
+    monkeypatch.setenv("EMAIL_SENDING_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        assert isinstance(get_email_sender(), ResendEmailSender)
+    finally:
+        get_settings.cache_clear()
