@@ -1,7 +1,7 @@
 # CodeReader — Handoff Brief
 
 Paste this into a new chat to resume. Everything else lives in the repo
-(`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-119).
+(`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-122).
 Forward plan (what to build next) lives in `docs/10-roadmap-retention.md`.
 
 Last refreshed: 2026-07-18 (A1 streak safety net shipped; D-116..D-119).
@@ -38,7 +38,8 @@ streaks, spaced repetition, stats, disputes. The session gate was removed so
 reaching `/session` opens the player directly (D-111). Frontend passed a full
 Playwright session smoke test and scored 0/16 on the anti-slop audit across every
 screen; the Review/Dashboard/Profile screens got a dual-pane + glassmorphism
-polish pass (see `docs/ops-incident-report-july-2026.md`). 456 backend tests green.
+polish pass (see `docs/ops-incident-report-july-2026.md`). 514 backend tests green
+(456 predated A1; A1 took it to 457, A2 added 49, D-121/D-122 added 8).
 
 **Retention layer: A1 (streak safety net) is BUILT; A2 onward is not.** A1 added
 freeze accrual and consumption, repair / earn-back, an ops outage freeze, and a
@@ -92,10 +93,18 @@ From `docs/ops-incident-report-july-2026.md`:
   calls; on an expired token + a Neon free-tier pool timeout they can all 401 at
   once. Handled gracefully section-by-section (`usePanel`); a reload fixes it.
   Real fix is upgrading the Neon tier for more pooled connections.
-- **"Something went wrong" mid-session** = a 403 `exercise_not_in_session` thrown
-  on a transient DB timeout during submit; `api.ts` falls through to the generic
-  catch-all because that 403 lacks an `{error: ...}` body. Data is healthy; the
-  user just reopens. Worth giving that 403 a JSON body so the UI can message it.
+- **"Something went wrong" mid-session**: the stated cause was WRONG and is
+  corrected in D-121. It is NOT "the 403 `exercise_not_in_session` lacks an
+  `{error: ...}` body": that 403 is raised as `ApiError`, has always carried the
+  standard body, and the M4 test
+  `test_attempt_on_exercise_not_in_session_returns_403` has asserted exactly
+  that body since M4. The leading
+  hypothesis is now the D-121 CORS gap: an unhandled 500 reached the browser
+  with no CORS headers, so the SPA saw a rejected fetch instead of a readable
+  500. `POST /v1/attempts` calls `get_today_slots()`, which is the same function
+  that was 500ing under the D-122 race, so the two incidents plausibly share one
+  cause. FIXED at the contract level (D-121); the specific incident is not
+  confirmed closed because it was never reproduced.
 
 ---
 

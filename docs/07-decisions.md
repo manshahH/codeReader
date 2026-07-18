@@ -3127,3 +3127,108 @@ D-120 A2 email capture. Six decisions, recorded before any code was written.
      at NULL, which is the correct and intended "no email captured" state. This
      is the difference from D-118, which needed a backfill precisely because its
      column already existed with a wrong-for-the-cohort default.
+
+D-121 An unhandled exception must reach the browser AS a 500: JSON body, uniform
+     error shape, and CORS headers. Previously it did not, and that single gap
+     corrupted two separate incident investigations.
+     THE MECHANISM. `@app.exception_handler(Exception)` already existed and
+     already produced a correct `{error: {...}}` body with security headers
+     (M2). But an app-level exception handler is invoked by Starlette's
+     ServerErrorMiddleware, which is the OUTERMOST layer, outside every user
+     middleware including CORSMiddleware. So the 500 went out with no
+     Access-Control-Allow-Origin, and a browser will not expose such a response
+     to JS at all. The SPA therefore never saw a 500 with a readable body; it
+     saw a rejected fetch, and api.ts mapped that to `network_error` ->
+     "Could not reach the server. Check your connection."
+     WHY THIS IS NOT COSMETIC. It is an error that disguises itself as a
+     different, vaguer error, and every downstream diagnosis inherits the
+     disguise. D-119 spent its whole first investigation treating a server-side
+     race as a client/network/selector problem because that is what the browser
+     was told. The incident report's mid-session "Something went wrong" is the
+     same shape. A wrong error message is not a small bug when it is the only
+     evidence anyone has.
+     CHANGE: a `_catch_unhandled` HTTP middleware registered FIRST in
+     create_app(), which makes it the INNERMOST user middleware (Starlette's
+     add_middleware prepends, so last-added is outermost). It catches Exception,
+     builds the response via a shared `_unhandled_response()`, and returns it --
+     so the response travels back out THROUGH CORSMiddleware, which applies the
+     headers itself. The app-level handler stays as the last-resort net for
+     anything raised in the outer middlewares, where CORS is genuinely out of
+     reach; both paths share one response builder so they cannot drift.
+     REJECTED: setting Access-Control-Allow-Origin by hand in the error handler.
+     It would mean echoing the request's Origin, which turns the 500 path into a
+     CORS bypass for any origin on the internet. The allowlist must stay with
+     the middleware that owns it. A negative test asserts a disallowed origin is
+     still refused on the error path.
+     REJECTED: moving CORSMiddleware to be outermost instead. It would fix this
+     case but leaves the general rule ("responses generated above the CORS layer
+     are invisible to the browser") intact and re-breakable by the next
+     middleware anyone adds. Catching low is the structural fix.
+     HANDOFF'S SECOND INSTANCE IS MISDIAGNOSED, and this is recorded rather than
+     silently "fixed". HANDOFF says the mid-session failure is a 403
+     `exercise_not_in_session` that "lacks an {error: ...} body". IT DOES NOT AND
+     NEVER DID. It is raised as ApiError (attempts/service.py:407), gets the
+     standard body from api_error_handler, and
+     test_m4_attempts.py::test_attempt_on_exercise_not_in_session_returns_403 has
+     asserted exactly that body since M4 and passes. There was nothing to fix.
+     The far more likely real cause of that incident is this same CORS gap:
+     POST /v1/attempts calls get_today_slots(), which is precisely the function
+     that was 500ing under D-122, and a 500 there presented to the user as the
+     generic catch-all. Not proven, so it is recorded as the leading hypothesis
+     rather than a closed finding. A regression test now pins the 403's body and
+     CORS headers so the claim cannot be re-derived from a bad memory.
+
+D-122 First-of-day session creation is serialized by a per-(user, day) advisory
+     lock. This closes the race root-caused under D-119.
+     THE BUG: two concurrent GET /v1/session/today for a user with no
+     daily_sessions row both found nothing, both sampled, and both INSERTed. The
+     loser hit daily_sessions_pkey, and the IntegrityError recovery written for
+     exactly this case then failed on its own re-read, so the request 500d (and,
+     per D-121, that 500 reached the browser as a network error).
+     CHANGE: `pg_advisory_xact_lock(hashtext(user_id), hashtext("session_build:" +
+     date))` at the top of _build_and_persist_session, followed by a re-read of
+     the row under the lock. D-104's lock class, third application (attempts,
+     streak repair, now session build).
+     DOUBLE-CHECKED, and that is the point of the re-read. The caller has
+     already returned on a Redis hit or an existing row, so the hot path -- every
+     request after the first of the day -- never reaches the lock and pays
+     nothing for it. The re-read closes the window between the caller's check
+     and the acquisition: the loser blocks until the winner commits, then READ
+     COMMITTED hands it a fresh snapshot containing the winner's row, which it
+     returns. Both callers therefore see the IDENTICAL session, which is a
+     stronger guarantee than "no crash" and is asserted directly.
+     Keyed per-(user, day), not per-user: the protected object is exactly one
+     row per (user_id, session_date), and a per-user key would serialize
+     unrelated days for no benefit.
+     REJECTED: INSERT ... ON CONFLICT DO NOTHING then read. It is a smaller
+     change and it would work, but it is a fourth distinct concurrency idiom in
+     a codebase that has already standardised on this advisory lock in two
+     places. Consistency here has real value: the next person reading
+     sessions/service.py should find the same pattern they just read in
+     attempts/service.py, not a new one to evaluate. ON CONFLICT also expresses
+     "tolerate the collision" where the lock expresses "prevent it", and the
+     sampling work done before the insert is wasted under the former.
+     KEPT: the IntegrityError handler, now unreachable via the concurrent path,
+     as the DB backstop underneath the lock -- the same relationship the partial
+     unique index on streak_events has to the attempts lock (D-104).
+     NOT FIXED, DELIBERATELY: the MissingGreenlet raised by that recovery path's
+     `db.get` from the connection pool's pre-ping. It remains UNEXPLAINED and
+     UNFIXED. Catching it would paper over the wrong layer, and it is now
+     unreachable. If that branch ever fires again, that is evidence the lock was
+     bypassed, not a licence to catch the symptom.
+     PROVED BY REMOVAL, per the D-104 discipline. Reverting the lock makes
+     test_d122_session_build_race.py fail with the exact production chain
+     (UniqueViolationError on daily_sessions_pkey -> MissingGreenlet -> 500);
+     restoring it makes both tests pass. End to end:
+     reveal-error-boundary.spec.ts went from 11 of 15 FAILING to 15 of 15
+     PASSING across consecutive runs.
+     session.spec.ts (D-119) DOES NOT SHARE THIS CAUSE and stays test.fixme. It
+     was re-checked against this fix rather than assumed: it fails 8 of 8,
+     deterministically, which is a logic bug and not a race. New evidence
+     recorded on the spec itself: the dashboard reads "Completed" with
+     "1/5, 1 skipped", i.e. the session presents as finished after two of five
+     exercises, while the backend computes completed as
+     attempted_ids.issuperset(all slots), which cannot be true at 2 of 5. The
+     divergence between that flag and what the Dashboard renders is where to
+     start. D-119 therefore stays OPEN for session.spec only; its session-race
+     half is closed here.
