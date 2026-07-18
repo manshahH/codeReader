@@ -8,32 +8,28 @@ import { localStackIsUp, seedAuthCookie, STACK_REQUIRED } from './_seed';
 // /auth/refresh flow (RootGate) takes it from there. This is the "login (seed)"
 // step from the milestone's success criteria, not a bypass of the auth code.
 
-// KNOWN-FAILING, PRE-EXISTING, STILL NOT ROOT-CAUSED -- see docs/07 D-119.
-// Verified to fail identically on master (67cf7b8), so A1 did not cause it.
+// ROOT-CAUSED AND FIXED (2026-07-18), closing the second half of D-119.
 //
-// RE-CHECKED against the D-122 session-build fix (2026-07-18): it does NOT
-// share that root cause and is NOT fixed by it. D-122 closed a genuine RACE in
-// first-of-day session creation, which is why reveal-error-boundary.spec.ts
-// went from 11-of-15 failing to 15-of-15 passing. This spec is different: it
-// fails 8 of 8, DETERMINISTICALLY, which is the signature of a logic bug rather
-// than a race. Do not assume the two are related; they measurably are not.
+// This spec was never testing a product bug. It asserted a "Session complete"
+// screen, and that screen DOES NOT EXIST anywhere in frontend/src -- its absence
+// is a deliberate, documented decision (HANDOFF, docs/10: Session.tsx redirects
+// to the Dashboard once the last exercise is answered, and building a real
+// session-complete screen is its own piece of work). So the loop's break
+// condition never fired, the run walked one iteration past the last exercise,
+// /session had already redirected to the Dashboard, and `span.capitalize` was
+// missing. The spec failed on a selector four steps from its actual mistake.
 //
-// CURRENT EVIDENCE, and the place to start: at the moment of failure the
-// dashboard reads "Completed" with "1/5 . 1 skipped" -- so the session is being
-// presented as finished after TWO of five exercises. /session then redirects
-// away and `span.capitalize` is never found, which is why the failure surfaces
-// on a selector rather than where the problem is. Backend `completed` is
-// computed as attempted_ids.issuperset(all slots) (sessions/service.py), which
-// cannot be true at 2 of 5, so the divergence is most likely between that flag
-// and whatever the Dashboard renders "Completed" from. Check that first.
+// The "early completion" reading was wrong, and the misreading was mine: the
+// dashboard's "1/5" is correct_count/exercise_count (Dashboard.tsx:203), i.e.
+// ONE CORRECT out of five, not one attempted out of five. The browser log shows
+// five POST /v1/attempts for a five-slot session. Backend, dashboard and
+// daily_sessions agreed the whole time; a direct measurement confirmed it
+// (5 slots persisted, 5 exercises served, before and after attempts).
 //
-// test.fixme (not test.skip): this reports as skipped but says "needs fixing"
-// rather than "not applicable", so it stays visible in the suite output instead
-// of quietly reading as a red anybody learns to ignore. Delete the line below to
-// work on it. The seeding path itself is fine: 20 of 20 freshly seeded users
-// get a full 5-exercise session over plain HTTP (measured under D-119).
-
-test.fixme(true, 'D-119: pre-existing failure, not root-caused; NOT the D-122 race');
+// Fixed by asserting the completion signal this app actually has: the redirect
+// to the Dashboard plus its completed state. A session of 3, 4 or 5 exercises is
+// all normal (sampler MIN_SLOTS=3, MAX_NON_BOSS_SLOTS=4 plus an optional boss),
+// so the loop bounds on leaving /session rather than on any fixed count.
 
 test('full session: login (seed) -> one of each type -> reveal -> complete', async ({ page, context }) => {
   const MAX_EXERCISES = 8; // sampler may add a boss slot; never more than MIN_SLOTS..MAX_NON_BOSS_SLOTS+1
@@ -63,7 +59,10 @@ test('full session: login (seed) -> one of each type -> reveal -> complete', asy
   let skipped = false;
 
   for (let i = 0; i < MAX_EXERCISES; i++) {
-    if (await page.getByText('Session complete').isVisible().catch(() => false)) break;
+    // There is no session-complete SCREEN to look for (see the header note):
+    // finishing the last exercise redirects to the Dashboard, so leaving
+    // /session IS the completion signal.
+    if (!/\/session$/.test(new URL(page.url()).pathname)) break;
 
     const typeLabel = page.locator('span.capitalize').first();
     await expect(typeLabel).toBeVisible({ timeout: 15_000 });
@@ -124,6 +123,10 @@ test('full session: login (seed) -> one of each type -> reveal -> complete', asy
   // own hermetic spec (predict-the-fix.spec.ts), not in this sampling-driven run.
   expect(seenTypes.size, 'session served no exercises').toBeGreaterThan(0);
 
-  await expect(page.getByText('Session complete')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(/correct today\.|done for today\./)).toBeVisible();
+  // Completion, as this app actually expresses it: the player redirects to the
+  // Dashboard, which flips to its completed state and offers the review link
+  // instead of the "Enter sandbox" CTA.
+  await expect(page).toHaveURL(/localhost:5173\/$/, { timeout: 15_000 });
+  await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('link', { name: "Review today's session" })).toBeVisible();
 });
