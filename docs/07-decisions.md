@@ -2987,6 +2987,52 @@ D-119 frontend/e2e/session.spec.ts is KNOWN-FAILING and NOT ROOT-CAUSED. Marked
      root cause, but that is NOT verified. Re-check it after this is fixed
      rather than assuming it is resolved.
 
+     CLOSED (2026-07-18). Both halves are now resolved and this entry is done.
+     The session-build race was D-122. The session.spec.ts half is below, and it
+     was NOT the same bug and NOT a product bug at all.
+     ROOT CAUSE: the spec asserted a "Session complete" screen. There is no such
+     screen anywhere in frontend/src, and its absence is a deliberate, recorded
+     decision (HANDOFF and docs/10: Session.tsx redirects to the Dashboard once
+     the last exercise is answered; building a real session-complete screen is
+     its own deferred piece of work). So the loop's break condition could never
+     fire, the run walked one iteration past the last exercise, /session had
+     already redirected to the Dashboard, and `span.capitalize` was missing. The
+     failure surfaced on a selector four steps from the actual mistake, which is
+     the same shape of confusion D-121 describes and the reason both took so
+     long to see.
+     MY EARLIER READING WAS WRONG, and it is worth naming because it sent the
+     next round of investigation down a false path. I read the dashboard's
+     "1/5, 1 skipped" as "one of five attempted" and wrote that into this entry
+     as evidence of early completion. It is correct_count/exercise_count
+     (Dashboard.tsx:203): ONE CORRECT out of five, in a session that had
+     finished. The browser log shows five POST /v1/attempts against a five-slot
+     session. Nothing ever disagreed: a direct measurement showed 5 slots
+     persisted and 5 exercises served, both before and after attempts.
+     HYPOTHESIS TESTED AND REJECTED: that GET /v1/session/today served fewer
+     exercises than daily_sessions held slots. Measured directly and it does
+     not: persisted == served == 5, and the served slate does not shrink as
+     exercises are answered.
+     SEVERITY: NOT test-only, and NOT production-reachable either, because there
+     is no defect in the product. The version of this that WOULD have been
+     serious -- a real user told they are finished partway through -- is not
+     reachable, and that is now pinned by tests rather than by argument
+     (test_d119_session_completion.py). A pool too small for the sampler's usual
+     3-to-5 slots yields a SHORT session, not a dishonest one: served count
+     equals persisted count, `completed` turns true only once every served
+     exercise has been attempted, and a skip counts as an attempt (D-19/D-93) so
+     a skipped slot cannot strand the session. Those three are the invariants
+     that matter for the daily loop, and they hold.
+     FIX: in the spec, asserting the completion signal this app actually has --
+     the redirect to the Dashboard plus its completed state and review link. The
+     loop now bounds on leaving /session rather than on a screen that does not
+     exist, so a 3, 4 or 5 exercise session all pass equally.
+     Also fixed the same dead expectation in reveal-error-boundary.spec.ts,
+     where `.or(getByText('Session complete'))` was harmless only because the
+     other branch always matched; had the session actually ended there it would
+     have failed for an invented reason.
+     PROVED TO THE D-122 STANDARD: 8 of 8 failing before, 12 of 12 passing
+     after, and the test.fixme is removed so the spec runs for real again.
+
 D-120 A2 email capture. Six decisions, recorded before any code was written.
      This is the FIRST PII in the system, so each one is written down with the
      attack or failure it is defending against, not just the shape it produces.
@@ -3222,13 +3268,14 @@ D-122 First-of-day session creation is serialized by a per-(user, day) advisory
      restoring it makes both tests pass. End to end:
      reveal-error-boundary.spec.ts went from 11 of 15 FAILING to 15 of 15
      PASSING across consecutive runs.
-     session.spec.ts (D-119) DOES NOT SHARE THIS CAUSE and stays test.fixme. It
-     was re-checked against this fix rather than assumed: it fails 8 of 8,
-     deterministically, which is a logic bug and not a race. New evidence
-     recorded on the spec itself: the dashboard reads "Completed" with
-     "1/5, 1 skipped", i.e. the session presents as finished after two of five
-     exercises, while the backend computes completed as
-     attempted_ids.issuperset(all slots), which cannot be true at 2 of 5. The
-     divergence between that flag and what the Dashboard renders is where to
-     start. D-119 therefore stays OPEN for session.spec only; its session-race
-     half is closed here.
+     session.spec.ts (D-119) DOES NOT SHARE THIS CAUSE. It was re-checked
+     against this fix rather than assumed: it failed 8 of 8, deterministically,
+     which is a logic bug and not a race. It has since been root-caused and
+     fixed separately (see D-119's CLOSED section): the spec asserted a
+     "Session complete" screen that does not exist, so it was never a product
+     bug at all. NOTE: an earlier version of this paragraph claimed the session
+     "presents as finished after two of five exercises". That was wrong -- the
+     dashboard's "1/5" is correct_count/exercise_count, so it means one correct
+     in a FINISHED five-slot session. Corrected here rather than deleted,
+     because that misreading is what made the remaining half look like a
+     backend bug for longer than it should have.

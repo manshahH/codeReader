@@ -38,8 +38,10 @@ streaks, spaced repetition, stats, disputes. The session gate was removed so
 reaching `/session` opens the player directly (D-111). Frontend passed a full
 Playwright session smoke test and scored 0/16 on the anti-slop audit across every
 screen; the Review/Dashboard/Profile screens got a dual-pane + glassmorphism
-polish pass (see `docs/ops-incident-report-july-2026.md`). 514 backend tests green
-(456 predated A1; A1 took it to 457, A2 added 49, D-121/D-122 added 8).
+polish pass (see `docs/ops-incident-report-july-2026.md`). 517 backend tests green
+(456 predated A1; A1 took it to 457, A2 added 49, D-121/D-122 added 8, D-119's
+close added 3). The Playwright suite is 14 passed / 0 skipped: the last
+test.fixme was removed when D-119 closed.
 
 **Retention layer: A1 (streak safety net) is BUILT; A2 onward is not.** A1 added
 freeze accrual and consumption, repair / earn-back, an ops outage freeze, and a
@@ -62,6 +64,10 @@ Deferred out of A1, deliberately: there is **no session-complete screen**.
 `Session.tsx` redirects to the Dashboard when the last exercise is done, so A1's
 "dashboard and session-complete" requirement is met on the Dashboard and in the
 per-attempt reveal only. Building that screen is its own piece of work.
+This absence bit once already (D-119): `session.spec.ts` asserted a "Session
+complete" screen and failed 8 of 8 on a confusing selector for it. Anything
+asserting end-of-session must target the Dashboard redirect and its completed
+state until that screen actually exists.
 
 Three exercise types, **all deterministically graded (zero per-answer LLM cost)**:
 - `spot_the_bug` — tap the buggy line + pick why (the flagship)
