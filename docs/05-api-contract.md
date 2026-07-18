@@ -90,6 +90,66 @@ Profile + settings. Same `user` object as above plus `reminder_local_time`.
 Body (all optional): `display_name`, `timezone` (IANA, validated), `level`, `reminder_local_time` (`"08:00"` or `null`).
 `200` with updated user. Changing `timezone` never retroactively breaks a streak (reconciliation job handles the boundary day).
 
+### Email capture (A2, D-120)
+
+The `user` object above carries three email fields: `email` (the VERIFIED
+address, or `null`), `email_verified` (bool), and `pending_email` (an address
+awaiting confirmation, or `null`). `email` only ever holds a verified address,
+so adding or changing one never takes the current one offline: the new address
+waits in `pending_email` and the old one keeps receiving until the new one is
+confirmed. A typo therefore cannot silently kill the notification channel, and
+A3 always sees either a deliverable address or none.
+
+`email_verified_at` and anything from `email_verification_tokens` are NOT
+exposed. Email does **not** go through `PATCH /me`: it needs issue-send-confirm
+semantics that a partial update cannot express.
+
+Throttled per user AND per target address (`EMAIL_VERIFICATION_RESEND_COOLDOWN_S`
+floor between sends, `EMAIL_VERIFICATION_SENDS_PER_HOUR` cap). Either one denying
+is a `429 rate_limited` with `Retry-After`.
+
+All four routes return the same body, the email slice of the user object:
+```json
+{ "email": "dev@example.com", "email_verified": true, "pending_email": null }
+```
+
+#### `POST /me/email`
+Body: `{ "email": "dev@example.com" }`. Sets or replaces `pending_email`,
+invalidates the user's outstanding tokens, issues a new one, and sends the
+verification link.
+
+The response is **identical whether or not the address is already verified on
+another account**. We never check, because behaving differently is itself the
+disclosure. The partial unique index settles the conflict at verify time.
+
+`400 validation_error` for a malformed address (validated strictly; anything
+containing CR, LF, NUL or any other control character is refused outright, never
+sanitized). `409 email_already_verified` only when the address is already
+confirmed **on the caller's own account**.
+
+#### `POST /me/email/verify`
+Body: `{ "token": "..." }`. Consumes the token, promotes the address **the token
+was issued for** (not whatever `pending_email` currently says, so a stale link
+can never promote a newer address), stamps `email_verified_at`, and clears
+`pending_email`.
+
+`400 verification_failed` is the **single** response for every failure: unknown
+token, expired token, already-consumed token, token invalidated by a newer
+issue, a token belonging to another user, and losing the uniqueness race to an
+account that verified the same address first. Distinguishing them is an oracle.
+
+#### `POST /me/email/resend`
+Reissues for the pending address, subject to the same throttle. Issuing a new
+token invalidates the previous one. `409 no_pending_email` when nothing is
+pending.
+
+#### `DELETE /me/email`
+Clears `email`, `email_verified_at` and `pending_email`, and invalidates
+outstanding tokens, in one transaction. Consent that cannot be withdrawn
+in-product is not consent.
+
+Verification links are built from `APP_ORIGIN`, never from a request header.
+
 ### `GET /me/stats`
 ```json
 {

@@ -12,6 +12,26 @@ server-written only.
 **users / auth_identities**: split so multi-provider and Teams SSO are a row
 type later, not a migration. citext username. IANA timezone validated in app.
 
+**users.email / pending_email / email_verification_tokens** (A2, D-120): the
+first PII here. GitHub OAuth stays scoped `read:user`, so the address is
+self-asserted and we verify it ourselves rather than widening scope and forcing
+re-consent on every existing user. `email` holds ONLY a verified address;
+`pending_email` holds one awaiting confirmation, so a typo cannot take a working
+notification channel offline and A3 always sees either a proven-deliverable
+address or NULL, never a maybe. Uniqueness is a PARTIAL index (`WHERE
+email_verified_at IS NOT NULL AND deleted_at IS NULL`): a plain UNIQUE would be
+an address-squatting primitive, since typing a victim's address into your own
+profile would block them from ever registering it. Uniqueness must attach to
+proven control, not to typing. Two rows may therefore hold the same
+`pending_email`; the first to verify wins the index and the loser's promotion
+fails the constraint, which is the correct arbiter (an app-level pre-check would
+be TOCTOU anyway). `email_verification_tokens` mirrors refresh_tokens' storage
+exactly (sha256 of a `secrets.token_urlsafe(32)`) and carries the address the
+token was issued FOR, so a stale link can only promote that address and never a
+newer one. `invalidated_at` rather than deleting superseded rows, for the same
+reason streak_events is a ledger: "why did my link stop working" has to be
+answerable in one query.
+
 **refresh_tokens**: opaque token sha256-hashed at rest; family_id present NOW
 so post-MVP reuse-detection family kill is a code change. MVP behavior on
 reuse of a rotated token: 401 + alert.
