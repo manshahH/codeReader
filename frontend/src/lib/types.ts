@@ -28,6 +28,15 @@ export interface MeStats {
   accuracy_by_type: Record<string, number>;
   last_active_local_date: string | null;
   total_sessions: number;
+  /** A recent reset is still inside the repair window and unrepaired (A1). */
+  repair_available: boolean;
+  /** The streak value a repair would restore, or null when unavailable. */
+  repair_restores_to: number | null;
+}
+
+export interface StreakRepairResponse {
+  current_streak: number;
+  repaired: boolean;
 }
 
 export interface MeSessionSummary {

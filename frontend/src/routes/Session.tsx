@@ -12,7 +12,7 @@ import { SummarizeAnswer } from '../components/session/SummarizeAnswer';
 import { TraceAnswer } from '../components/session/TraceAnswer';
 import { ApiError, getAttemptPoll, getSessionToday, postAttempt } from '../lib/api';
 import { idempotencyKeyFor } from '../lib/idempotency';
-import type { Answer, AttemptResponse, SessionResponse, StreakInfo } from '../lib/types';
+import type { Answer, AttemptResponse, SessionResponse } from '../lib/types';
 
 type Phase = 'answering' | 'submitting' | 'grading_pending' | 'revealed' | 'grading_failed' | 'grading_timeout';
 
@@ -32,7 +32,6 @@ export function Session() {
   const [userAnswer, setUserAnswer] = useState<Answer | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
   const [attemptedThisLoad, setAttemptedThisLoad] = useState(0);
-  const [latestStreak, setLatestStreak] = useState<StreakInfo | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [disputeOpen, setDisputeOpen] = useState(false);
 
@@ -75,7 +74,11 @@ export function Session() {
 
   const applyGraded = useCallback((response: AttemptResponse) => {
     setAttempt(response);
-    if (response.streak) setLatestStreak(response.streak);
+    // No session-complete screen exists yet (this route redirects to the
+    // Dashboard when the last exercise is done), so there is nowhere to show a
+    // session-level streak summary. Reveal reads attempt.streak directly for
+    // the per-attempt line. A `latestStreak` state that was only ever written,
+    // never read, lived here until A1; see docs/10's deferred list.
     if (response.status === 'graded') {
       if (response.is_correct) setCorrectCount((c) => c + 1);
       setAttemptedThisLoad((c) => c + 1);
