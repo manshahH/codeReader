@@ -3441,3 +3441,66 @@ D-127 Audit of the runtime-safety/security tier for false verification claims.
      again, since those entries gate content correctness rather than runtime
      behaviour and their evidence is generation-run output that cannot be
      re-executed cheaply.
+
+D-128 CI has been RED ON EVERY PUSH SINCE 2026-07-06 and nothing surfaced it.
+     This is the same failure mode as D-119's ignored spec, one layer up, and it
+     is the mechanism behind D-127's finding that D-103's verification decayed
+     unnoticed.
+     EVIDENCE (GitHub Actions API, 2026-07-18): 11 consecutive failed runs. The
+     three pushes of the A1/A2 merge work failed identically (be3cce4 master,
+     5efa1bf a1, 75ef92c a2), as did every push back to a847510 on 07-06. ALL
+     FOUR jobs fail in every run.
+     WHAT ACTUALLY FAILS, per job:
+       pytest  -- fails at "Initialize containers", so steps 5 through 9 are
+         SKIPPED and `pytest backend/tests` HAS NEVER EXECUTED IN CI. The suite
+         is configured to run on push and has not run once.
+       schema  -- same, fails at "Initialize containers".
+       ruff    -- `ruff check backend` fails on backend/main.py: an unsorted
+         import block in a deploy shim carrying leftover debug scaffolding
+         (`sys.stderr.write('--- LOADING MAIN.PY ---')` and a try/except that
+         re-raised after printing a traceback). Reproduced locally and FIXED
+         here: the shim is now the bare re-export it should always have been.
+       dependency-audit -- `pip-audit --strict` run against the ENVIRONMENT can
+         never pass, because `pip install -e backend` puts our own editable
+         `codereader-backend` in it, pip-audit cannot resolve it on PyPI, and
+         --strict turns "could not audit" into a failure. `--skip-editable` does
+         not help either: --strict also fails on skips. So this job has been red
+         since it was written. HANDOFF had already noticed the symptom ("CI
+         dependency-audit job has never run against live advisory feeds")
+         without ever finding the cause.
+     THE ONE I COULD NOT DIAGNOSE: "Initialize containers". Step outcomes are
+     readable anonymously through the API; LOGS are not. Diagnosing it needs an
+     authenticated `gh run view --log-failed`, which is why the fix for the two
+     container jobs is handed back rather than guessed at. Guessing is what
+     D-119 punished.
+     REJECTED: rewriting the working `services:` blocks on a hunch. The
+     single-quoted `--health-cmd 'pg_isready ...'` form is a plausible suspect
+     and it is ALSO the form GitHub documents, so changing it blind would be a
+     coin flip dressed as a fix.
+     CHANGE (config only, no dependency changed): pip-audit now audits the
+     resolved set from `pip freeze --exclude-editable` rather than the
+     environment, which keeps --strict meaningful while excluding our own
+     unpublishable package.
+     REAL ADVISORIES, NOW VISIBLE FOR THE FIRST TIME and NOT acted on, because
+     both fixes are blocked by our own upper bounds and that is a dependency
+     decision, not a CI fix: cryptography 45.0.7 has 6 advisories (PYSEC-2026-35,
+     PYSEC-2026-36, PYSEC-2026-2141, GHSA-537c-gmf6-5ccf) fixed in 46.0.5 through
+     48.0.1, while pyproject pins `cryptography>=43.0,<46.0`; pytest 8.4.2 has
+     PYSEC-2026-1845 fixed in 9.0.3, while pyproject pins `pytest>=8.3,<9.0`.
+     Both ceilings must be raised for the job to go green, and cryptography
+     46/48 is a major bump on a security-relevant library.
+     NEW: a `playwright` job. The e2e suite had NO CI job at all, which is the
+     DIRECT cause of the D-103 decay: a cited Playwright spec started failing
+     11 runs in 15 (D-122's session-build race) and nothing surfaced it, so the
+     entry kept reading as "verified by a passing test" while the test was
+     failing. Auditing (D-127) catches entries that were never true; only this
+     catches entries that STOP being true. The job runs Postgres and Redis as
+     services, migrates, seeds, starts uvicorn, and lets Playwright own its own
+     vite (reuseExistingServer false, so it can never test stale bytes), with
+     SUMMARIZE_ENABLED and EMAIL_SENDING_ENABLED both false so the suite can
+     neither sample a summarize exercise nor send mail.
+     PROCESS FAILURE OF MY OWN, recorded because it is the same shape: I ran
+     `ruff check backend/app backend/tests` all session and reported "All checks
+     passed", while CI runs `ruff check backend`. My narrower scope silently
+     excluded the one file that was failing. The rule going forward is to run
+     exactly what CI runs before reporting green, and to name the command.
