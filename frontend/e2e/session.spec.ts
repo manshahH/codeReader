@@ -8,20 +8,32 @@ import { localStackIsUp, seedAuthCookie, STACK_REQUIRED } from './_seed';
 // /auth/refresh flow (RootGate) takes it from there. This is the "login (seed)"
 // step from the milestone's success criteria, not a bypass of the auth code.
 
-// KNOWN-FAILING, PRE-EXISTING, NOT ROOT-CAUSED -- see docs/07 D-119.
+// KNOWN-FAILING, PRE-EXISTING, STILL NOT ROOT-CAUSED -- see docs/07 D-119.
 // Verified to fail identically on master (67cf7b8), so A1 did not cause it.
-// Symptom: against a healthy stack the seeded user's dashboard already reads
-// "Completed" (1/5, 1 skipped) before the spec finishes driving the session, so
-// /session redirects away and `span.capitalize` is never found. Whether that is
-// spec brittleness or a real early-completion bug in the session flow is
-// UNKNOWN and deliberately not guessed at here.
+//
+// RE-CHECKED against the D-122 session-build fix (2026-07-18): it does NOT
+// share that root cause and is NOT fixed by it. D-122 closed a genuine RACE in
+// first-of-day session creation, which is why reveal-error-boundary.spec.ts
+// went from 11-of-15 failing to 15-of-15 passing. This spec is different: it
+// fails 8 of 8, DETERMINISTICALLY, which is the signature of a logic bug rather
+// than a race. Do not assume the two are related; they measurably are not.
+//
+// CURRENT EVIDENCE, and the place to start: at the moment of failure the
+// dashboard reads "Completed" with "1/5 . 1 skipped" -- so the session is being
+// presented as finished after TWO of five exercises. /session then redirects
+// away and `span.capitalize` is never found, which is why the failure surfaces
+// on a selector rather than where the problem is. Backend `completed` is
+// computed as attempted_ids.issuperset(all slots) (sessions/service.py), which
+// cannot be true at 2 of 5, so the divergence is most likely between that flag
+// and whatever the Dashboard renders "Completed" from. Check that first.
 //
 // test.fixme (not test.skip): this reports as skipped but says "needs fixing"
 // rather than "not applicable", so it stays visible in the suite output instead
-// of quietly reading as a red anybody learns to ignore. Delete this line to
-// work on it -- reveal-error-boundary.spec.ts, which shares this file's seeded
-// setup, passes against a healthy stack, so the seeding path itself is fine.
-test.fixme(true, 'D-119: pre-existing failure, not root-caused');
+// of quietly reading as a red anybody learns to ignore. Delete the line below to
+// work on it. The seeding path itself is fine: 20 of 20 freshly seeded users
+// get a full 5-exercise session over plain HTTP (measured under D-119).
+
+test.fixme(true, 'D-119: pre-existing failure, not root-caused; NOT the D-122 race');
 
 test('full session: login (seed) -> one of each type -> reveal -> complete', async ({ page, context }) => {
   const MAX_EXERCISES = 8; // sampler may add a boss slot; never more than MIN_SLOTS..MAX_NON_BOSS_SLOTS+1
