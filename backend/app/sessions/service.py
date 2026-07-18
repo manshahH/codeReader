@@ -12,7 +12,7 @@ import json
 import uuid
 
 from redis.asyncio import Redis
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,6 +80,38 @@ async def _build_and_persist_session(
     user: User,
     today: dt.date,
 ) -> list[SessionSlot]:
+    # D-104's lock class, applied to first-of-day SESSION CREATION (D-122).
+    #
+    # Two concurrent first-of-day requests both found no daily_sessions row,
+    # both sampled, and both INSERTed. The loser hit the daily_sessions_pkey
+    # unique violation, and the IntegrityError recovery below -- which was
+    # written for exactly this case -- then failed on its own re-read, so the
+    # request 500d. This lock makes that race unreachable rather than trying to
+    # make the recovery survivable.
+    #
+    # DOUBLE-CHECKED, deliberately. The caller already returned on a Redis hit
+    # or an existing row, so the hot path (every request after the first of the
+    # day) never reaches this and never pays for a lock. The re-read below is
+    # what closes the window between the caller's check and this acquisition:
+    # the loser blocks here until the winner commits, and Postgres READ
+    # COMMITTED then gives its re-read a fresh snapshot containing the winner's
+    # row.
+    #
+    # Keyed per-(user, day), NOT per-user: a lock held across a day boundary
+    # would serialize unrelated days, and the thing being protected is exactly
+    # one row per (user_id, session_date). Transaction-scoped, released at the
+    # commit below (or on rollback); no explicit unlock.
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:lock_a), hashtext(:lock_b))"),
+        {"lock_a": str(user.id), "lock_b": f"session_build:{today.isoformat()}"},
+    )
+    winner = await db.get(DailySession, (user.id, today))
+    if winner is not None and winner.exercise_list:
+        # Someone built it while we waited. Their row is the truth (D-17), and
+        # returning it is what makes both concurrent callers see the IDENTICAL
+        # session rather than two independently sampled ones.
+        return slots_from_dicts(winner.exercise_list)
+
     # docs/05 section 4: a degraded grader excludes summarize from newly
     # built sessions; already-issued sessions are unaffected since this only
     # runs on first-of-day sampling.
@@ -147,8 +179,19 @@ async def _build_and_persist_session(
         await db.flush()
         await db.commit()
     except IntegrityError:
-        # Two concurrent first-of-day requests raced to insert; the loser
-        # falls back to whatever the winner persisted (D-17: the row is truth).
+        # Now UNREACHABLE via the concurrent path: the advisory lock above
+        # serializes first-of-day builds, so a loser returns the winner's row
+        # before ever reaching this insert. Kept as the un-raceable DB backstop
+        # underneath the lock, exactly as the partial unique index on
+        # streak_events sits under the attempts lock (D-104).
+        #
+        # NOTE (D-119/D-122): this recovery path is ALSO the one that used to
+        # 500. The `db.get` below raised MissingGreenlet from the connection
+        # pool's pre-ping after the rollback, and that behaviour is still
+        # unexplained and unfixed. It is not fixed here on purpose -- catching
+        # MissingGreenlet would paper over the wrong layer. The lock is what
+        # makes it unreachable. If this branch ever fires again, that is a
+        # signal the lock was bypassed, not a licence to catch the symptom.
         await db.rollback()
         existing = await db.get(DailySession, (user.id, today))
         if existing is None:
