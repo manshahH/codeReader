@@ -39,5 +39,9 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // Fail loudly if 5173 is taken instead of silently falling back to 5174:
+    // Playwright's webServer url-check would otherwise succeed against the OLD
+    // server still on 5173 and the suite would test stale bytes.
+    strictPort: true,
   },
 });
