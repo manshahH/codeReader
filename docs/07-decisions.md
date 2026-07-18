@@ -3318,9 +3318,25 @@ D-123 summarize is OFF, and the switch now ENFORCES it. D-115 said summarize was
      and a positive control proving the switch is what does the work, so a
      sampler broken for every type could not pass as a fix. Verified to fail
      against the pre-fix code (2 of 4 failed).
-     STILL OPEN, needs a human decision: production's one live summarize row is
-     untouched. Retiring it is a data change in production and was not made
-     unilaterally. With SUMMARIZE_ENABLED=false it is now inert either way.
+     INTERIM APPLIED IN PRODUCTION 2026-07-18, AND IT IS NOT THE FIX. The
+     SUMMARIZE_ENABLED control is on master and master is UNSHIPPED, so
+     production still evaluates ALL_CANDIDATE_TYPES on the healthy-grader path.
+     Until v2 deploys, the only thing keeping summarize out of a production
+     session is the absence of live summarize content -- which is exactly the
+     non-control this entry exists to criticise. It is being relied on
+     deliberately and temporarily, with that understood.
+     WHAT WAS DONE: pg_dump of production first (custom format, validated with
+     pg_restore -l: 17 table-data entries including exercises/users/attempts),
+     then a single statement:
+       UPDATE exercises SET status='retired' WHERE type='summarize' AND status='live';
+     One row. Checked before running: zero in-flight daily_sessions referenced
+     it and zero attempts existed against it, so no user session was disturbed.
+     Production now has 0 live summarize rows.
+     DO NOT READ THE RETIRED ROW AS THE PROTECTION. Publishing or un-retiring
+     any summarize row before v2 ships re-opens the exposure immediately and
+     silently. The real control is SUMMARIZE_ENABLED=false, and it takes effect
+     only when the backend deploys. Until then this is a data state, not a
+     guarantee, and it is one careless status flip away from being gone.
 
 D-124 A repair that would not beat the current streak is never offered, and is
      refused if requested. Found by using the app: the dashboard read "Restore
