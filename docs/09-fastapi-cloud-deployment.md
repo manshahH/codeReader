@@ -42,3 +42,54 @@ When JOBS_ENABLED=true is set, the backend spins up APScheduler in the lifespan 
 
 *   Ensure the Neon Postgres database is using a connection string compatible with syncpg. If you encounter timeouts (e.g., TimeoutError after 30-60 seconds during startup), verify that your connection string (like a Transaction Pooler URL) does not have incompatible parameters. 
 *   Because startup can take up to 8-9 minutes on FastAPI Cloud deployments when cold-starting with Jobs, checking the logs prematurely might show old runtime logs. Always wait for the deployment status to hit success before assuming a failure.
+
+## 5. Pending release: A1 streak safety net (not yet deployed)
+
+A1 is built and merged but NOT deployed; the plan is to build more of Phase A
+and ship it as v2. This is the checklist for whenever that release happens.
+
+**Deploy order matters: backend FIRST, then the frontend.** The new frontend
+reads `repair_restores_to` from `GET /v1/me/stats`. Against an old backend that
+field is absent, and `undefined !== null` is true, so the welcome-back panel
+renders with `undefined` in its label ("Restore your undefined-day streak").
+Deploying the backend first closes that window entirely. The reverse order is
+the only combination that misbehaves: an old frontend against the new backend
+simply ignores the two extra fields.
+
+**Environment.** No new REQUIRED variables. The four A1 knobs all have working
+defaults in `config.py` and only need setting to override:
+
+    STREAK_FREEZE_START=2        STREAK_FREEZE_MAX=2
+    STREAK_FREEZE_EARN_EVERY=10  STREAK_REPAIR_WINDOW_H=48
+
+`ADMIN_METRICS_TOKEN` is the one to actually check. It was already required for
+`/admin/metrics`, and it now also gates both new admin streak routes. If it is
+unset in production those routes return **404, not 403** (the handler treats an
+unconfigured token as "endpoint disabled" rather than confirming the route
+exists), so a missing token looks like a missing deploy. Verify it is set before
+concluding the routes did not ship.
+
+**No migration.** A1 required no schema change: the `streak_events.event` CHECK
+already allowed all five event kinds, the partial unique index
+`uq_streak_events_one_transition_per_day` already excludes the new kinds
+(`WHERE event IN ('extended','reset')`), and `user_stats.streak_freezes`
+already existed. Alembic head is unchanged.
+
+**One post-deploy action, once:**
+
+    POST /admin/streak/grant-initial-freezes  {"local_date": "<today>"}
+    Header: X-Admin-Token: <ADMIN_METRICS_TOKEN>
+
+This is the D-118 backfill. Accounts created before A1 sit at
+`streak_freezes = 0`, because the starting grant happens at row creation, so
+without it every existing soft-launch user waits up to 10 active days for their
+first freeze while new signups start with 2. It is idempotent on both the
+balance and a ledger marker, so re-running is a no-op reporting
+`granted_to: 0` -- including for users who were granted and have since
+legitimately spent their freezes. Safe to re-run if you are unsure whether it
+ran.
+
+`POST /admin/streak/outage-freeze {"local_date": ...}` is the ops "big red
+button" for after an outage. It is a pure ledger write: it spends no balance,
+mutates no `current_streak`, and cannot manufacture a streak (D-116). Re-running
+it for the same date is also a no-op.

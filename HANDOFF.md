@@ -53,6 +53,10 @@ now; the root one had already drifted) and D-118 (one-time backfill of the
 starting freeze balance for pre-A1 accounts, run once after deploy).
 **A2 (email capture) is next**; the plan is `docs/10-roadmap-retention.md`.
 
+A1 is **merged but NOT deployed** (plan: build more of Phase A, ship as v2). The
+release checklist lives in `docs/09` section 5: backend deploys before frontend,
+no migration, no new required env, and one post-deploy backfill call.
+
 Deferred out of A1, deliberately: there is **no session-complete screen**.
 `Session.tsx` redirects to the Dashboard when the last exercise is done, so A1's
 "dashboard and session-complete" requirement is met on the Dashboard and in the
