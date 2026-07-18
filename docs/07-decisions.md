@@ -3391,3 +3391,53 @@ D-125 Every full-height screen owns its own scroll container, and that is now
      prevent. Restart the frontend container after editing frontend source, or
      run vite on the host.
 
+D-127 Audit of the runtime-safety/security tier for false verification claims.
+     Prompted by two entries in this workflow that asserted verification which
+     had not happened: D-115 claimed "verified in code" and was wrong in the
+     exact inverse direction (D-123), and D-119 cited a spec as evidence that
+     was itself flaky (D-122). Both were treated as ground truth for weeks.
+     SCOPE: entries that both claim something was verified/checked/confirmed AND
+     gate a safety property, invariant, cost control, or injection surface. That
+     filter returns 33 entries; this pass covers the 10 runtime ones. The 12
+     pipeline/content-integrity entries (D-45, D-46, D-51, D-52, D-77, D-80,
+     D-81, D-86, D-89, D-90, D-91, D-101) are NOT covered and remain unaudited.
+     RESULT: all 10 HOLD against current code. No entry was false in the D-115
+     way, so nothing here is a live bug.
+       D-103 HOLDS in full. ErrorBoundary has getDerivedStateFromError +
+         componentDidCatch -> Sentry.captureException; the root boundary with
+         FullPageErrorFallback is in main.tsx; the per-exercise boundary in
+         Session.tsx is keyed by currentIndex with a "Skip this exercise"
+         fallback wired to handleNext; and revealViews.tsx carries three
+         early-return guards to <RevealUnavailable /> (spot_the_bug, trace,
+         predict_the_fix). One imprecision, not an error: the guards are all in
+         revealViews.tsx, not "revealViews.tsx / Reveal.tsx".
+       D-66 SUPERSEDED, not stale or false. Its per-(user, exercise, date) lock
+         key is no longer what the code does, because D-104 deliberately
+         re-keyed it to per-(user, day). Current code matches D-104. Reading
+         D-66 alone would mislead; it is correct as history.
+       D-104 HOLDS. attempts/service.py locks on (user_id, today.isoformat()).
+       D-88 HOLDS. conftest.py calls assert_disposable_test_database three
+         times (module load, and again at the destructive fixture).
+       D-92 HOLDS. BETA_GATE_ENABLED defaults false and gates exactly the two
+         enforcement points (auth/router.py:132, auth/service.py:232).
+       D-106 HOLDS. usePanel is used by both Dashboard and Profile.
+       D-107 HOLDS. POST /v1/attempts is not in the rate-limit exempt list;
+         _SAFE_REQUEST_ID sanitises X-Request-ID; resolve_client_ip honours
+         trusted_proxy_count.
+       D-111 HOLDS. No SessionGate remains anywhere in frontend/src.
+       D-112 HOLDS, and was independently confirmed live this session: dumping
+         production logged "dropped 1 query param(s) asyncpg cannot accept:
+         channel_binding", which is precisely the behaviour it describes.
+       D-113 HOLDS. backend/pyproject.toml asks for fastapi[standard].
+     THE ONE FINDING WORTH CARRYING FORWARD, from D-103: its verification was
+     genuine when written AND its evidence later decayed without anyone
+     noticing. reveal-error-boundary.spec.ts was failing 11 runs in 15 because
+     of D-122's unrelated session-build race, so for some period "verified by a
+     passing Playwright test" was false while the entry still read as settled.
+     It is now 15 of 15. A test-backed claim is only as durable as the test, and
+     nothing in this repo alerts when a cited test starts failing intermittently.
+     That, not any individual entry, is the systemic gap this audit found.
+     NOT DONE: the pipeline/content tier. Worth a pass before the corpus grows
+     again, since those entries gate content correctness rather than runtime
+     behaviour and their evidence is generation-run output that cannot be
+     re-executed cheaply.
