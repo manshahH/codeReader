@@ -9,6 +9,7 @@ import type {
   ConceptMastery,
   DisputeRequest,
   DisputeResponse,
+  EmailState,
   Level,
   MeSessionSummary,
   MeStats,
@@ -190,6 +191,26 @@ export function getMe(): Promise<{ user: User }> {
 
 export function patchMe(body: Partial<{ display_name: string; timezone: string; level: Level; reminder_local_time: string | null }>): Promise<{ user: User } & Record<string, unknown>> {
   return request('/v1/me', { method: 'PATCH', body });
+}
+
+// A2 email capture (D-120). All four return the same EmailState body, so the
+// caller merges one shape into the auth-context user and never needs a refetch.
+// Deliberately NOT folded into patchMe: verification is not a partial update.
+
+export function setEmail(email: string): Promise<EmailState> {
+  return request<EmailState>('/v1/me/email', { method: 'POST', body: { email } });
+}
+
+export function verifyEmail(token: string): Promise<EmailState> {
+  return request<EmailState>('/v1/me/email/verify', { method: 'POST', body: { token } });
+}
+
+export function resendEmailVerification(): Promise<EmailState> {
+  return request<EmailState>('/v1/me/email/resend', { method: 'POST' });
+}
+
+export function deleteEmail(): Promise<EmailState> {
+  return request<EmailState>('/v1/me/email', { method: 'DELETE' });
 }
 
 export function getMeStats(): Promise<MeStats> {

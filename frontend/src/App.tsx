@@ -9,6 +9,7 @@ import { Profile } from './routes/Profile';
 import { Review } from './routes/Review';
 import { RootGate } from './routes/RootGate';
 import { Session } from './routes/Session';
+import { VerifyEmail } from './routes/VerifyEmail';
 
 function RequireAuth({
   children,
@@ -70,6 +71,21 @@ function AppRoutes() {
           <RequireAuth>
             <AppLayout>
               <Review />
+            </AppLayout>
+          </RequireAuth>
+        }
+      />
+      {/* A2 (D-120): the target of the link in the verification email. Auth is
+          required -- a token is scoped to the account it was issued for, so a
+          signed-out click lands on /login and returns here after OAuth.
+          Onboarding is NOT required: confirming an address is orthogonal to
+          picking a level, and gating it would strand the user in a loop. */}
+      <Route
+        path="/verify-email"
+        element={
+          <RequireAuth requireOnboarded={false}>
+            <AppLayout>
+              <VerifyEmail />
             </AppLayout>
           </RequireAuth>
         }

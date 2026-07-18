@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AccuracyLine } from '../components/gutter/AccuracyLine';
 import { ActivityHeatmap } from '../components/gutter/ActivityHeatmap';
 import { GutterCell, StreakTicks } from '../components/gutter/Gutter';
+import { EmailSection } from '../components/EmailSection';
 import { ReviewPromptModal } from '../components/ReviewPromptModal';
 import type { ReactNode } from 'react';
 
@@ -312,6 +313,11 @@ export function Profile() {
         {withPanel(concepts, 'Needs review', 'Couldn’t load concepts.', (c) => (
           <ConceptMasterySection concepts={c} />
         ))}
+        {/* NOT wrapped in withPanel and NOT a sixth usePanel call: this card
+            reads the auth-context user, which is already loaded. Adding a sixth
+            concurrent fetch here is the exact cause of the token-refresh race
+            in docs/ops-incident-report-july-2026.md. */}
+        <EmailSection />
         {withPanel(
           sessions,
           'Recent sessions',
