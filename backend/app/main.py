@@ -27,6 +27,7 @@ from app.core.ratelimit import check_token_bucket
 from app.core.sentry import init_sentry
 from app.db import asyncpg_connect_kwargs, create_engine, create_session_factory
 from app.disputes.router import router as disputes_router
+from app.email.router import router as email_router
 from app.jobs.runner import build_scheduler
 from app.reviews.router import router as reviews_router
 from app.sessions.router import router as sessions_router
@@ -356,6 +357,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(users_router)
+    app.include_router(email_router)
     app.include_router(sessions_router)
     app.include_router(attempts_router)
     app.include_router(disputes_router)

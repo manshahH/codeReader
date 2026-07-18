@@ -72,6 +72,27 @@ class Settings(BaseSettings):
     STREAK_FREEZE_MAX: int = 2
     STREAK_FREEZE_EARN_EVERY: int = 10
     STREAK_REPAIR_WINDOW_H: int = 48
+    # A2 email capture (docs/10; D-120). EMAIL_SENDING_ENABLED is a HARD
+    # off-switch and defaults OFF: with it false the Resend client short-circuits
+    # before constructing any request, so local dev and the test suite can never
+    # make a network call or spend a send. Production sets it true explicitly.
+    EMAIL_SENDING_ENABLED: bool = False
+    # Optional, exactly like ANTHROPIC_API_KEY above (D-44): validated LAZILY at
+    # first send in email/resend_client.py, never required here -- requiring it
+    # unconditionally would block constructing Settings at all on any deploy
+    # that does not send email (and on every test run).
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "CodeReader <no-reply@codereader.dev>"
+    EMAIL_VERIFICATION_TTL_H: int = 24
+    # Throttle, two layers with deliberately different scopes (see
+    # email/service.py::_enforce_send_throttle). The cooldown is a per-ADDRESS
+    # floor between sends and is what the UI's disabled "Resend" timer mirrors;
+    # it is NOT per-user, because that would make a user wait to correct a typo.
+    # The hourly cap is per user AND per address: per-user alone lets one
+    # account walk an address list, per-address alone lets many accounts
+    # converge on one mailbox.
+    EMAIL_VERIFICATION_RESEND_COOLDOWN_S: int = 60
+    EMAIL_VERIFICATION_SENDS_PER_HOUR: int = 5
     JOBS_ENABLED: bool = True
     JOB_GRADING_RETRY_INTERVAL_S: float = 30.0
     JOB_PERCENTILES_INTERVAL_S: float = 3600.0

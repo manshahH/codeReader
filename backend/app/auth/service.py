@@ -41,6 +41,15 @@ def user_response(user: User) -> dict[str, str | bool | None]:
         "level": user.level,
         "timezone": user.timezone,
         "onboarded": user.onboarded,
+        # A2 email capture (D-120(6)). `email` is the VERIFIED address or null;
+        # `email_verified` is carried explicitly rather than left for the client
+        # to infer from nullness, so the contract survives any future path that
+        # could put an unverified address in `email`. `pending_email` is here
+        # because the pending screen cannot name the mailbox to check without
+        # it. email_verified_at (ops data) and the token table are NOT exposed.
+        "email": user.email,
+        "email_verified": user.email_verified_at is not None,
+        "pending_email": user.pending_email,
     }
 
 
