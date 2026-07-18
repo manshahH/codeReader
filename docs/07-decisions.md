@@ -2738,3 +2738,169 @@ D-115 The soft-launch ships spot_the_bug + trace + predict_the_fix; summarize is
      CHANGE: HANDOFF.md already reflects this. docs/03 and docs/01 are corrected by
      pointer to this entry rather than rewritten, since 03 is a historical MVP-scope
      doc. If summarize is ever turned back on, that is a new decision, not a revert.
+D-116 A "covered day" is the single currency of streak protection, and it is
+     read from the streak_events ledger, not from the freeze balance. docs/10's
+     A1 spec states consumption as a pure balance rule ("a gap of N missed days
+     and streak_freezes >= N and N <= STREAK_FREEZE_MAX -> consume N"), and
+     separately promises that an outage freeze fills a day "WITHOUT spending
+     their balance". Those two rules contradict each other the moment both
+     mechanisms touch one gap. Under the balance-only rule, a user whose single
+     missed day was already filled by an ops outage-freeze still needs
+     streak_freezes >= 1 to survive that gap, so a user with a zero balance
+     loses the streak the outage was declared to protect. The outage promise is
+     the stronger one: it is an apology for our downtime, and it cannot be
+     payable only by users who happen to hold currency.
+     RESOLUTION: on a gap, compute the missed local dates (strictly between
+     last_active_local_date and today). A missed date is COVERED if a
+     freeze_used row already exists for (user_id, that_date), whatever wrote it.
+     uncovered = missed dates with no such row. The balance pays only for
+     uncovered, and both the balance test and the STREAK_FREEZE_MAX cap apply to
+     len(uncovered), never to total gap size. Outage-covered days are therefore
+     free and do not consume the cap. A duplicate freeze_used is never written
+     for a date that already has one, which makes the fill idempotent and makes
+     the ledger, not a counter, the source of truth. All-or-nothing is preserved
+     exactly as specified: if len(uncovered) exceeds min(streak_freezes,
+     STREAK_FREEZE_MAX) the gap falls through to the existing reset unchanged and
+     no freeze is spent. A freeze never partially covers a gap.
+     WHY the ledger and not a counter: freeze_used rows are already immutable
+     audit rows under invariant 5, they are already keyed by local_date, and the
+     partial unique index deliberately excludes them, so they can be backfilled
+     by ops for a past date without colliding. That makes them the only record
+     that both mechanisms can agree on. A separate "outage days" table or a
+     nullable flag on user_stats would be a second source of truth for the same
+     fact.
+     CONSEQUENCE, accepted: the outage endpoint becomes a pure ledger write. It
+     never mutates current_streak and never manufactures a streak, because
+     protection is realized lazily at each user's next submit. A user who was
+     already inactive for a week before the outage day has one of seven missed
+     days covered, so they still reset. This is why the endpoint is safe to run
+     over every user with recorded activity rather than a hand-picked cohort.
+     THREE DIVERGENCES from docs/10's A1 spec, found in code and recorded here
+     rather than silently worked around:
+     (a) docs/10 says to "mirror streak_recon.py's bulk pattern" for the outage
+     endpoint. There is no bulk pattern there. jobs/streak_recon.py is not a job
+     and is not registered in jobs/runner.py: it is a single-user, single-row
+     helper called synchronously from PATCH /me, operating on a User handed to
+     it, and it never commits (users/service.py owns the transaction). It has
+     nothing bulk to copy. The outage endpoint is instead written as one
+     set-based INSERT ... SELECT ... WHERE NOT EXISTS, which gets the skip-
+     existing-rows rule from D-116 above for free and holds no per-user state.
+     What IS reused from streak_recon.py is its EVENT convention: from_value ==
+     to_value when a row records bookkeeping rather than a streak change.
+     (b) docs/10 says to extend the stats payload to expose streak_freezes and
+     repair_available. streak_freezes is ALREADY exposed (users/service.py
+     get_stats, both the empty-stats and real branches). AMENDED: the allowlist
+     gains TWO new keys, repair_available and repair_restores_to (int|null).
+     repair_available alone cannot render the specified affordance copy
+     "Restore your N-day streak" -- N is the restorable value, which is derived
+     from the ledger and appears nowhere else in the payload. Shipping the
+     affordance without N would mean either a vaguer button or a second
+     round-trip. Both keys are computed per request and never stored, and
+     repair_available is exactly (repair_restores_to is not None), so the two
+     can never disagree; a test asserts the advertised N equals the value the
+     repair actually writes.
+     (c) event='repaired' is ALREADY WRITTEN by streak_recon.py for the timezone
+     boundary case, so "a later repaired row disqualifies this reset" would let
+     an unrelated timezone change silently consume a user's one repair. Repair
+     rows written by POST /v1/streak/repair therefore carry an explicit anchor
+     marker in `note` ("[repair:anchor=<reset streak_events.id>]") and the
+     one-shot check matches only on that marker. The anchor is the reset row's
+     primary key, so the check is exact rather than time-window heuristic.
+     ALSO: the restore value is computed from the ledger (reset.from_value +
+     (today - reset.local_date).days), never from current_streak, which may have
+     been mutated by submits made after the reset.
+     NOT CHANGED: no migration, no schema change. The partial unique index
+     uq_streak_events_one_transition_per_day is WHERE event IN
+     ('extended','reset'), so freeze_used/repaired/adjusted rows are unconstrained
+     and backfill cleanly; the CHECK already allows all five event kinds; and
+     user_stats.streak_freezes already exists. D-19 (one submission = one day,
+     correctness-independent) is untouched: no XP or goal threshold enters the
+     streak.
+
+D-117 CLOSED. Both .env.example files are drift-checked, each against its own
+     contract. backend/tests/test_env_example.py used to walk UP from its own
+     path and validate the FIRST .env.example it found, which is
+     backend/.env.example. The root .env.example was therefore never validated
+     by anything and could drift silently. Found while adding the A1 knobs:
+     updating only the root file left the suite red (the good failure), while
+     updating only the backend file would have left the root file stale with NO
+     failure (the bad one, and the actual hazard).
+     THE ROOT FILE HAD ALREADY DRIFTED. Closing this immediately caught it: the
+     root .env.example was missing VALIDATION_REPORTS_DIR, a PipelineSettings
+     knob, and nothing had noticed. That is the whole argument for closing it
+     rather than deferring.
+     The two files are NOT duplicates and do not share a contract:
+       backend/.env.example -> exactly Settings
+       root/.env.example    -> Settings PLUS PipelineSettings (the shared file;
+                               backend knobs are mirrored into it so it stays
+                               drift-free against the pipeline, D-44/D-80)
+     REJECTED: deleting the root file. It is the shared pipeline+backend file
+     and carries 9 pipeline-only knobs the backend file has no business
+     holding. REJECTED: pointing the walk-up loop at the root file instead;
+     that just swaps which file drifts unchecked.
+     CHANGE: three tests -- both files exist (so deleting one is a deliberate
+     edit, not a silent weakening), backend == Settings, root == Settings |
+     PipelineSettings. Both files carry the four STREAK_* knobs.
+
+D-118 Existing soft-launch users get a ONE-TIME backfill of the A1 starting
+     freeze balance. user_stats rows created before A1 sit at streak_freezes = 0
+     because the DB default is 0 and the STREAK_FREEZE_START grant happens at
+     row CREATION (streak/service.py new_user_stats). So new signups would start
+     with 2 while every existing soft-launch user starts with 0 and waits up to
+     10 active days for their first freeze.
+     WHY BACKFILL RATHER THAN LET IT AGE OUT: the soft-launch cohort is the only
+     cohort we have, and it is exactly the audience A1 was built for. Shipping a
+     safety net that protects future users but not current ones inverts the
+     point of the phase (docs/10: "retention of already-active users is the
+     growth lever"). The aging-out path also means the users most likely to miss
+     a day -- busy professionals in their first weeks -- are the ones with no
+     protection.
+     REJECTED: raising the DB default to 2. It would not touch existing rows, so
+     it fixes nothing here, and it would silently re-grant on any future row
+     recreation. The grant belongs in one place, at creation, plus this explicit
+     one-time catch-up.
+     REJECTED: granting lazily on next submit if balance == 0. It cannot
+     distinguish "never granted" from "granted and legitimately spent", so it
+     would hand a free freeze to every user who ever used theirs. That is an
+     infinite freeze supply, not a backfill.
+     CHANGE: POST /admin/streak/grant-initial-freezes { local_date } behind the
+     existing admin auth, mirroring the outage-freeze shape (one set-based
+     statement, no per-user state). Sets streak_freezes to min(START, MAX) for
+     users below it, never lowers a balance, never touches current_streak, and
+     writes one `adjusted` row per granted user carrying the marker
+     [a1:initial-grant] so the ledger explains the balance.
+     IDEMPOTENT ON TWO INDEPENDENT GUARDS, both required. The balance test
+     (streak_freezes < grant) skips anyone already topped up. The ledger-marker
+     test skips anyone already granted, and it is the one that matters on a
+     re-run months later, when a granted user may have legitimately spent down
+     to 0 and the balance test alone would cheerfully re-grant them. A negative
+     test covers exactly that case.
+     RUN IT ONCE after deploy; re-running is a no-op that reports granted_to: 0.
+
+D-119 frontend/e2e/session.spec.ts is KNOWN-FAILING and NOT ROOT-CAUSED. Marked
+     test.fixme rather than left red. Verified to fail identically on master
+     (67cf7b8), so A1 did not cause it.
+     SYMPTOM: against a healthy local stack, the seeded user's dashboard already
+     reads "Completed" (1/5, 1 skipped) before the spec finishes driving the
+     session, so /session redirects to the dashboard and the spec's first
+     locator (`span.capitalize`, the exercise-type label) is never found. It
+     fails 15s later on that selector, which points at the UI and not at the
+     cause.
+     WHAT IS NOT THE CAUSE, checked: the seeding path is fine
+     (reveal-error-boundary.spec.ts uses the same seeded setup and PASSES
+     against a healthy stack); the selector still exists (Session.tsx); and it
+     is not the missing Playwright webServer, which was a separate real bug
+     fixed alongside this.
+     WHAT IS UNKNOWN: whether this is spec brittleness (it drives "one of each
+     type" while summarize is OFF per D-115, and only 1 summarize row is live)
+     or a genuine early-completion bug in the session flow. Guessing was
+     declined; a wrong fix here would paper over a possible product bug.
+     WHY test.fixme AND NOT test.skip: fixme reports as skipped but means "needs
+     fixing", so it stays visible in the suite output. The alternative -- leaving
+     it red -- trains everyone to ignore a red suite, at which point the suite
+     stops being a signal at all. The alternative of a plain skip would let it
+     disappear.
+     TO PICK IT UP: delete the `test.fixme(...)` line at the top of the spec.
+     Start by checking whether the session is being marked completed early for a
+     freshly seeded user, since that is the observed state and it is the part
+     that could be a real bug.

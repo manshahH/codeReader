@@ -30,6 +30,7 @@ from app.disputes.router import router as disputes_router
 from app.jobs.runner import build_scheduler
 from app.reviews.router import router as reviews_router
 from app.sessions.router import router as sessions_router
+from app.streak.router import router as streak_router
 from app.users.router import router as users_router
 
 _request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
@@ -359,6 +360,7 @@ def create_app() -> FastAPI:
     app.include_router(attempts_router)
     app.include_router(disputes_router)
     app.include_router(reviews_router)
+    app.include_router(streak_router)
     app.include_router(admin_router)
     return app
 

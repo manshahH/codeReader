@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { seedAuthCookie } from './_seed';
+import { localStackIsUp, seedAuthCookie, STACK_REQUIRED } from './_seed';
 
 // C2 regression: a malformed grade `reveal` used to throw during render and,
 // with no React error boundary anywhere, white-screen the whole SPA mid
@@ -11,6 +11,8 @@ import { seedAuthCookie } from './_seed';
 // continue -- never a blank page.
 
 test('malformed reveal renders an error state and the session continues', async ({ page, context }) => {
+  test.skip(!(await localStackIsUp()), STACK_REQUIRED);
+
   page.on('pageerror', (err) => console.log(`[pageerror] ${err.message}`));
 
   await seedAuthCookie(context);

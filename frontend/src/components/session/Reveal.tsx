@@ -46,7 +46,10 @@ function StreakLine({ streak }: { streak: AttemptResponse['streak'] }) {
       <span>
         {streak.event === 'extended'
           ? `Streak extended to ${pluralizeDays(streak.current)}.`
-          : `Streak reset to ${pluralizeDays(streak.current)}.`}
+          : // A1: the return is the thing worth marking, not the loss. State
+            // the new count as a fact and leave it there. No apology, no
+            // "you lost your streak", nothing for the reader to feel bad about.
+            `Welcome back. New streak: ${pluralizeDays(streak.current)}.`}
       </span>
     </div>
   );

@@ -78,6 +78,7 @@ from app.schemas.attempts import (
     StreakInfo,
 )
 from app.sessions.service import get_today_slots, slots_from_dicts
+from app.streak.service import accrue_freeze_if_earned, new_user_stats, try_cover_gap
 
 IDEMPOTENCY_NAMESPACE = "attempts"
 PERCENTILE_MIN_N = 30
@@ -196,7 +197,7 @@ async def update_correctness_stats(
     """
     stats = await db.get(UserStats, user.id)
     if stats is None:
-        stats = UserStats(user_id=user.id)
+        stats = new_user_stats(user.id)
         db.add(stats)
         await db.flush()
 
@@ -217,7 +218,7 @@ async def _update_streak_and_attempt_count(
     """
     stats = await db.get(UserStats, user.id)
     if stats is None:
-        stats = UserStats(user_id=user.id)
+        stats = new_user_stats(user.id)
         db.add(stats)
         await db.flush()
 
@@ -231,6 +232,14 @@ async def _update_streak_and_attempt_count(
     from_value = stats.current_streak
     consecutive = stats.last_active_local_date == today - dt.timedelta(days=1)
     if stats.last_active_local_date is None or consecutive:
+        to_value = from_value + 1
+        event = "extended"
+    elif await try_cover_gap(db, user.id, stats, stats.last_active_local_date, today):
+        # A1/D-116: every missed day is covered, either by a freeze_used row
+        # that already existed (e.g. an ops outage fill) or by one just paid
+        # for out of the balance. The streak survives and today extends it
+        # normally. try_cover_gap is all-or-nothing: if it returns False it has
+        # written nothing and spent nothing, and we reset exactly as before.
         to_value = from_value + 1
         event = "extended"
     else:
@@ -250,6 +259,8 @@ async def _update_streak_and_attempt_count(
             local_date=today,
         ),
     )
+    if event == "extended":
+        await accrue_freeze_if_earned(db, user.id, stats, today)
     await db.flush()
     return StreakInfo(current=to_value, event=event)
 

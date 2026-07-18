@@ -23,6 +23,7 @@ from app.core.errors import ApiError
 from app.core.timezones import local_date_for
 from app.jobs.streak_recon import reconcile_streak_for_timezone_change
 from app.models import Attempt, DailySession, Exercise, User, UserConceptState, UserStats
+from app.streak.service import restorable_value
 
 ACTIVITY_DEFAULT_WINDOW_DAYS = 365
 ACCURACY_HISTORY_DEFAULT_WINDOW_DAYS = 90
@@ -34,6 +35,7 @@ async def get_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
         .select_from(DailySession)
         .where(DailySession.user_id == user_id, DailySession.completed_at.isnot(None)),
     )
+    restores_to = await restorable_value(db, user_id)
     stats = await db.get(UserStats, user_id)
     if stats is None:
         return {
@@ -45,11 +47,19 @@ async def get_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
             "accuracy_by_type": {},
             "last_active_local_date": None,
             "total_sessions": total_sessions or 0,
+            # No stats row means no reset ever happened, so nothing to restore.
+            "repair_available": False,
+            "repair_restores_to": None,
         }
     return {
         "current_streak": stats.current_streak,
         "longest_streak": stats.longest_streak,
         "streak_freezes": stats.streak_freezes,
+        # A1: the client needs both to render the single restore affordance --
+        # whether to offer it, and the N in "Restore your N-day streak".
+        # Computed per request, never stored (D-116(b)).
+        "repair_available": restores_to is not None,
+        "repair_restores_to": restores_to,
         "total_attempts": stats.total_attempts,
         "total_correct": stats.total_correct,
         "accuracy_by_type": project_accuracy(stats.accuracy_by_type),

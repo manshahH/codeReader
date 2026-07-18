@@ -99,9 +99,42 @@ Body (all optional): `display_name`, `timezone` (IANA, validated), `level`, `rem
   "total_attempts": 240,
   "total_correct": 181,
   "accuracy_by_type": { "spot_the_bug": 0.71, "trace": 0.83, "summarize": 0.66 },
-  "last_active_local_date": "2026-07-06"
+  "last_active_local_date": "2026-07-06",
+  "total_sessions": 41,
+  "repair_available": false,
+  "repair_restores_to": null
 }
 ```
+`streak_freezes` is the A1 freeze balance (docs/10; D-116). `repair_available`
+and `repair_restores_to` are computed per request, never stored: available is
+true when the most recent `reset` is still inside `STREAK_REPAIR_WINDOW_H` and
+has not already been repaired, and `repair_restores_to` is the value a repair
+would restore (the N in "Restore your N-day streak"), or `null` when no repair
+is available. `repair_available == (repair_restores_to is not null)` always. The
+payload is an allowlist; these are the only streak fields it carries.
+
+### `POST /streak/repair`
+Restores the streak lost at the most recent repairable reset. Requires an
+`Idempotency-Key` header, same discipline as `POST /attempts` (own namespace;
+replays return the cached, byte-identical success).
+```json
+{ "current_streak": 13, "repaired": true }
+```
+The restored value is the unbroken counterfactual, computed entirely from the
+`streak_events` ledger: `reset.from_value` (the value lost) plus the post-reset
+run length, read as the `to_value` of the most recent transition row. It is NOT
+`reset.from_value` plus elapsed days: the reset day is itself an active day (a
+`reset` row is only ever written on a submit), so elapsed-day arithmetic drops
+that day's credit, and it also over-credits any day the user was not active.
+The live `current_streak` is never read, since later submits may have changed it.
+
+Serialized under a per-`(user, "streak_repair")` `pg_advisory_xact_lock`
+(D-104's lock class): the idempotency reservation is per-key, so two concurrent
+requests with different `Idempotency-Key`s would otherwise both read the same
+unrepaired reset and both restore it.
+`409 not_repairable` when there is no reset, when it is outside the window, or
+when that reset has already been repaired (a reset is repairable at most once).
+`400` when the `Idempotency-Key` header is missing.
 
 ### `GET /me/concepts`
 Skill graph. `[{ "concept": "mutable-default-arg", "mastery": 0.62, "attempts": 9, "next_review_at": "2026-07-09T00:00:00Z" }, ...]` sorted weakest-first.
@@ -278,6 +311,25 @@ Upsert (D-96): one review per user, enforced by a DB-level UNIQUE on `user_id`. 
 `200 { "status": "ok" }` : checks DB and Redis connectivity. LLM provider health is reported in metrics, not here (its failure degrades, not downs, the app).
 
 Admin/review endpoints (`/admin/*`) are a separate internal app behind its own auth; deliberately out of this public contract. `GET /admin/reviews` (D-96) lists every submitted review, gated by the same `X-Admin-Token` shared secret as the rest of `/admin/*`.
+
+`POST /admin/streak/outage-freeze { "local_date": "2026-07-17" }` (A1, the "big
+red button") covers that local date for every user with recorded activity,
+writing one `freeze_used` row with `note: 'outage'` per user. It spends no
+balance and mutates no `current_streak`: it is a pure ledger write, and the
+protection is realized at each user's next submit through the D-116 covered-day
+rule. Users who already have a `freeze_used` row for the date are skipped, so
+re-running it for the same date is a no-op. Returns
+`{ "local_date": ..., "users_covered": N }`.
+
+`POST /admin/streak/grant-initial-freezes { "local_date": "2026-07-18" }`
+(D-118) is the one-time A1 backfill: accounts whose `user_stats` row predates
+A1 sit at `streak_freezes = 0`, because the starting grant happens at row
+creation. Raises them to `min(STREAK_FREEZE_START, STREAK_FREEZE_MAX)`, never
+lowers a balance, never touches `current_streak`, and writes one `adjusted` row
+per granted user carrying the `[a1:initial-grant]` marker. Idempotent on both
+the balance and that marker, so a re-run reports `granted_to: 0` even for users
+who have since spent their freezes. Run once after deploy. Returns
+`{ "granted_to": N, "balance": 2 }`.
 
 ---
 

@@ -18,6 +18,7 @@ import type {
   ReviewStatusResponse,
   SessionResponse,
   SessionReviewResponse,
+  StreakRepairResponse,
   User,
 } from './types';
 
@@ -160,6 +161,13 @@ export function postAttempt(idempotencyKey: string, body: AttemptRequest): Promi
   return request<AttemptResponse>('/v1/attempts', {
     method: 'POST',
     body,
+    headers: { 'Idempotency-Key': idempotencyKey },
+  });
+}
+
+export function repairStreak(idempotencyKey: string): Promise<StreakRepairResponse> {
+  return request<StreakRepairResponse>('/v1/streak/repair', {
+    method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
   });
 }

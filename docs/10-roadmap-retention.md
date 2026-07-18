@@ -1,7 +1,8 @@
 # 10 : Roadmap (Retention & Gamification)
 
-Status: PLANNING. Nothing here is built. This is the "what we build next" doc;
-`HANDOFF.md` is the "what is already built" doc. Read both before starting.
+Status: A1 IS BUILT AND SHIPPED (2026-07-18). Everything from A2 onward is still
+planning. This is the "what we build next" doc; `HANDOFF.md` is the "what is
+already built" doc. Read both before starting. **A2 (email capture) is next.**
 
 The MVP proved the hard part (execution-validated content, the daily loop). This
 layer is the retention engine. It is backed by research on Duolingo, Habitica,
@@ -40,7 +41,7 @@ conclusions are inlined below.
 
 Do these first. They move retention in weeks and answer beta-user feedback directly.
 
-- A1 Streak safety net: streak freeze, repair / earn-back, grace days, and a
+- A1 Streak safety net (**SHIPPED**, see the A1 spec section below): streak freeze, repair / earn-back, grace days, and a
   "celebrate the return" tone instead of guilt. Decouple the streak from any hard
   daily goal (one exercise = one day). Auto-freeze everyone on a service outage
   (Duolingo's "big red button"). Why: loss aversion without a safety net churns a
@@ -205,6 +206,41 @@ busy-professional audience. A missed day should be a non-event, not a loss.
 
 XP, levels, leaderboards, the adaptive path, email, reminders. A1 is purely the
 streak's forgiveness mechanics. Email/reminders are A2/A3.
+
+### A1 as actually built (2026-07-18)
+
+Shipped as specced above, with three divergences and one deferral, all recorded
+as decisions rather than absorbed silently.
+
+- **D-116** is the load-bearing one. The spec's consumption rule is balance-only,
+  but the outage freeze fills days WITHOUT spending balance, so the two rules
+  contradict each other on any gap they both touch. Resolution: a "covered day"
+  is read from the `streak_events` ledger, never inferred from the balance. The
+  balance pays only for the UNCOVERED remainder, and the cap applies to that
+  remainder too, so outage-covered days are free. D-116 also records that
+  `streak_recon.py` has no bulk pattern to mirror (it is a single-user helper),
+  that `streak_freezes` was already exposed, and that `repaired` rows needed an
+  explicit anchor because `streak_recon.py` already writes that event kind.
+- **D-117**: both `.env.example` files are drift-checked now. The root one had
+  already drifted.
+- **D-118**: one-time backfill of the starting freeze balance for pre-A1
+  accounts, via `POST /admin/streak/grant-initial-freezes`. Run once after
+  deploy.
+- The restore value is the unbroken counterfactual (value lost + the run built
+  since the reset), read entirely from the ledger. An elapsed-days formula is
+  wrong in both directions: it drops the reset day, which is itself an active
+  day, and over-credits any day the user was not active.
+
+**DEFERRED, and the reason it is not a bug:** the spec says the "celebrate the
+return" state appears on "the dashboard and session-complete". **There is no
+session-complete screen.** `frontend/src/routes/Session.tsx` redirects to the
+Dashboard once the last exercise is done, and a `latestStreak` state there was
+written but never read (removed in A1, with a comment left at the write site).
+So the welcome-back state lives on the Dashboard, and the per-attempt reveal
+carries the warmed reset copy. Building a real session-complete screen is its
+own piece of work and a natural home for a session-level streak summary,
+`first_completed_session` (already in the API and unused by the client), and the
+A4 "peek at tomorrow" teaser. Pick it up with A4 or as a standalone UI task.
 
 ## Open decisions (to resolve before building the relevant phase)
 
