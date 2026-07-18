@@ -2876,3 +2876,31 @@ D-118 Existing soft-launch users get a ONE-TIME backfill of the A1 starting
      to 0 and the balance test alone would cheerfully re-grant them. A negative
      test covers exactly that case.
      RUN IT ONCE after deploy; re-running is a no-op that reports granted_to: 0.
+
+D-119 frontend/e2e/session.spec.ts is KNOWN-FAILING and NOT ROOT-CAUSED. Marked
+     test.fixme rather than left red. Verified to fail identically on master
+     (67cf7b8), so A1 did not cause it.
+     SYMPTOM: against a healthy local stack, the seeded user's dashboard already
+     reads "Completed" (1/5, 1 skipped) before the spec finishes driving the
+     session, so /session redirects to the dashboard and the spec's first
+     locator (`span.capitalize`, the exercise-type label) is never found. It
+     fails 15s later on that selector, which points at the UI and not at the
+     cause.
+     WHAT IS NOT THE CAUSE, checked: the seeding path is fine
+     (reveal-error-boundary.spec.ts uses the same seeded setup and PASSES
+     against a healthy stack); the selector still exists (Session.tsx); and it
+     is not the missing Playwright webServer, which was a separate real bug
+     fixed alongside this.
+     WHAT IS UNKNOWN: whether this is spec brittleness (it drives "one of each
+     type" while summarize is OFF per D-115, and only 1 summarize row is live)
+     or a genuine early-completion bug in the session flow. Guessing was
+     declined; a wrong fix here would paper over a possible product bug.
+     WHY test.fixme AND NOT test.skip: fixme reports as skipped but means "needs
+     fixing", so it stays visible in the suite output. The alternative -- leaving
+     it red -- trains everyone to ignore a red suite, at which point the suite
+     stops being a signal at all. The alternative of a plain skip would let it
+     disappear.
+     TO PICK IT UP: delete the `test.fixme(...)` line at the top of the spec.
+     Start by checking whether the session is being marked completed early for a
+     freshly seeded user, since that is the observed state and it is the part
+     that could be a real bug.
