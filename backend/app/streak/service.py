@@ -372,9 +372,21 @@ async def restorable_value(
     written on a submit -- so its credit is already inside the post-reset run
     and must not be dropped. `(today - reset.local_date).days` dropped exactly
     that day, which is where the original off-by-one came from.
+
+    D-124: a repair that would not BEAT the current streak is not offered. The
+    dashboard read "Restore your 1-day streak" to a user whose streak was
+    already 1, which is a no-op dressed as a benefit. Worse than cosmetic: a
+    reset is repairable at most once (D-116), so taking that offer would burn
+    the user's only chance to repair it in exchange for nothing.
     """
     reset = await _load_restorable(db, user_id, now=now)
-    return reset.restores_to if reset is not None else None
+    if reset is None:
+        return None
+    stats = await db.get(UserStats, user_id)
+    current = stats.current_streak if stats is not None else 0
+    if reset.restores_to <= current:
+        return None
+    return reset.restores_to
 
 
 async def repair_streak(
@@ -417,6 +429,18 @@ async def repair_streak(
 
     today = local_date_for(user.timezone, now=now)
     restored = reset.restores_to
+
+    # D-124: refuse, do not merely hide. The stats payload stops ADVERTISING a
+    # repair that would not beat the current streak, but a client that calls
+    # this route anyway must not be allowed to spend the one-shot repair on a
+    # no-op. Same 409 as every other non-repairable case, so it adds no new
+    # failure mode for the client to handle.
+    if restored <= stats.current_streak:
+        raise ApiError(
+            409,
+            "not_repairable",
+            "There is no streak to restore right now.",
+        )
 
     before = stats.current_streak
     stats.current_streak = restored

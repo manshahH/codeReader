@@ -554,11 +554,19 @@ async def test_repair_restore_value_comes_from_the_ledger_not_current_streak(
     db_session: AsyncSession,
 ) -> None:
     """current_streak is not trusted: the post-reset run is read from the
-    transition rows. Seeded deliberately inconsistent (99) to prove it.
+    transition rows. Seeded deliberately inconsistent to prove it.
+
+    The poison value used to be 99. D-124 now refuses a repair that would not
+    BEAT the current streak, and restoring 23 over a streak of 99 would have
+    LOWERED it, so 99 is no longer a case the route will serve. 3 keeps the
+    original point intact -- it is still inconsistent with the ledger, and any
+    implementation that read current_streak instead of the transition rows
+    would produce something other than 23 -- while being a repair a user would
+    actually want.
     """
     user = await make_user(db_session)
     today = local_date_for(user.timezone)
-    await _seed_stats(db_session, user, current_streak=99, last_active=today, freezes=0)
+    await _seed_stats(db_session, user, current_streak=3, last_active=today, freezes=0)
     await _seed_reset(
         db_session,
         user,
