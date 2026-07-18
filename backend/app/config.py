@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     # _apply_beta_invite stay wired and populated regardless -- flipping this
     # back to true restores the exact prior gate with no other change.
     BETA_GATE_ENABLED: bool = False
+    # A1 streak safety net (docs/10; D-116). Freezes are a forgiveness
+    # mechanic, not a currency to hoard: START=2 because Duolingo's A/B found
+    # 2 beat 1 while 3 did not beat 2, and MAX==START so the balance is a
+    # buffer that refills rather than a score that grows. EARN_EVERY is
+    # measured in consecutive active days. REPAIR_WINDOW_H bounds how long
+    # after a reset the lost streak can still be earned back.
+    STREAK_FREEZE_START: int = 2
+    STREAK_FREEZE_MAX: int = 2
+    STREAK_FREEZE_EARN_EVERY: int = 10
+    STREAK_REPAIR_WINDOW_H: int = 48
     JOBS_ENABLED: bool = True
     JOB_GRADING_RETRY_INTERVAL_S: float = 30.0
     JOB_PERCENTILES_INTERVAL_S: float = 3600.0

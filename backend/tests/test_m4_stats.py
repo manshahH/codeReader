@@ -52,6 +52,9 @@ async def test_me_stats_defaults_to_zero_with_no_attempts(
         "accuracy_by_type": {},
         "last_active_local_date": None,
         "total_sessions": 0,
+        # A1: no stats row means no reset ever happened, so nothing to restore.
+        "repair_available": False,
+        "repair_restores_to": None,
     }
 
 
