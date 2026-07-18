@@ -72,7 +72,14 @@ test('malformed reveal renders an error state and the session continues', async 
   // Continuing works: skipping advances to the next exercise (its answer UI)
   // or to session complete -- never a dead end.
   await skipButton.click();
+  // Either the next exercise's answer UI, or -- if that was the last one --
+  // the Dashboard's completed state. NOT "Session complete": no such screen
+  // exists (see session.spec.ts's header). That dead branch was harmless only
+  // because the first branch always matched; had the session actually ended
+  // here it would have failed for an invented reason.
   await expect(
-    page.getByRole('button', { name: 'Check answer' }).or(page.getByText('Session complete')),
+    page
+      .getByRole('button', { name: 'Check answer' })
+      .or(page.getByRole('link', { name: "Review today's session" })),
   ).toBeVisible({ timeout: 15_000 });
 });

@@ -35,6 +35,11 @@ CREATE TABLE users (
   onboarded           boolean     NOT NULL DEFAULT false,     -- set true by PATCH /me's level pick
   beta_allowed        boolean     NOT NULL DEFAULT false,     -- gates login/session access (M8)
   reminder_local_time time,                                  -- NULL = reminders off
+  -- A2 email capture (D-120). GitHub OAuth stays scoped read:user, so the
+  -- address is self-asserted and we verify it ourselves.
+  email               citext,                                -- VERIFIED address only; NULL = none captured
+  email_verified_at   timestamptz,                           -- non-NULL <=> email is proven deliverable
+  pending_email       citext,                                -- awaiting confirmation; does NOT displace email
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
   deleted_at          timestamptz                            -- soft delete
@@ -42,6 +47,39 @@ CREATE TABLE users (
 
 CREATE TRIGGER trg_users_touch BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- D-120(3): uniqueness attaches to PROVEN control of an address, never to the
+-- act of typing one. A plain UNIQUE(email) would be an address-squatting
+-- primitive -- type a victim's address, never verify it, and they can never
+-- register it. deleted_at IS NULL is in the predicate so a soft-deleted account
+-- does not tombstone its address forever (users is the one soft-deleted table).
+-- Two rows MAY hold the same pending_email; whoever verifies first wins here,
+-- and the loser's promotion fails this constraint and is reported generically.
+CREATE UNIQUE INDEX uq_users_email_verified
+  ON users (email)
+  WHERE email_verified_at IS NOT NULL AND deleted_at IS NULL;
+
+-- Single-use, expiring email verification tokens (D-120(4)). token_hash is the
+-- sha256 of a secrets.token_urlsafe(32), identical to refresh_tokens.token_hash:
+-- the input is CSPRNG output, not a password, so a KDF would buy nothing.
+-- `email` is the address the token was issued FOR, and consuming promotes THAT
+-- value rather than the current pending_email, so a stale link can never
+-- promote an address it was not issued for.
+-- invalidated_at (rather than deleting superseded rows) keeps "why did my link
+-- stop working" answerable in one query, same argument as streak_events.
+CREATE TABLE email_verification_tokens (
+  id             uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email          citext      NOT NULL,
+  token_hash     bytea       NOT NULL UNIQUE,                -- sha256 of the opaque token
+  expires_at     timestamptz NOT NULL,
+  consumed_at    timestamptz,                                -- single-use
+  invalidated_at timestamptz,                                -- superseded by a newer issue, or withdrawn
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_evt_user_live ON email_verification_tokens (user_id)
+  WHERE consumed_at IS NULL AND invalidated_at IS NULL;
 
 -- Provider-agnostic identities. MVP has exactly one row per user
 -- (provider = 'github') but the shape is multi-provider from day one.

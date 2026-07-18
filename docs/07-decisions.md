@@ -2904,3 +2904,378 @@ D-119 frontend/e2e/session.spec.ts is KNOWN-FAILING and NOT ROOT-CAUSED. Marked
      Start by checking whether the session is being marked completed early for a
      freshly seeded user, since that is the observed state and it is the part
      that could be a real bug.
+
+     CORRECTION (2026-07-18, found while building A2). One factual claim above
+     is WRONG and the reasoning that rests on it is weaker than it reads.
+     D-119 says reveal-error-boundary.spec.ts "uses the same seeded setup and
+     PASSES against a healthy stack", and uses that as the evidence that the
+     seeding path is fine and the fault is specific to session.spec.
+     reveal-error-boundary.spec.ts is in fact FLAKY: measured at roughly 2 of 5
+     runs failing against a healthy local stack, both in a full-suite run and
+     run in isolation, and it fails on the SAME selector at the same line
+     (`span.capitalize`, the exercise-type label, spec line 49) with the same
+     "element(s) not found" shape.
+     So the early-completion condition is NOT specific to session.spec. It
+     affects at least two seeded specs and is intermittent rather than
+     deterministic, which points harder at a real race in session
+     creation/completion for a freshly seeded user than at spec brittleness.
+     The D-119 hypothesis "it drives one of each type while summarize is OFF"
+     does not explain this spec at all, since this one does not do that.
+     NOT FIXED HERE, deliberately: A2 is email capture, this is a session-flow
+     bug, and D-119's own reason for not guessing still stands. Recorded rather
+     than absorbed because the next person to pick up D-119 would otherwise
+     start from a premise that is not true. Do not mark this spec fixme without
+     investigating: unlike session.spec it passes most of the time, so it still
+     carries real signal.
+
+     ROOT-CAUSED (2026-07-18). It is a real concurrency bug in session creation,
+     NOT spec brittleness and NOT a D-58..D-62 "transient empty session"
+     regression. Session creation is healthy: 20 consecutive freshly seeded
+     users, driven over plain HTTP with no browser, returned 5 exercises and
+     completed=false every single time (20/20, zero empties, zero non-200s).
+     THE CHAIN, from the API log of a failing run:
+       1. The SPA issues TWO concurrent GET /v1/session/today for the same
+          first-of-day user. This is React 18 StrictMode double-invoking
+          Session.tsx's mount effect (main.tsx wraps the app in StrictMode).
+          Confirmed in the log: every run shows two GETs from two source ports.
+       2. Both find no daily_sessions row, both sample, both INSERT. One wins.
+          The loser gets
+            UniqueViolationError: duplicate key ... "daily_sessions_pkey"
+            Key (user_id, session_date)=(<uuid>, 2026-07-18) already exists
+          raised at sessions/service.py:147 (`await db.flush()`).
+       3. The IntegrityError handler at :149 EXISTS and its intent is right
+          (roll back, re-read the winner's row, D-17). It is the RECOVERY that
+          fails: `await db.get(...)` at sessions/service.py:153 raises
+          sqlalchemy.exc.MissingGreenlet from the connection-pool checkout's
+          pre-ping (db.py:234 sets pool_pre_ping=True). The handler written to
+          absorb this race is itself the thing that 500s.
+       4. The MissingGreenlet escapes as an UNHANDLED ASGI exception, so the
+          500 is emitted WITHOUT CORS headers. The browser's fetch therefore
+          rejects at the network layer instead of parsing an error body, and
+          api.ts maps it to `network_error`. The screen shows "Could not reach
+          the server. Check your connection." (confirmed verbatim in the
+          Playwright error context). `span.capitalize` never renders, which is
+          the reported symptom and is four steps downstream of the cause.
+     WHY D-119's ORIGINAL DIAGNOSIS MISSED IT: the observed state was read as
+     "the dashboard already says Completed", but the session is never completed
+     and never empty. The failing screen is the session player's LOAD-ERROR
+     branch, not a redirect and not the empty-session branch.
+     SEVERITY, stated carefully. The TRIGGER is dev-only: StrictMode
+     double-invokes effects only in development builds, so a production SPA
+     fires one request per mount. The BUG is not dev-only: any genuine
+     concurrency on a user's first request of the day reaches the same path
+     (two tabs, a double-click, a reload mid-flight), and the recovery is broken
+     for all of them. It is the first-of-day window only, which is exactly the
+     path every new beta user takes exactly once.
+     MEASURED RATE: 11 of 15 failures (73%) run back-to-back with no pacing;
+     roughly 1 in 3 when runs are spaced. The rate tracks how tightly the two
+     requests land, which is what a race should look like.
+     STILL UNPROVEN, and worth confirming before fixing: precisely WHY pre-ping
+     raises MissingGreenlet on the post-rollback checkout rather than completing
+     normally. The escape to a 500 is proven; the SQLAlchemy internals behind
+     that specific checkout are not, and a fix aimed at the wrong layer (for
+     example "catch MissingGreenlet") would paper over it.
+     CANDIDATE FIXES, NOT APPLIED, pending a scope decision: make the insert
+     conflict-proof at the DB (ON CONFLICT DO NOTHING, then read) so the
+     recovery path is never entered; and/or take the per-(user, day)
+     pg_advisory_xact_lock that D-104 already established for attempts, which is
+     the consistent-with-precedent option. Separately, the unhandled-exception
+     path should carry CORS headers either way: a 500 the browser cannot read as
+     a 500 will keep producing misleading "network error" symptoms in any future
+     incident.
+     NOTE FOR session.spec.ts (still test.fixme): it very likely shares this
+     root cause, but that is NOT verified. Re-check it after this is fixed
+     rather than assuming it is resolved.
+
+     CLOSED (2026-07-18). Both halves are now resolved and this entry is done.
+     The session-build race was D-122. The session.spec.ts half is below, and it
+     was NOT the same bug and NOT a product bug at all.
+     ROOT CAUSE: the spec asserted a "Session complete" screen. There is no such
+     screen anywhere in frontend/src, and its absence is a deliberate, recorded
+     decision (HANDOFF and docs/10: Session.tsx redirects to the Dashboard once
+     the last exercise is answered; building a real session-complete screen is
+     its own deferred piece of work). So the loop's break condition could never
+     fire, the run walked one iteration past the last exercise, /session had
+     already redirected to the Dashboard, and `span.capitalize` was missing. The
+     failure surfaced on a selector four steps from the actual mistake, which is
+     the same shape of confusion D-121 describes and the reason both took so
+     long to see.
+     MY EARLIER READING WAS WRONG, and it is worth naming because it sent the
+     next round of investigation down a false path. I read the dashboard's
+     "1/5, 1 skipped" as "one of five attempted" and wrote that into this entry
+     as evidence of early completion. It is correct_count/exercise_count
+     (Dashboard.tsx:203): ONE CORRECT out of five, in a session that had
+     finished. The browser log shows five POST /v1/attempts against a five-slot
+     session. Nothing ever disagreed: a direct measurement showed 5 slots
+     persisted and 5 exercises served, both before and after attempts.
+     HYPOTHESIS TESTED AND REJECTED: that GET /v1/session/today served fewer
+     exercises than daily_sessions held slots. Measured directly and it does
+     not: persisted == served == 5, and the served slate does not shrink as
+     exercises are answered.
+     SEVERITY: NOT test-only, and NOT production-reachable either, because there
+     is no defect in the product. The version of this that WOULD have been
+     serious -- a real user told they are finished partway through -- is not
+     reachable, and that is now pinned by tests rather than by argument
+     (test_d119_session_completion.py). A pool too small for the sampler's usual
+     3-to-5 slots yields a SHORT session, not a dishonest one: served count
+     equals persisted count, `completed` turns true only once every served
+     exercise has been attempted, and a skip counts as an attempt (D-19/D-93) so
+     a skipped slot cannot strand the session. Those three are the invariants
+     that matter for the daily loop, and they hold.
+     FIX: in the spec, asserting the completion signal this app actually has --
+     the redirect to the Dashboard plus its completed state and review link. The
+     loop now bounds on leaving /session rather than on a screen that does not
+     exist, so a 3, 4 or 5 exercise session all pass equally.
+     Also fixed the same dead expectation in reveal-error-boundary.spec.ts,
+     where `.or(getByText('Session complete'))` was harmless only because the
+     other branch always matched; had the session actually ended there it would
+     have failed for an invented reason.
+     PROVED TO THE D-122 STANDARD: 8 of 8 failing before, 12 of 12 passing
+     after, and the test.fixme is removed so the spec runs for real again.
+
+D-120 A2 email capture. Six decisions, recorded before any code was written.
+     This is the FIRST PII in the system, so each one is written down with the
+     attack or failure it is defending against, not just the shape it produces.
+
+     (1) EMAIL IS CAPTURED IN-APP, NOT BY WIDENING THE OAUTH SCOPE. GitHub OAuth
+     stays at `read:user` (auth/oauth.py:60). Widening to `user:email` would hand
+     us a verified address for free and is the obvious move, and we are declining
+     it for two reasons. First, scope is the thing a developer audience actually
+     reads on the GitHub consent screen, and `read:user` is defensible at signup
+     in a way that "and your email addresses" is not, on an app whose entire
+     pitch is trust. Second, and decisively: changing the requested scope forces
+     RE-CONSENT for every existing soft-launch user. They would be bounced back
+     through an authorization screen to grant something the product did not need
+     when they joined. An in-app prompt asks the same question at a moment the
+     user has context for it ("add email for reminders and your weekly recap")
+     and costs nothing to anyone who says no.
+     CONSEQUENCE, accepted: our address is self-asserted, so it MUST be verified
+     by us. Hence (2) and (4). A `user:email` address would have arrived
+     pre-verified by GitHub; this is the price of the narrower scope.
+
+     (2) CHANGING AN EMAIL DOES NOT TAKE THE OLD ONE OFFLINE. `users.email` holds
+     ONLY a verified address. A newly submitted address lands in
+     `users.pending_email` and stays there until its token is consumed, at which
+     point pending is promoted into `email`, `email_verified_at` is stamped, and
+     `pending_email` is cleared. Until then the previously verified address keeps
+     working.
+     WHY: a typo must not silently destroy the notification channel. The failure
+     being prevented is concrete: a user with a working address types
+     `me@gmial.com`, we overwrite `email`, the verification mail goes nowhere,
+     and the user is now unreachable AND unaware, because from their side the
+     profile shows the address they meant to type. Under this rule the mistake is
+     self-correcting: the old address still receives, and the pending one visibly
+     never confirms.
+     SECOND REASON, forward-looking: A3 (reminders, weekly recap) must never have
+     to reason about deliverability. Under this rule A3 reads `users.email` and
+     sees either an address we have proven we can reach, or NULL. There is no
+     third state, so A3 needs no "is this one actually good" check and cannot
+     send to an unverified address by construction.
+     CONSEQUENCE: first-ever capture also goes through `pending_email`, not
+     straight into `email`. Uniform path, one state machine, no special case for
+     "user had no address before".
+
+     (3) UNIQUENESS IS PARTIAL, AND DELIBERATELY DOES NOT COVER PENDING OR
+     UNVERIFIED ADDRESSES:
+       CREATE UNIQUE INDEX uq_users_email_verified ON users (email)
+         WHERE email_verified_at IS NOT NULL AND deleted_at IS NULL;
+     Mirrors the uq_streak_events_one_transition_per_day pattern (D-116 era):
+     partial, SQL-only, not declared on the model.
+     WHY NOT A PLAIN UNIQUE ON `email`: it would be an ADDRESS-SQUATTING PRIMITIVE.
+     An attacker types a victim's address into their own profile, never verifies
+     it, and the row now blocks the victim from ever registering it. The victim
+     cannot clear it, cannot see it, and support cannot distinguish the squat
+     from a legitimate typo. Uniqueness must therefore attach to PROVEN control
+     of an address, not to the act of typing one, and proof is exactly
+     `email_verified_at IS NOT NULL`.
+     `deleted_at IS NULL` is in the predicate so a soft-deleted account does not
+     tombstone its address forever; users are the one soft-deleted table
+     (docs/04), so every unique index over them has to say this.
+     CONSEQUENCE, accepted: two live rows may hold the same string in
+     `pending_email` at once, and a race can let two users both hold verification
+     tokens for one address. That is fine and is the correct outcome: whichever
+     one verifies FIRST wins the partial index, and the second one's promotion
+     then fails the constraint and is reported to that user as a generic failure
+     per (5). The database is the arbiter, not an application-level pre-check,
+     which would be a TOCTOU hole anyway.
+
+     (4) TOKENS: HASHED AT REST, SINGLE-USE, EXPIRING, AND SCOPED TO ONE ADDRESS.
+     MATCHED EXACTLY TO THE EXISTING REFRESH-TOKEN STORAGE, which is already
+     hashed: auth/tokens.py:121-126 generates `secrets.token_urlsafe(32)` and
+     stores `hashlib.sha256(token.encode()).digest()` as bytea. A2 reuses that
+     pair verbatim rather than inventing a second scheme. Unsalted single-round
+     SHA-256 is correct here for the same reason it is correct there: the input
+     is 256 bits of CSPRNG output, not a password, so there is no dictionary to
+     precompute and a KDF would buy nothing.
+     NEW TABLE `email_verification_tokens`: user_id, the target `email` the token
+     was issued FOR, `token_hash` bytea UNIQUE, `expires_at`, `consumed_at`,
+     `invalidated_at`, `created_at`. Storing the target address on the TOKEN and
+     promoting THAT value (not whatever `pending_email` says at consume time) is
+     what makes the flow safe against a change-then-verify race: an old link can
+     never promote a newer address it was not issued for. Issuing a new token
+     stamps `invalidated_at` on the user's outstanding ones.
+     DIVERGENCE FROM THE SPEC'D COLUMN LIST, deliberate: `invalidated_at` is an
+     extra column, not one of the five specified. The alternative was DELETing
+     superseded rows. Rejected: "why did my verification link stop working" is
+     then unanswerable, and that is the same argument docs/04 makes for
+     streak_events ("my streak vanished must be answerable in one query"). A
+     ledger costs one nullable timestamptz.
+     DIVERGENCE FROM THE REFRESH-TOKEN PATTERN, deliberate and a STRENGTHENING:
+     refresh tokens are matched by DB hash equality (auth/service.py:201-203),
+     which is not a constant-time comparison. That is defensible for refresh
+     tokens and we are NOT changing it here, but A2 additionally runs
+     `hmac.compare_digest` on the stored hash versus the recomputed hash after
+     the lookup. Constant-time comparison of a token was an explicit requirement
+     for this phase; the DB lookup narrows the row, the compare_digest is what
+     the code actually branches on.
+
+     (5) EVERY VERIFICATION FAILURE RETURNS ONE GENERIC RESPONSE. Unknown token,
+     expired token, already-consumed token, invalidated token, a token belonging
+     to another user, and a promotion that loses the (3) race all return the same
+     status and the same body. Distinguishing them is an oracle: "already
+     consumed" tells an attacker the token was real, and "belongs to another
+     user" confirms an address is registered. Relatedly, POST /v1/me/email
+     returns the SAME success response whether or not the target address is
+     already verified on another account. The address either receives a mail or
+     does not; the API never says which. Registration-status disclosure is the
+     classic enumeration leak and there is no product reason to take it.
+
+     (6) WHAT THE OWNER SEES ON GET /me: `email` (the verified address, or null),
+     `email_verified` (bool), and `pending_email` (or null). All three are added
+     to the `user_response` allowlist (auth/service.py:35-45), which is the same
+     allowlist invariant 2 protects.
+     WHY `pending_email` IS EXPOSED AT ALL: the pending state is unrenderable
+     without it. "We sent a link to m****@example.com, resend?" requires the
+     address, and the alternative (a bare boolean) produces a screen that cannot
+     tell the user WHICH address to go check, which is precisely the typo case
+     (2) exists to make visible. It is not a new leak vector: /me is strictly
+     self-scoped by bearer token, and the value is a string the owner typed into
+     this same screen minutes earlier. There is no path by which /me discloses
+     any other user's address.
+     WHY `email_verified` IS CARRIED SEPARATELY when it is, under (2), exactly
+     `email is not None`: the client branches on verification, and making it
+     infer that from the nullness of another field is the kind of implicit
+     coupling that breaks silently the first time an unverified address can ever
+     reach `email` (an import path, an admin tool). The redundancy costs one
+     boolean and a test asserts the two can never disagree.
+     NOT EXPOSED: `email_verified_at` (the timestamp is ops data, the boolean is
+     the product fact) and anything from `email_verification_tokens`.
+     ALSO NOT CHANGED: email does NOT go through PATCH /me. PATCH /me is a
+     partial update that applies fields and returns; email needs issue-send-
+     confirm semantics, a throttle, and a failure mode that is not "the field did
+     not change". Four dedicated routes instead: POST /v1/me/email,
+     POST /v1/me/email/verify, POST /v1/me/email/resend, DELETE /v1/me/email.
+     DELETE exists because consent that cannot be withdrawn in-product is not
+     consent; it clears email, email_verified_at and pending_email, and
+     invalidates outstanding tokens in one transaction.
+
+     NO BACKFILL. `users` has no email column today, so every existing row starts
+     at NULL, which is the correct and intended "no email captured" state. This
+     is the difference from D-118, which needed a backfill precisely because its
+     column already existed with a wrong-for-the-cohort default.
+
+D-121 An unhandled exception must reach the browser AS a 500: JSON body, uniform
+     error shape, and CORS headers. Previously it did not, and that single gap
+     corrupted two separate incident investigations.
+     THE MECHANISM. `@app.exception_handler(Exception)` already existed and
+     already produced a correct `{error: {...}}` body with security headers
+     (M2). But an app-level exception handler is invoked by Starlette's
+     ServerErrorMiddleware, which is the OUTERMOST layer, outside every user
+     middleware including CORSMiddleware. So the 500 went out with no
+     Access-Control-Allow-Origin, and a browser will not expose such a response
+     to JS at all. The SPA therefore never saw a 500 with a readable body; it
+     saw a rejected fetch, and api.ts mapped that to `network_error` ->
+     "Could not reach the server. Check your connection."
+     WHY THIS IS NOT COSMETIC. It is an error that disguises itself as a
+     different, vaguer error, and every downstream diagnosis inherits the
+     disguise. D-119 spent its whole first investigation treating a server-side
+     race as a client/network/selector problem because that is what the browser
+     was told. The incident report's mid-session "Something went wrong" is the
+     same shape. A wrong error message is not a small bug when it is the only
+     evidence anyone has.
+     CHANGE: a `_catch_unhandled` HTTP middleware registered FIRST in
+     create_app(), which makes it the INNERMOST user middleware (Starlette's
+     add_middleware prepends, so last-added is outermost). It catches Exception,
+     builds the response via a shared `_unhandled_response()`, and returns it --
+     so the response travels back out THROUGH CORSMiddleware, which applies the
+     headers itself. The app-level handler stays as the last-resort net for
+     anything raised in the outer middlewares, where CORS is genuinely out of
+     reach; both paths share one response builder so they cannot drift.
+     REJECTED: setting Access-Control-Allow-Origin by hand in the error handler.
+     It would mean echoing the request's Origin, which turns the 500 path into a
+     CORS bypass for any origin on the internet. The allowlist must stay with
+     the middleware that owns it. A negative test asserts a disallowed origin is
+     still refused on the error path.
+     REJECTED: moving CORSMiddleware to be outermost instead. It would fix this
+     case but leaves the general rule ("responses generated above the CORS layer
+     are invisible to the browser") intact and re-breakable by the next
+     middleware anyone adds. Catching low is the structural fix.
+     HANDOFF'S SECOND INSTANCE IS MISDIAGNOSED, and this is recorded rather than
+     silently "fixed". HANDOFF says the mid-session failure is a 403
+     `exercise_not_in_session` that "lacks an {error: ...} body". IT DOES NOT AND
+     NEVER DID. It is raised as ApiError (attempts/service.py:407), gets the
+     standard body from api_error_handler, and
+     test_m4_attempts.py::test_attempt_on_exercise_not_in_session_returns_403 has
+     asserted exactly that body since M4 and passes. There was nothing to fix.
+     The far more likely real cause of that incident is this same CORS gap:
+     POST /v1/attempts calls get_today_slots(), which is precisely the function
+     that was 500ing under D-122, and a 500 there presented to the user as the
+     generic catch-all. Not proven, so it is recorded as the leading hypothesis
+     rather than a closed finding. A regression test now pins the 403's body and
+     CORS headers so the claim cannot be re-derived from a bad memory.
+
+D-122 First-of-day session creation is serialized by a per-(user, day) advisory
+     lock. This closes the race root-caused under D-119.
+     THE BUG: two concurrent GET /v1/session/today for a user with no
+     daily_sessions row both found nothing, both sampled, and both INSERTed. The
+     loser hit daily_sessions_pkey, and the IntegrityError recovery written for
+     exactly this case then failed on its own re-read, so the request 500d (and,
+     per D-121, that 500 reached the browser as a network error).
+     CHANGE: `pg_advisory_xact_lock(hashtext(user_id), hashtext("session_build:" +
+     date))` at the top of _build_and_persist_session, followed by a re-read of
+     the row under the lock. D-104's lock class, third application (attempts,
+     streak repair, now session build).
+     DOUBLE-CHECKED, and that is the point of the re-read. The caller has
+     already returned on a Redis hit or an existing row, so the hot path -- every
+     request after the first of the day -- never reaches the lock and pays
+     nothing for it. The re-read closes the window between the caller's check
+     and the acquisition: the loser blocks until the winner commits, then READ
+     COMMITTED hands it a fresh snapshot containing the winner's row, which it
+     returns. Both callers therefore see the IDENTICAL session, which is a
+     stronger guarantee than "no crash" and is asserted directly.
+     Keyed per-(user, day), not per-user: the protected object is exactly one
+     row per (user_id, session_date), and a per-user key would serialize
+     unrelated days for no benefit.
+     REJECTED: INSERT ... ON CONFLICT DO NOTHING then read. It is a smaller
+     change and it would work, but it is a fourth distinct concurrency idiom in
+     a codebase that has already standardised on this advisory lock in two
+     places. Consistency here has real value: the next person reading
+     sessions/service.py should find the same pattern they just read in
+     attempts/service.py, not a new one to evaluate. ON CONFLICT also expresses
+     "tolerate the collision" where the lock expresses "prevent it", and the
+     sampling work done before the insert is wasted under the former.
+     KEPT: the IntegrityError handler, now unreachable via the concurrent path,
+     as the DB backstop underneath the lock -- the same relationship the partial
+     unique index on streak_events has to the attempts lock (D-104).
+     NOT FIXED, DELIBERATELY: the MissingGreenlet raised by that recovery path's
+     `db.get` from the connection pool's pre-ping. It remains UNEXPLAINED and
+     UNFIXED. Catching it would paper over the wrong layer, and it is now
+     unreachable. If that branch ever fires again, that is evidence the lock was
+     bypassed, not a licence to catch the symptom.
+     PROVED BY REMOVAL, per the D-104 discipline. Reverting the lock makes
+     test_d122_session_build_race.py fail with the exact production chain
+     (UniqueViolationError on daily_sessions_pkey -> MissingGreenlet -> 500);
+     restoring it makes both tests pass. End to end:
+     reveal-error-boundary.spec.ts went from 11 of 15 FAILING to 15 of 15
+     PASSING across consecutive runs.
+     session.spec.ts (D-119) DOES NOT SHARE THIS CAUSE. It was re-checked
+     against this fix rather than assumed: it failed 8 of 8, deterministically,
+     which is a logic bug and not a race. It has since been root-caused and
+     fixed separately (see D-119's CLOSED section): the spec asserted a
+     "Session complete" screen that does not exist, so it was never a product
+     bug at all. NOTE: an earlier version of this paragraph claimed the session
+     "presents as finished after two of five exercises". That was wrong -- the
+     dashboard's "1/5" is correct_count/exercise_count, so it means one correct
+     in a FINISHED five-slot session. Corrected here rather than deleted,
+     because that misreading is what made the remaining half look like a
+     backend bug for longer than it should have.

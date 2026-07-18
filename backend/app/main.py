@@ -27,6 +27,7 @@ from app.core.ratelimit import check_token_bucket
 from app.core.sentry import init_sentry
 from app.db import asyncpg_connect_kwargs, create_engine, create_session_factory
 from app.disputes.router import router as disputes_router
+from app.email.router import router as email_router
 from app.jobs.runner import build_scheduler
 from app.reviews.router import router as reviews_router
 from app.sessions.router import router as sessions_router
@@ -205,11 +206,63 @@ _SECURITY_HEADERS = {
 _HSTS_HEADER = "max-age=63072000; includeSubDomains; preload"
 
 
+def _unhandled_response(request: Request, exc: Exception) -> JSONResponse:
+    """The one 500 body (D-121).
+
+    Shared by the innermost catch-all middleware and the app-level
+    exception_handler so the two paths cannot drift into producing different
+    shapes for the same failure. The exception is NEVER leaked to the client:
+    a fixed generic message only, with the traceback going to the server log
+    and Sentry.
+    """
+    req_id = request_id(request)
+    logging.getLogger("app").error(
+        "unhandled exception",
+        exc_info=exc,
+        extra={"request_id": req_id},
+    )
+    response = JSONResponse(
+        status_code=500,
+        content=error_body("internal", "Something went wrong.", req_id),
+    )
+    response.headers["X-Request-ID"] = req_id
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    if get_settings().SENTRY_ENVIRONMENT == "production":
+        response.headers.setdefault("Strict-Transport-Security", _HSTS_HEADER)
+    return response
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     init_sentry(settings)
 
     app = FastAPI(title="Code Reader API", lifespan=lifespan)
+
+    # D-121. REGISTERED FIRST ON PURPOSE, WHICH MAKES IT THE INNERMOST USER
+    # MIDDLEWARE: Starlette's add_middleware prepends, so the last thing added
+    # is outermost. Being inside CORSMiddleware is the entire point.
+    #
+    # An unhandled exception used to propagate past every user middleware up to
+    # ServerErrorMiddleware, which is outside CORS. The 500 it produced carried
+    # no Access-Control-Allow-Origin, so a browser refused to expose the
+    # response to JS at all. The client did not see a 500 with a readable body;
+    # it saw a failed fetch, and api.ts reported "Could not reach the server" --
+    # a network error that was not a network error. Two separate incidents were
+    # misdiagnosed off the back of that (D-119's seeded-session race, and the
+    # mid-session "Something went wrong" in the July 2026 report).
+    #
+    # Catching here instead means the JSON error response travels back OUT
+    # through CORSMiddleware, which applies the real origin-allowlist logic.
+    # Note what this deliberately does NOT do: echo the request's Origin header
+    # itself. Hand-rolling that would turn an error path into a CORS bypass for
+    # any origin. Let the middleware that already owns the allowlist decide.
+    @app.middleware("http")
+    async def _catch_unhandled(request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:  # noqa: BLE001 -- deliberate catch-all
+            return _unhandled_response(request, exc)
 
     app.add_middleware(
         CORSMiddleware,
@@ -319,20 +372,16 @@ def create_app() -> FastAPI:
         # three here. The exception is NEVER leaked to the client: a fixed
         # generic message only; the traceback goes to the server log (below)
         # and Sentry, never the response body.
-        req_id = request_id(request)
-        logging.getLogger("app").error(
-            "unhandled exception", exc_info=exc, extra={"request_id": req_id},
-        )
-        response = JSONResponse(
-            status_code=500,
-            content=error_body("internal", "Something went wrong.", req_id),
-        )
-        response.headers["X-Request-ID"] = req_id
-        for header, value in _SECURITY_HEADERS.items():
-            response.headers.setdefault(header, value)
-        if get_settings().SENTRY_ENVIRONMENT == "production":
-            response.headers.setdefault("Strict-Transport-Security", _HSTS_HEADER)
-        return response
+        #
+        # D-121: this handler is registered on the app, so Starlette invokes it
+        # from ServerErrorMiddleware, which sits OUTSIDE every user middleware
+        # including CORSMiddleware. Responses built here therefore never got
+        # CORS headers, and a browser could not read the 500 as a 500. That is
+        # why `_catch_unhandled` below exists and why it is the innermost
+        # middleware. This stays as the last-resort net for anything raised in
+        # the outer middlewares themselves, where CORS is genuinely out of
+        # reach.
+        return _unhandled_response(request, exc)
 
     @app.get("/healthz")
     async def healthz():
@@ -356,6 +405,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(users_router)
+    app.include_router(email_router)
     app.include_router(sessions_router)
     app.include_router(attempts_router)
     app.include_router(disputes_router)

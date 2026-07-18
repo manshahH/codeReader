@@ -11,6 +11,23 @@ export interface User {
   level: Level;
   timezone: string;
   onboarded: boolean;
+  /**
+   * A2 email capture (D-120). `email` is the CONFIRMED address only, so it
+   * stays live while `pending_email` waits: a typo never takes the current
+   * address offline. `email_verified` is carried explicitly rather than
+   * inferred from `email !== null` so the client is not coupled to that
+   * invariant.
+   */
+  email: string | null;
+  email_verified: boolean;
+  pending_email: string | null;
+}
+
+/** The body every /v1/me/email route returns: the email slice of the user. */
+export interface EmailState {
+  email: string | null;
+  email_verified: boolean;
+  pending_email: string | null;
 }
 
 export interface RefreshResponse {

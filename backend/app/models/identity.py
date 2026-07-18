@@ -36,6 +36,14 @@ class User(Base):
     onboarded: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
     beta_allowed: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
     reminder_local_time: Mapped[dt.time | None] = mapped_column()
+    # A2 email capture (D-120). `email` only ever holds a VERIFIED address; a
+    # newly submitted one waits in `pending_email` until its token is consumed,
+    # so a typo cannot take a working notification channel offline. The partial
+    # unique index (verified + not soft-deleted) lives in SQL only, same as
+    # uq_streak_events_one_transition_per_day.
+    email: Mapped[str | None] = mapped_column(CITEXT())
+    email_verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    pending_email: Mapped[str | None] = mapped_column(CITEXT())
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -100,6 +108,40 @@ class RefreshToken(Base):
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     user_agent: Mapped[str | None] = mapped_column(Text)
     ip: Mapped[str | None] = mapped_column(INET)
+
+
+class EmailVerificationToken(Base):
+    """Single-use, expiring proof that a user controls an address (A2, D-120).
+
+    token_hash is the sha256 of a secrets.token_urlsafe(32), matching
+    RefreshToken.token_hash exactly. `email` is the address the token was issued
+    FOR: consuming promotes that value, never the current users.pending_email,
+    so a stale link cannot promote an address it was not issued for.
+    """
+
+    __tablename__ = "email_verification_tokens"
+    # The lookup index (idx_evt_user_live) is PARTIAL -- outstanding tokens only
+    # -- so it lives in SQL only, same as uq_streak_events_one_transition_per_day
+    # and uq_users_email_verified.
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    email: Mapped[str] = mapped_column(CITEXT(), nullable=False)
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    invalidated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
 
 
 class BetaInvite(Base):
