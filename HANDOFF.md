@@ -1,10 +1,10 @@
 # CodeReader — Handoff Brief
 
 Paste this into a new chat to resume. Everything else lives in the repo
-(`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-114).
+(`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-118).
 Forward plan (what to build next) lives in `docs/10-roadmap-retention.md`.
 
-Last refreshed: 2026-07-18 (was frozen at the D-87 / pre-deploy era before this).
+Last refreshed: 2026-07-18 (A1 streak safety net shipped; D-116..D-118).
 
 ---
 
@@ -38,10 +38,25 @@ streaks, spaced repetition, stats, disputes. The session gate was removed so
 reaching `/session` opens the player directly (D-111). Frontend passed a full
 Playwright session smoke test and scored 0/16 on the anti-slop audit across every
 screen; the Review/Dashboard/Profile screens got a dual-pane + glassmorphism
-polish pass (see `docs/ops-incident-report-july-2026.md`). ~327 backend tests green.
+polish pass (see `docs/ops-incident-report-july-2026.md`). 456 backend tests green.
 
-The retention/gamification layer (streaks aside) is NOT built yet. That is the
-next body of work; the plan is `docs/10-roadmap-retention.md`.
+**Retention layer: A1 (streak safety net) is BUILT; A2 onward is not.** A1 added
+freeze accrual and consumption, repair / earn-back, an ops outage freeze, and a
+"welcome back" state in place of guilt copy. The load-bearing decision is D-116:
+a "covered day" is read from the `streak_events` ledger, not inferred from the
+freeze balance, so an outage fills a day for everyone without spending anyone's
+balance. New routes: `POST /v1/streak/repair` (idempotent, advisory-locked) and
+two admin ops routes (`/admin/streak/outage-freeze`,
+`/admin/streak/grant-initial-freezes`). `/v1/me/stats` gained `repair_available`
+and `repair_restores_to`. Also D-117 (both `.env.example` files are drift-checked
+now; the root one had already drifted) and D-118 (one-time backfill of the
+starting freeze balance for pre-A1 accounts, run once after deploy).
+**A2 (email capture) is next**; the plan is `docs/10-roadmap-retention.md`.
+
+Deferred out of A1, deliberately: there is **no session-complete screen**.
+`Session.tsx` redirects to the Dashboard when the last exercise is done, so A1's
+"dashboard and session-complete" requirement is met on the Dashboard and in the
+per-attempt reveal only. Building that screen is its own piece of work.
 
 Three exercise types, **all deterministically graded (zero per-answer LLM cost)**:
 - `spot_the_bug` — tap the buggy line + pick why (the flagship)
