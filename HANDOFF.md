@@ -304,6 +304,18 @@ be *cleanly false*, not "true but less relevant."
 
 ## Known open items
 
+**Seeded Playwright specs are flaky again (D-136, OPEN).** Three different
+specs each failed once across ~5 runs on :5173, never twice, never together,
+always passing in isolation: `session.spec.ts`, `scroll-reachability.spec.ts`,
+and (hermetic, so the best lead) `viewer-narrow.spec.ts` when grouped with
+`narrow-two-state.spec.ts`. Do NOT file this under D-122, which is closed on
+15/15 evidence; if it is the same race, that fix regressed and needs saying so.
+Undiagnosed. Note that runs against a harness server on :5174 fail two seeded
+specs DETERMINISTICALLY for an unrelated reason (APP_ORIGIN pins CORS to
+:5173) -- that is configuration, not flakiness, and the two must not be
+conflated.
+
+
 **Pre-beta (from the Fable/Opus whole-system audit):**
 - ✅ job runner wired, exercise pull path, transient empty sessions, seed gating,
   difficulty bands (D-58..D-62)
@@ -328,6 +340,24 @@ be *cleanly false*, not "true but less relevant."
 sessions with **zero manual intervention**.
 
 ---
+
+## Ops gotcha: killing a process by port on Windows
+
+**Do not free a port by killing whatever is listening on it.** On Windows,
+Docker Desktop holds a listener on published container ports ALONGSIDE the
+WSL relay, so a port-based kill can match `com.docker.backend` and take the
+whole Docker engine down with it -- every container stops, and the API
+disappears while you are still looking at the frontend.
+
+This happened while freeing 5173 for a fresh vite: `Get-NetTCPConnection
+-LocalPort 5173 | Stop-Process` matched both `wslrelay` AND
+`com.docker.backend`. Recovery is `Start-Process "C:\Program
+Files\Docker\Docker\Docker Desktop.exe"`, wait for the engine, then
+`docker compose up -d` -- containers restart rather than being recreated, so
+no data is lost, but it is several minutes of confusion.
+
+Kill by process identity instead, e.g. match the `node`/`vite` process, or
+stop the dev server in the terminal that owns it.
 
 ## Commands
 

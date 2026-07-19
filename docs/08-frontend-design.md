@@ -82,8 +82,30 @@ values.
 
 ## Layout and structure
 - Mobile-first; the archetypal session happens on a phone in a spare 10
-  minutes. Code blocks get horizontal scroll with the gutter pinned, never
-  wrapped or shrunk below readability.
+  minutes. Code blocks keep the gutter pinned and are never shrunk below
+  readability. How long lines are shown depends on available width (D-130):
+  they SOFT-WRAP below the breakpoint, where horizontal scroll inside a 360px
+  column costs the reader the left edge of every line, and they SCROLL above
+  it, where there is width to spare and the authored line structure is worth
+  preserving. Both are overridable by a persisted user preference exposed on
+  the code block itself. This supersedes this doc's original "never wrapped",
+  which was written before the narrow layout existed; see D-129/D-130.
+- Below the breakpoint, code and interaction separate in TIME rather than in
+  space: two FULL-SCREEN states with an explicit toggle (D-134). Reading
+  state, where the code owns the entire viewport; answering state, where the
+  answer UI does, with a persistent way back and the submit control pinned.
+  The earlier bottom sheet is withdrawn: it claimed to separate in time but
+  separated in space, and at 375x667 it clipped options and put submit out
+  of reach. Above the breakpoint the two-column arrangement stands unchanged.
+- EXCEPTION to "nothing else competing", granted narrowly (D-134): in the
+  reading state, `trace` may pin ONE clamped line showing the option the
+  reader has currently selected. trace asks you to compare candidate OUTPUTS
+  against the code, and that comparison IS the exercise; without the line,
+  verifying a candidate means holding a 40-character string in working
+  memory across a state switch, which tests memory rather than reading. It
+  renders ONLY once an option is selected -- never as an empty bar on first
+  read, when there is nothing to verify and the code should be alone -- and
+  it is one line, not a panel. No other type gets it.
 - No cards-with-icon grids, no stat banners, no numbered 1-2-3 sections
   unless the content is truly a sequence, no colored left-borders on cards,
   no pill badges over headlines.
