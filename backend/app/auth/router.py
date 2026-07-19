@@ -43,7 +43,7 @@ def _client_ip(request: Request) -> str:
 
 
 def _login_redirect(error: str) -> str:
-    origin = get_settings().APP_ORIGIN.rstrip("/")
+    origin = get_settings().PRIMARY_APP_ORIGIN
     return f"{origin}/login?error={error}"
 
 
@@ -153,7 +153,7 @@ async def github_callback(
         await session.rollback()
         raise
 
-    response = RedirectResponse(get_settings().APP_ORIGIN, status_code=302, headers=headers)
+    response = RedirectResponse(get_settings().PRIMARY_APP_ORIGIN, status_code=302, headers=headers)
     response.set_cookie(value=refresh_issue.raw_token, **_refresh_cookie_kwargs())
     return response
 

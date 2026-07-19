@@ -23,7 +23,24 @@ import type {
   User,
 } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+/**
+ * Where the API lives.
+ *
+ * An explicit VITE_API_BASE_URL always wins, including the empty string that
+ * production sets so requests are same-origin behind the Vercel rewrite
+ * (D-114) -- `??` only falls through on undefined, so '' is preserved.
+ *
+ * The DEV fallback follows the host you loaded the page from rather than
+ * hard-coding localhost (D-135). Hard-coding it meant a phone on the LAN
+ * loaded the app from 192.168.x.x and then called `localhost:8000`, which on a
+ * phone is the phone. Deriving the host keeps a desktop on localhost talking to
+ * localhost and a phone on the LAN talking to the LAN machine, from one dev
+ * server and with no per-client configuration -- which is what lets device
+ * testing work without changing (and breaking) the desktop setup.
+ */
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ??
+  (typeof window === 'undefined' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
 
 let accessToken: string | null = null;
 let refreshInFlight: Promise<RefreshResponse> | null = null;
