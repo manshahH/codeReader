@@ -45,6 +45,12 @@ export default {
       10: 'var(--space-10)',
       gutter: 'var(--gutter-width)',
       'gutter-desktop': 'var(--gutter-width-desktop)',
+      // D-130: the narrow page padding, named so the gutter can reclaim it as
+      // hit area (-ml-page / pl-page) instead of hard-coding 16px.
+      page: 'var(--page-pad-narrow)',
+      tap: 'var(--tap-min)',
+      'safe-bottom': 'var(--safe-bottom)',
+      'safe-top': 'var(--safe-top)',
     },
     borderRadius: {
       none: '0px',
@@ -81,6 +87,19 @@ export default {
       },
       maxWidth: {
         measure: '65ch',
+      },
+      // D-130: minHeight has its own scale in Tailwind, so the touch floor has
+      // to be declared here to exist as `min-h-tap`.
+      // D-131: the code line-height token, so a line's tap-target height is
+      // set in one place (tokens.css) rather than per component.
+      lineHeight: {
+        code: 'var(--code-line-height)',
+      },
+      minHeight: {
+        tap: 'var(--tap-min)',
+      },
+      minWidth: {
+        tap: 'var(--tap-min)',
       },
     },
   },

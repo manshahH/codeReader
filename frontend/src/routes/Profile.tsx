@@ -5,6 +5,7 @@ import { AccuracyLine } from '../components/gutter/AccuracyLine';
 import { ActivityHeatmap } from '../components/gutter/ActivityHeatmap';
 import { GutterCell, StreakTicks } from '../components/gutter/Gutter';
 import { EmailSection } from '../components/EmailSection';
+import { ReadingPreferences } from '../components/ReadingPreferences';
 import { ReviewPromptModal } from '../components/ReviewPromptModal';
 import type { ReactNode } from 'react';
 
@@ -318,6 +319,11 @@ export function Profile() {
             concurrent fetch here is the exact cause of the token-refresh race
             in docs/ops-incident-report-july-2026.md. */}
         <EmailSection />
+
+        {/* D-132: moved out of the session player, where a permanent controls
+            row competed with the code for the vertical space that matters most
+            on a phone. Both settings are set-once. */}
+        <ReadingPreferences />
         {withPanel(
           sessions,
           'Recent sessions',

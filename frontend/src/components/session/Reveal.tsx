@@ -6,9 +6,10 @@ import {
   PredictTheFixRevealView,
   SpotTheBugRevealView,
   TraceRevealView,
-  getSpotTheBugCodeMarks,
+  getSpotTheBugDecorations,
 } from './revealViews';
 import { CodeBlock } from '../gutter/CodeBlock';
+import { primaryDocuments } from '../../lib/code/model';
 import type {
   Answer,
   AttemptResponse,
@@ -109,14 +110,13 @@ export function Reveal({ exercise, attempt, userAnswer, onNext, onDispute }: Pro
       {/* Left Column: Code */}
       <div className="flex-1 overflow-y-auto pr-2">
         {(() => {
-          let markLines;
-          let notedLines;
-          if (exercise.type === 'spot_the_bug' && attempt.reveal && 'correct_lines' in attempt.reveal) {
-            const marks = getSpotTheBugCodeMarks(attempt.reveal as STBReveal, userAnswer);
-            markLines = marks.markLines;
-            notedLines = marks.notedLines;
-          }
-          return <CodeBlock code={exercise.payload.code} markLines={markLines} notedLines={notedLines} />;
+          const decorations =
+            exercise.type === 'spot_the_bug' && attempt.reveal && 'correct_lines' in attempt.reveal
+              ? getSpotTheBugDecorations(attempt.reveal as STBReveal, userAnswer)
+              : [];
+          return (
+            <CodeBlock documents={primaryDocuments(exercise.payload)} decorations={decorations} />
+          );
         })()}
       </div>
 

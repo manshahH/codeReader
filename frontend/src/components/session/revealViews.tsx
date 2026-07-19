@@ -1,4 +1,5 @@
 import { CodeBlock } from '../gutter/CodeBlock';
+import { documentsFromCode, lineDecorations, type Decoration } from '../../lib/code/model';
 import type {
   Answer,
   PredictTheFixReveal,
@@ -27,21 +28,27 @@ function RevealUnavailable() {
   );
 }
 
-export function getSpotTheBugCodeMarks(reveal: STBReveal, answer: Answer) {
-  let markLines: Record<number, 'correct' | 'incorrect'> | undefined;
-  let notedLines: Set<number> | undefined;
+/**
+ * D-129 decision 3: this returns DATA, not styling.
+ *
+ * It used to hand back a `Record<line, 'correct' | 'incorrect'>` plus a Set of
+ * noted lines -- two shapes that only CodeBlock could interpret, and that could
+ * only ever describe whole lines. It now returns a decoration list, so the same
+ * function can describe a sub-expression mark the day an exercise type needs
+ * one, and CodeBlock applies it without knowing where it came from.
+ *
+ * Empty list when the reveal is missing the fields it needs, which matches the
+ * old undefined return: no marks rather than a throw.
+ */
+export function getSpotTheBugDecorations(reveal: STBReveal, answer: Answer): Decoration[] {
+  if (!reveal.correct_lines || !reveal.explanation?.line_notes) return [];
 
-  if (reveal.correct_lines && reveal.explanation?.line_notes) {
-    markLines = {};
-    reveal.correct_lines.forEach((line) => {
-      markLines![line] = 'correct';
-    });
-    if ('line' in answer && !reveal.correct_lines.includes(answer.line)) {
-      markLines![answer.line] = 'incorrect';
-    }
-    notedLines = new Set(reveal.explanation.line_notes.map((n) => n.line));
+  const decorations: Decoration[] = lineDecorations(reveal.correct_lines, 'correct');
+  if ('line' in answer && !reveal.correct_lines.includes(answer.line)) {
+    decorations.push(...lineDecorations([answer.line], 'incorrect'));
   }
-  return { markLines, notedLines };
+  decorations.push(...lineDecorations(reveal.explanation.line_notes.map((n) => n.line), 'note'));
+  return decorations;
 }
 
 export function ExplanationSummary({ summary, principle }: { summary: string; principle: string }) {
@@ -65,14 +72,10 @@ export function SpotTheBugRevealView({
   reasonOptions?: ReasonOption[];
 }) {
   if (!reveal?.correct_lines || !reveal.explanation?.line_notes) return <RevealUnavailable />;
-  const markLines: Record<number, 'correct' | 'incorrect'> = {};
-  reveal.correct_lines.forEach((line) => {
-    markLines[line] = 'correct';
-  });
-  if ('line' in answer && !reveal.correct_lines.includes(answer.line)) {
-    markLines[answer.line] = 'incorrect';
-  }
-  const notedLines = new Set(reveal.explanation.line_notes.map((n) => n.line));
+  // This view renders the note LIST; the marks on the code itself are applied
+  // by the caller, which owns the CodeBlock. It used to compute a markLines
+  // record here too, which nothing read -- dead since the code column moved
+  // out of this component. Removed rather than ported to decorations.
   const correctReasonText = reasonOptions?.find((r) => r.id === reveal.correct_reason_id)?.text;
 
   return (
@@ -134,7 +137,7 @@ export function PredictTheFixRevealView({
       {wrongNote ? <p className="text-sm text-incorrect">{wrongNote.note}</p> : null}
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium text-correct">The fix that passes the test</p>
-        {correctFix ? <CodeBlock code={correctFix} /> : null}
+        {correctFix ? <CodeBlock documents={documentsFromCode(correctFix)} /> : null}
       </div>
     </div>
   );
