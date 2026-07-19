@@ -47,3 +47,6 @@ frontend/.env.local
 .backups/
 # One-off frontend verification artifacts (screenshots + throwaway scripts).
 frontend/_final-*
+# D-129 viewer visual/DOM harness output (evidence, not source)
+frontend/viewer-shots/
+frontend/viewer-dom/

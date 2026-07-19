@@ -126,7 +126,13 @@ test('full session: login (seed) -> one of each type -> reveal -> complete', asy
   // Completion, as this app actually expresses it: the player redirects to the
   // Dashboard, which flips to its completed state and offers the review link
   // instead of the "Enter sandbox" CTA.
-  await expect(page).toHaveURL(/localhost:5173\/$/, { timeout: 15_000 });
+  // baseURL-relative, not a hardcoded :5173. The port is configuration (the
+  // config's baseURL, or E2E_BASE_URL when pointing at an existing server), so
+  // hardcoding it made this assertion fail on any other port -- which is how it
+  // failed while the suite ran against a harness server, and would fail in CI
+  // the moment the dev-server port moved. Playwright resolves a string URL
+  // against baseURL, so "/" means "the app root, wherever that is".
+  await expect(page).toHaveURL('/', { timeout: 15_000 });
   await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('link', { name: "Review today's session" })).toBeVisible();
 });
