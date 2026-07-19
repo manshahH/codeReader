@@ -325,7 +325,56 @@ def _serialize_payload(exercise: Exercise) -> SessionExercisePayload:
         ]
     elif exercise.type == "summarize":
         fields["max_words"] = payload.get("max_words")
+    fields["documents"] = _payload_documents(exercise, payload, fields)
     return SessionExercisePayload(**fields)
+
+
+def _payload_documents(exercise: Exercise, payload: dict, fields: dict) -> list[dict]:
+    """The D-129 serialization boundary: normalize a stored payload into a
+    document list on the way OUT.
+
+    Invariant 3 is why this lives here rather than in a migration. Exercises are
+    immutable per (id, version) and a fix bumps the version, so the 109 stored
+    payloads are read exactly as they were published and never rewritten. Every
+    client above this function sees one shape; the database keeps the shape it
+    already had.
+
+    A stored payload that one day carries its own `documents` (a future
+    published version could) passes straight through, so this normalizes rather
+    than always constructs.
+    """
+    stored = payload.get("documents")
+    if isinstance(stored, list) and stored:
+        return stored
+
+    language = exercise.language
+    documents: list[dict] = [
+        {"id": "primary", "role": "primary", "code": fields["code"] or "", "language": language}
+    ]
+    # Only predict_the_fix has more than one document today, and it is the
+    # reason decision 4 is not speculative: it already shows the buggy code,
+    # the failing test, and one block per candidate fix.
+    if fields.get("failing_test"):
+        documents.append(
+            {
+                "id": "failing_test",
+                "role": "failing_test",
+                "code": fields["failing_test"],
+                "language": language,
+                "label": "Failing test",
+            }
+        )
+    if exercise.type == "predict_the_fix":
+        for choice in fields.get("choices") or []:
+            documents.append(
+                {
+                    "id": choice["id"],
+                    "role": "choice",
+                    "code": choice["text"],
+                    "language": language,
+                }
+            )
+    return documents
 
 
 async def get_today_session(db: AsyncSession, redis: Redis, user: User) -> dict:
