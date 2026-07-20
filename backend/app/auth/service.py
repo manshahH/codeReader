@@ -32,7 +32,16 @@ class RefreshIssue:
     row: RefreshToken
 
 
-def user_response(user: User) -> dict[str, str | bool | None]:
+def user_response(user: User, *, email_prefs: dict[str, bool]) -> dict[str, object]:
+    """The client-visible user allowlist.
+
+    `email_prefs` is a REQUIRED keyword argument rather than something this
+    function fetches, for two reasons. This module is sync and the preference
+    read needs the session; and making it required means a new call site cannot
+    silently omit it and ship a user object the Profile screen renders as
+    "reminders off" for everyone. There are only three call sites, so the cost
+    of threading it is one line each.
+    """
     return {
         "id": str(user.id),
         "username": user.username,
@@ -50,6 +59,20 @@ def user_response(user: User) -> dict[str, str | bool | None]:
         "email": user.email,
         "email_verified": user.email_verified_at is not None,
         "pending_email": user.pending_email,
+        # A3 (D-137). `reminder_local_time` was ALREADY promised by docs/05
+        # section 3 ("Same user object as above plus reminder_local_time") and
+        # was already accepted by PATCH /me, but it was never actually in this
+        # allowlist -- so the client could set it and could never read it back.
+        # Serialized as "HH:MM", matching the format PATCH /me validates.
+        "reminder_local_time": (
+            user.reminder_local_time.strftime("%H:%M")
+            if user.reminder_local_time is not None
+            else None
+        ),
+        # Consent, kept SEPARATE from the schedule above: a user can have
+        # reminders consented with no time set, and the Profile screen has to
+        # render that differently from "turned off" (D-137(6)).
+        "email_prefs": email_prefs,
     }
 
 

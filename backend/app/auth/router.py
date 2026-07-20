@@ -31,6 +31,7 @@ from app.core.errors import ApiError, request_id
 from app.core.network import resolve_client_ip
 from app.core.ratelimit import check_token_bucket
 from app.core.redis import get_redis
+from app.email.deliveries import email_preferences
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 OAUTH_STATE_TTL_SECONDS = 600
@@ -188,7 +189,7 @@ async def refresh(
         content={
             "access_token": access_token,
             "expires_in": get_settings().ACCESS_TOKEN_TTL,
-            "user": user_response(user),
+            "user": user_response(user, email_prefs=await email_preferences(session, user.id)),
         },
         headers=headers,
     )

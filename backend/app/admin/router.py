@@ -23,7 +23,8 @@ from app.auth.service import invite_to_beta, revoke_beta_access
 from app.config import get_settings
 from app.core.errors import ApiError
 from app.core.redis import get_redis
-from app.schemas.admin import BetaInviteRequest, OutageFreezeRequest
+from app.jobs.trigger import run_jobs
+from app.schemas.admin import BetaInviteRequest, OutageFreezeRequest, RunJobsRequest
 from app.streak.service import grant_initial_freezes, outage_freeze
 
 router = APIRouter(tags=["admin"])
@@ -118,3 +119,35 @@ async def admin_reviews(
 ) -> list[dict]:
     _require_admin_token(x_admin_token)
     return await list_reviews(session)
+
+
+@router.post("/admin/jobs/run")
+async def admin_run_jobs(
+    request: Request,
+    payload: RunJobsRequest | None = None,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    redis: Redis = RedisDep,
+) -> dict:
+    """Run the notification jobs NOW. The external clock for a platform that
+    scales to zero (D-138).
+
+    The in-process scheduler dies with the app, and the idle trough is
+    overnight -- exactly when an 08:00 reminder must fire. This endpoint is
+    called by a scheduled workflow OUTSIDE the thing that sleeps; the request
+    itself wakes the app.
+
+    SYNCHRONOUS on purpose: returning 202 and sweeping in a background task
+    would let the platform suspend the instance mid-sweep, which is the same
+    bug in a smaller form. The work is bounded by EMAIL_MAX_SENDS_PER_TICK and
+    the send pacing, so the request is bounded too.
+
+    Gated by the same shared-secret header as every other /admin route, and
+    404s when ADMIN_METRICS_TOKEN is unset, so an unconfigured deploy does not
+    quietly expose a way to make it send email.
+    """
+    _require_admin_token(x_admin_token)
+    session_factory = request.app.state.session_factory
+    try:
+        return await run_jobs(session_factory, redis, names=payload.jobs if payload else None)
+    except ValueError as exc:
+        raise ApiError(400, "validation_error", str(exc)) from exc

@@ -32,6 +32,29 @@ newer one. `invalidated_at` rather than deleting superseded rows, for the same
 reason streak_events is a ledger: "why did my link stop working" has to be
 answerable in one query.
 
+**email_deliveries / email_suppressions** (A3, D-137): the send-once ledger and
+the permanent opt-out, and they answer two different questions that must not be
+conflated. `email_deliveries` answers "have we already sent this user this kind
+of mail for this period", and its PRIMARY KEY `(user_id, kind, period_key)` IS
+the frequency ceiling: two overlapping job runs both attempt the claim and
+exactly one INSERT wins, with no advisory lock needed because there is nothing
+to read-modify-write. A ledger rather than a `last_reminder_sent_at` column for
+the same reason D-116 refused to infer a covered day from the freeze balance: a
+timestamp makes "already sent" a computation at read time, and that computation
+depends on the user's timezone, which can change underneath it. The period key
+IS the answer, so it cannot drift. `status` carries a three-way outcome where
+the middle value is the interesting one: 'sent' and 'skipped' are terminal,
+'failed' is a DEFINITE failure we committed and is therefore retryable, and
+'claimed' is the ambiguous state (the process died between claim and outcome)
+which is terminal ON PURPOSE, because a duplicate reminder is the expensive
+direction of that guess. `email_suppressions` answers "may we send at all" and
+is keyed on `user_id`, NEVER on the address: that is exactly what makes an
+unsubscribe survive a re-verify, since removing an address, adding a new one and
+confirming it never touches this table. There is no expiry column and nothing in
+the job path deletes a row; the only way back on is an authenticated opt-in on
+Profile. `reason` and `source` are carried from day one so that adding the
+deferred Resend bounce/complaint webhook later is an endpoint, not a migration.
+
 **refresh_tokens**: opaque token sha256-hashed at rest; family_id present NOW
 so post-MVP reuse-detection family kill is a code change. MVP behavior on
 reuse of a rotated token: 401 + alert.

@@ -6,6 +6,7 @@ import { ActivityHeatmap } from '../components/gutter/ActivityHeatmap';
 import { GutterCell, StreakTicks } from '../components/gutter/Gutter';
 import { EmailSection } from '../components/EmailSection';
 import { ReadingPreferences } from '../components/ReadingPreferences';
+import ReminderSection from '../components/ReminderSection';
 import { ReviewPromptModal } from '../components/ReviewPromptModal';
 import type { ReactNode } from 'react';
 
@@ -319,6 +320,11 @@ export function Profile() {
             concurrent fetch here is the exact cause of the token-refresh race
             in docs/ops-incident-report-july-2026.md. */}
         <EmailSection />
+        {/* A3 (D-137). Sits immediately after the email card because it is
+            functionally downstream of having a confirmed address, and it reads
+            the same already-loaded auth-context user for the same reason
+            EmailSection does. Still no sixth fetch. */}
+        <ReminderSection />
 
         {/* D-132: moved out of the session player, where a permanent controls
             row competed with the code for the vertical space that matters most

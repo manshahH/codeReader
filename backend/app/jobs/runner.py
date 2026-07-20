@@ -34,6 +34,8 @@ from app.config import Settings
 from app.jobs.grading_retry import resolve_pending_summarize_grades
 from app.jobs.partitions import ensure_next_month_attempts_partition
 from app.jobs.percentiles import compute_exercise_stats
+from app.jobs.reminders import send_daily_reminders
+from app.jobs.weekly_email import send_weekly_recaps
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +124,17 @@ def build_scheduler(
             await db.commit()
             return partition_name
 
+    # A3 (D-137). These two take the session FACTORY, not a session: the sweep
+    # opens a short transaction per recipient so that one failure cannot poison
+    # a session shared with the other 199. Neither can send anything while
+    # EMAIL_SENDING_ENABLED is false -- they resolve their sender through the
+    # same get_email_sender() the A2 routes use.
+    async def run_reminders() -> object:
+        return await send_daily_reminders(session_factory)
+
+    async def run_weekly_recap() -> object:
+        return await send_weekly_recaps(session_factory)
+
     return JobScheduler(
         [
             PeriodicJob(
@@ -143,6 +156,21 @@ def build_scheduler(
                 settings.JOB_PARTITIONS_INTERVAL_S,
                 run_partitions,
                 run_at_startup=True,
+            ),
+            # Deliberately NOT run_at_startup, unlike partitions. These send
+            # mail, so a crash-loop that restarts the process repeatedly must
+            # not turn into a send attempt per restart. The ledger would stop
+            # the duplicate anyway; not attempting at all is the cheaper
+            # guarantee and does not depend on the ledger being correct.
+            PeriodicJob(
+                "reminders",
+                settings.JOB_REMINDERS_INTERVAL_S,
+                run_reminders,
+            ),
+            PeriodicJob(
+                "weekly_recap",
+                settings.JOB_WEEKLY_RECAP_INTERVAL_S,
+                run_weekly_recap,
             ),
         ],
     )

@@ -9,6 +9,7 @@ import { Profile } from './routes/Profile';
 import { Review } from './routes/Review';
 import { RootGate } from './routes/RootGate';
 import { Session } from './routes/Session';
+import { Unsubscribe } from './routes/Unsubscribe';
 import { VerifyEmail } from './routes/VerifyEmail';
 
 function RequireAuth({
@@ -90,6 +91,13 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
+      {/* A3 (D-137(7)). PUBLIC, and the only screen that must be: the link
+          is opened from an inbox by someone who may not be signed in, and an
+          unsubscribe that bounces to OAuth is a broken unsubscribe. No
+          AppLayout either -- its NavBar links are meaningless signed out. The
+          page previews and waits for a press; it does not act on mount, so a
+          link scanner following the URL cannot unsubscribe anyone. */}
+      <Route path="/unsubscribe" element={<Unsubscribe />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

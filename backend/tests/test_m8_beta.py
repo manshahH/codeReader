@@ -445,7 +445,16 @@ async def test_admin_metrics_reports_job_runner_health(
 
     assert response.status_code == 200
     jobs = response.json()["jobs"]
-    assert set(jobs) == {"grading_retry", "percentiles", "partitions"}
+    # A3 (D-137) registered "reminders" and "weekly_recap". They are reported
+    # here with a run_count of 0 because this test leaves them on their real
+    # intervals; the assertion is that /admin/metrics SEES every job.
+    assert set(jobs) == {
+        "grading_retry",
+        "percentiles",
+        "partitions",
+        "reminders",
+        "weekly_recap",
+    }
     assert jobs["grading_retry"]["run_count"] >= 1
     assert jobs["grading_retry"]["last_run_at"] is not None
 

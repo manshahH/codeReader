@@ -114,6 +114,35 @@ class Settings(BaseSettings):
     # converge on one mailbox.
     EMAIL_VERIFICATION_RESEND_COOLDOWN_S: int = 60
     EMAIL_VERIFICATION_SENDS_PER_HOUR: int = 5
+    # A3 reminders + weekly recap (docs/10; D-137). Nothing here can send while
+    # EMAIL_SENDING_ENABLED is false: the jobs resolve their sender through the
+    # same get_email_sender() the A2 routes use, so the off-switch is structural
+    # for them too. The ledger still fills in, which is what makes the whole
+    # flow walkable locally with nothing leaving the process.
+    #
+    # Retries are bounded by BOTH a count and a window. The window exists
+    # because the second send-once layer is Resend's Idempotency-Key, which it
+    # honours for 24 hours; outside that window a retry is no longer provably
+    # safe, so we stop rather than risk a duplicate (D-137(4)).
+    EMAIL_SEND_MAX_ATTEMPTS: int = 3
+    EMAIL_SEND_RETRY_WINDOW_H: int = 24
+    # Batching (D-137(10)). Sequential and paced, never a concurrent fan-out:
+    # 200 simultaneous POSTs earns an immediate 429 and then we own a
+    # retry-storm strictly worse than being slow in a background job nobody is
+    # waiting on. 2/s is Resend's documented default rate limit. The per-tick
+    # cap DEFERS rather than drops, which is only safe because reminder
+    # eligibility runs to the end of the user's local day.
+    EMAIL_JOB_BATCH_SIZE: int = 200
+    EMAIL_MAX_SENDS_PER_TICK: int = 100
+    EMAIL_SENDS_PER_SECOND: float = 2.0
+    # The recap reports the ISO week that just ENDED, so Monday is the first
+    # moment that week is complete; a Sunday-evening send would silently omit
+    # Sunday. 09:00 is FIXED rather than the user's reminder time, so the two
+    # cannot land in the same minute (0 = Monday, matching date.weekday()).
+    RECAP_LOCAL_WEEKDAY: int = 0
+    RECAP_LOCAL_HOUR: int = 9
+    JOB_REMINDERS_INTERVAL_S: float = 300.0
+    JOB_WEEKLY_RECAP_INTERVAL_S: float = 900.0
     # D-123. summarize is OFF (D-115) and this is the switch that enforces it.
     # It defaults FALSE, so summarize is excluded from sampling regardless of
     # what is in the exercises table: a live summarize row is no longer enough

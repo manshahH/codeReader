@@ -35,6 +35,11 @@ function stubUser(overrides: Partial<EmailState> = {}) {
     email: null,
     email_verified: false,
     pending_email: null,
+    // A3 (D-137): the Profile now renders a reminders card from these two.
+    // Omitting them would exercise the component's render-safety fallback
+    // instead of the real shape, which is not what these specs are testing.
+    reminder_local_time: null,
+    email_prefs: { reminders_enabled: true, recap_enabled: true },
     ...overrides,
   };
 }

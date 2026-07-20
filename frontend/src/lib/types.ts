@@ -21,6 +21,23 @@ export interface User {
   email: string | null;
   email_verified: boolean;
   pending_email: string | null;
+  /**
+   * A3 (D-137). `reminder_local_time` is "HH:MM" or null, and null means no
+   * time chosen -- NOT "reminders off". Consent lives in `email_prefs`, which
+   * is a separate axis on purpose (D-137(6)): a user can be opted in with no
+   * time set, and the Profile card renders that differently from opted out.
+   */
+  reminder_local_time: string | null;
+  email_prefs: EmailPrefs;
+}
+
+/**
+ * Consent per email type, phrased positively. The server stores the negative (a
+ * suppression row) and inverts it once, at the edge, so the client never has to.
+ */
+export interface EmailPrefs {
+  reminders_enabled: boolean;
+  recap_enabled: boolean;
 }
 
 /** The body every /v1/me/email route returns: the email slice of the user. */

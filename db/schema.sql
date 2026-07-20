@@ -81,6 +81,64 @@ CREATE TABLE email_verification_tokens (
 CREATE INDEX idx_evt_user_live ON email_verification_tokens (user_id)
   WHERE consumed_at IS NULL AND invalidated_at IS NULL;
 
+-- A3 send-once ledger (D-137(2)). One row per (user, kind, period), and the
+-- PRIMARY KEY IS the frequency ceiling: two overlapping job runs both attempt
+-- the claim and exactly one INSERT wins. No advisory lock needed, unlike the
+-- streak transition, because there is nothing here to read-modify-write.
+-- A LEDGER, not a last_sent_at column, for the same reason D-116 reads a
+-- covered day from streak_events rather than inferring it from a balance: a
+-- timestamp makes "already sent for this period" a computation at read time,
+-- and that computation depends on the user's timezone, which can change
+-- underneath it. period_key IS the answer, so it cannot drift.
+-- status: 'sent' and 'skipped' are terminal; 'failed' is a DEFINITE failure we
+-- committed, so it is retryable; 'claimed' is the ambiguous state (died between
+-- claim and outcome) and is terminal on purpose, because a duplicate reminder
+-- is the expensive direction of that guess.
+CREATE TABLE email_deliveries (
+  user_id    uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind       text        NOT NULL CHECK (kind IN ('reminder','recap')),
+  period_key text        NOT NULL,                  -- user-LOCAL 'YYYY-MM-DD' or ISO 'GGGG-Www'
+  status     text        NOT NULL DEFAULT 'claimed'
+               CHECK (status IN ('claimed','sent','failed','skipped')),
+  attempts   int         NOT NULL DEFAULT 0,
+  last_error text,                                  -- exception TYPE only, never a body (D-120)
+  -- The rendered email, snapshotted on the FIRST attempt and resent verbatim by
+  -- every retry. Resend's idempotency contract is same-key-SAME-PAYLOAD; a
+  -- changed body under the same key is a 409, and a changed KEY would be a
+  -- duplicate. NULL = claimed but not rendered yet.
+  payload    jsonb,
+  claimed_at timestamptz NOT NULL DEFAULT now(),
+  sent_at    timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, kind, period_key)
+);
+
+CREATE TRIGGER trg_email_deliveries_touch BEFORE UPDATE ON email_deliveries
+  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE INDEX idx_email_deliveries_retryable ON email_deliveries (kind, period_key)
+  WHERE status = 'failed';
+
+-- Permanent opt-out (D-137(6)). Keyed on user_id and NEVER on the address:
+-- that is exactly what makes an unsubscribe survive a re-verify, since
+-- DELETE /me/email plus a new address plus a fresh verification never touches
+-- this table. No expiry column, and nothing in the job path deletes a row --
+-- the only way back on is an explicit authenticated opt-in on Profile.
+-- Orthogonal to users.reminder_local_time, which is a SCHEDULE ("when") where
+-- this is a CONSENT ("whether"); the job requires both.
+-- 'all' is what a spam complaint means. reason/source are carried from day one
+-- so adding the deferred bounce+complaint webhook is an endpoint, not a migration.
+CREATE TABLE email_suppressions (
+  user_id    uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind       text        NOT NULL CHECK (kind IN ('reminder','recap','all')),
+  reason     text        NOT NULL DEFAULT 'unsubscribe'
+               CHECK (reason IN ('unsubscribe','bounce','complaint')),
+  source     text        NOT NULL DEFAULT 'email_link'
+               CHECK (source IN ('email_link','profile','webhook','admin')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, kind)
+);
+
 -- Provider-agnostic identities. MVP has exactly one row per user
 -- (provider = 'github') but the shape is multi-provider from day one.
 CREATE TABLE auth_identities (

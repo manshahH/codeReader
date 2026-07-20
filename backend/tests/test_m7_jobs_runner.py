@@ -29,7 +29,17 @@ from tests.factories_m4 import (
     make_user,
 )
 
-JOB_NAMES = {"grading_retry", "percentiles", "partitions"}
+# A3 (D-137) added two. Listed here deliberately rather than derived from the
+# scheduler: this set is the point of the test. A job added without being added
+# here fails, which is what caught the A3 pair and is exactly the "nothing ever
+# invoked them" regression this file exists for.
+JOB_NAMES = {
+    "grading_retry",
+    "percentiles",
+    "partitions",
+    "reminders",
+    "weekly_recap",
+}
 
 
 @pytest.fixture
@@ -38,6 +48,11 @@ def fast_job_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JOB_GRADING_RETRY_INTERVAL_S", "0.05")
     monkeypatch.setenv("JOB_PERCENTILES_INTERVAL_S", "0.05")
     monkeypatch.setenv("JOB_PARTITIONS_INTERVAL_S", "60")
+    # A3: fast enough to tick inside the test. They send nothing -- there are
+    # no verified users here, and EMAIL_SENDING_ENABLED defaults false, so the
+    # sender has no transport at all.
+    monkeypatch.setenv("JOB_REMINDERS_INTERVAL_S", "0.05")
+    monkeypatch.setenv("JOB_WEEKLY_RECAP_INTERVAL_S", "0.05")
     get_settings.cache_clear()
 
 

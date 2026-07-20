@@ -78,18 +78,118 @@ routes: `POST /v1/me/email`, `POST /v1/me/email/verify`,
 backfill needed. This is the first migration in the retention work, so A2's
 release is NOT the no-migration shape A1's was.
 
-**A3 (reminders + weekly recap) HAS A HARD PREREQUISITE, name it before
-planning:** Resend will only send from a verified domain, needing SPF, DKIM, MX
-and DMARC records. `EMAIL_FROM` currently points at
-`no-reply@codereader.dev`, **a placeholder nobody owns**, and neither
-`codereader-eight.vercel.app` nor `codereader.fastapicloud.dev` can be used
-(you cannot add DNS records to a domain you do not control). D-114 deferred
-buying a domain; A3 cannot ship until that is reversed, and DNS propagation plus
-verification is a lead-time item. `APP_ORIGIN` should move at the same time,
-since verification links are built from it, and a domain change touches D-114's
+**A3 (reminders + weekly recap) IS BUILT, on branch `a3-reminders-recap`
+(D-137). It is NOT deployed and NOT merged.** Migration **0010** adds
+`email_deliveries` (the send-once ledger) and `email_suppressions` (permanent,
+per-user opt-out). New routes: `PATCH /v1/me/email-prefs`, and the two PUBLIC
+unsubscribe routes `POST /v1/unsubscribe?token=` (RFC 8058 one-click, no login)
+and `GET /v1/unsubscribe/preview?token=`. `GET /me` and `/auth/refresh` gained
+`reminder_local_time` (promised by docs/05 since M6 but never actually in the
+allowlist) and `email_prefs`. Two new jobs run off the existing `jobs/runner.py`.
+Frontend: a reminders card on Profile and a public `/unsubscribe` page.
+
+The load-bearing decision is the send-once mechanism: an `email_deliveries`
+LEDGER whose PRIMARY KEY `(user_id, kind, period_key)` IS the ceiling, claimed
+and COMMITTED before the provider call, with a deterministic Resend
+`Idempotency-Key` as a second layer. `claimed` is terminal on purpose, because a
+duplicate reminder costs more than a missed one. This is D-116's argument one
+layer up: a recorded fact, never a recomputation that a timezone change can move.
+
+**THE HARD PREREQUISITE IS STILL OPEN, and building A3 did not close it.**
+Resend will only send from a verified domain, needing SPF, DKIM, MX and DMARC
+records. `EMAIL_FROM` still points at `no-reply@codereader.dev`, **a placeholder
+nobody owns**, and neither `codereader-eight.vercel.app` nor
+`codereader.fastapicloud.dev` can be used (you cannot add DNS records to a
+domain you do not control). D-114 deferred buying a domain; A3 cannot SEND until
+that is reversed, and DNS propagation plus verification is a lead-time item.
+So "paste a real `RESEND_API_KEY` and flip `EMAIL_SENDING_ENABLED=true`" is
+NECESSARY AND NOT SUFFICIENT: with the key set but no verified domain, every
+send returns a provider error, which the job records as `failed` and retries to
+its cap. `APP_ORIGIN` should move at the same time, since verification AND
+unsubscribe links are built from it, and a domain change touches D-114's
 same-origin rewrite and the `GITHUB_REDIRECT_URI` rule in docs/09 section 3.
 `EMAIL_SENDING_ENABLED` defaults false, so nothing sends until deliberately
 enabled.
+
+**A3 GO-LIVE ENV, and the job-runner half is the easiest thing to forget.** A
+correct reminder system that never ticks is the most likely way this fails
+silently: no error, no mail, nothing in Sentry, and the ledger simply stays
+empty. The A3 release checklist is therefore:
+
+| Setting | Value | Where |
+|---|---|---|
+| `JOBS_ENABLED` | `true` (already the default, and already `true` in both `.env.example`) | FastAPI Cloud |
+| `JOB_REMINDERS_INTERVAL_S` | `60` for launch, NOT the 300 default | FastAPI Cloud |
+| `JOB_WEEKLY_RECAP_INTERVAL_S` | `900` (default is fine) | FastAPI Cloud |
+| `RESEND_API_KEY` | the real key | FastAPI Cloud |
+| `EMAIL_SENDING_ENABLED` | `true` | FastAPI Cloud |
+| `EMAIL_FROM` | `Reedkode <no-reply@reedkode.com>` once the domain is verified | FastAPI Cloud |
+| `APP_ORIGIN` | the production frontend origin | FastAPI Cloud |
+
+**Why the interval must come down from 300.** The reminder job is a SWEEP, not
+a scheduler: it fires for everyone whose local time is at or past their chosen
+minute, so the tick interval IS the worst-case lateness. At the 300s default a
+user who picked 08:00 can be mailed at 08:04:59. At 60s the worst case is 59
+seconds, which is "near their chosen minute" in any sense a user would notice.
+The interval cannot be lowered indefinitely: each tick is a query plus up to
+`EMAIL_MAX_SENDS_PER_TICK` paced sends, so 60s is the floor at which a tick
+still finishes before the next one starts at launch volume. It is NOT an
+hour-late system by default -- 300s is five minutes, not sixty -- but 60s is
+the right launch value.
+
+**Does the runner actually start on FastAPI Cloud?** Yes, and the mechanism is
+worth naming because it is the load-bearing assumption. The scheduler is
+started from the FastAPI **lifespan** (`main.py`), not from a cron container
+and not from a separate worker process, so it runs wherever the ASGI app runs.
+Two consequences: (a) if FastAPI Cloud ever scales to more than one instance,
+EVERY instance runs the jobs -- which is safe, because the `email_deliveries`
+primary key means only one instance can claim any period, but it does multiply
+the harmless no-op queries; (b) if the platform idles the app to zero when
+there is no traffic, the jobs stop with it. **Verify after deploy** with
+`GET /admin/metrics`, which reports `run_count` and `last_run_at` per job:
+`reminders` climbing is the only proof the layer is alive. A `run_count` that
+stops climbing between two polls is the failure this metric exists to catch.
+
+**LAUNCH BLOCKER 2, alongside the domain: the Resend plan.** The free tier is
+**100 emails/day and 3,000/month**, and a public launch clears that almost
+immediately. Volume is deterministic, because A3 sends at most one reminder per
+user per day and one recap per user per week:
+
+| Subscribed users | Reminders/day | Recap day adds | Peak day (Monday) | Per month |
+|---|---|---|---|---|
+| 200 | up to 200 | +200 | **400** | ~6,800 |
+| 500 | up to 500 | +500 | **1,000** | ~17,000 |
+| 1,000 | up to 1,000 | +1,000 | **2,000** | ~34,000 |
+
+Those are ceilings, not forecasts: a reminder is skipped for anyone who already
+practised that day, and an empty week is skipped entirely, so real volume is
+lower and falls as engagement rises. Even so, **200 subscribed users exceed the
+free daily cap on any Monday, and ~90 users exceed it on an ordinary day.**
+
+Pricing: **Pro is $20/mo for 50,000 emails**, then $35/mo for 100,000; Scale
+starts at $90/mo for 100,000. Overage on Pro is $0.90 per 1,000. So the entry
+Pro plan covers 1,000 fully-subscribed users (~34,000/mo) with room to spare,
+and the decision at launch is simply free-to-Pro, a $20/mo line item. Free also
+allows only ONE verified domain, which is enough for reedkode.com but leaves no
+room for a separate staging sender.
+
+**Does the job degrade gracefully or hammer the limit?** It degrades, and this
+was designed rather than lucky, but the two limits fail differently:
+- **The per-second rate limit is respected by construction.** Sends are
+  sequential and paced at `EMAIL_SENDS_PER_SECOND` (2/s, against a documented
+  ceiling of 10/s per team), never a concurrent fan-out, and
+  `EMAIL_MAX_SENDS_PER_TICK` caps each tick. It cannot burst.
+- **The daily/monthly cap is NOT respected, because the job cannot see it.**
+  Once the plan quota is exhausted Resend starts refusing, and every refusal is
+  an `EmailSendError` that lands the period in `failed` with an attempt count.
+  That is graceful in the sense that matters -- it does not crash the job, does
+  not mark the period sent, does not double-send, and stops after
+  `EMAIL_SEND_MAX_ATTEMPTS` -- but it is NOT self-limiting: it will keep
+  re-attempting up to the cap for every user, every tick, and the visible
+  symptom is a pile of `failed` rows rather than an alert. **Watch for
+  `email_deliveries` rows with `status='failed'` after launch; that is the
+  quota signal.** Staying on the free tier past ~90 users therefore produces
+  mail that silently stops for most users while the job looks busy.
 
 **Three fixes rode in on the A2 branch, unrelated to email** (deliberately not
 split out; see the A2 merge commit):
@@ -316,15 +416,18 @@ specs DETERMINISTICALLY for an unrelated reason (APP_ORIGIN pins CORS to
 conflated.
 
 
-**Pre-beta (from the Fable/Opus whole-system audit):**
+**Pre-launch (from the Fable/Opus whole-system audit):**
 - ✅ job runner wired, exercise pull path, transient empty sessions, seed gating,
   difficulty bands (D-58..D-62)
 - ✅ Sentry (D-63), rate limits, concurrency locks, streak reconciliation,
   partition recovery, security headers, backup/restore drill (D-64..D-73)
 - ✅ **conftest DB wipe** guarded (D-88)
 - ⚠️ **rotate secrets** — verify the burned July-12 keys were rotated at provider
-- ⚠️ `/admin/metrics` uses a shared-secret token, not real auth (fine for a 20–30
-  person beta, flagged)
+- ⚠️ `/admin/metrics` uses a shared-secret token, not real auth. This was
+  accepted on the grounds that the population would be a 20 to 30 person beta,
+  and THAT GROUND NO LONGER HOLDS now the plan is a full public launch. An empty
+  `ADMIN_METRICS_TOKEN` disables the endpoint (404), which is the safe default;
+  anything else needs a deliberate decision.
 - ⚠️ alert catalog is **log-only** — nothing actually pages anyone
 - ⚠️ CI dependency-audit job has never run against live advisory feeds
 
@@ -335,9 +438,33 @@ conflated.
   session player is strong, the surrounding screens need a design pass. Own
   milestone, after content exists.
 
-**Then:** human-review the corpus via `review_cli packet`, flip to live, invite
-20–30 devs, watch D1/D7 retention + dispute rate. Beta criterion: a week of daily
-sessions with **zero manual intervention**.
+**Then:** human-review the corpus via `review_cli packet` and flip to live.
+**This is a FULL PUBLIC LAUNCH, not a 20 to 30 person invite beta.** The earlier
+plan here was to invite 20 to 30 devs and gate on a D1/D7 retention read; that
+plan is withdrawn. D1/D7 from a couple of dozen hand-picked invitees was never
+going to be a usable signal (the sample is too small and too friendly to
+separate a real retention curve from noise), and the retention layer in docs/10
+is built on the research rather than on that read. Signup is open:
+`BETA_GATE_ENABLED` already defaults false per D-92.
+
+**Do NOT flip `BETA_GATE_ENABLED` or unwire the gate.** Per D-92 it is a switch,
+not a wall, and `beta_allowed` / `beta_invites` / `_apply_beta_invite` stay wired
+and populated on every login. It is the reserve control for abuse, cost, or a
+content incident, and deleting it is exactly what D-92 declined to do.
+
+Readiness criterion, unchanged in substance and no longer called a beta
+criterion: a week of daily sessions with **zero manual intervention**.
+
+Two things a public launch makes load-bearing that a 20 to 30 person beta did
+not:
+- `/admin/metrics` shared-secret auth was accepted BECAUSE the population was
+  20 to 30 known people (see the item above). That justification is gone. It is
+  not a launch blocker on its own, since the endpoint is disabled entirely when
+  `ADMIN_METRICS_TOKEN` is empty, but it must be either left disabled in
+  production or given real auth, deliberately rather than by default.
+- The volume assumptions in A3's batching (D-137(10)) were sized at 1,000
+  users. A public launch is the scenario that reaches them, and the Resend free
+  tier (100/day, 3,000/month) is the first thing that breaks.
 
 ---
 

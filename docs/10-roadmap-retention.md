@@ -1,12 +1,26 @@
 # 10 : Roadmap (Retention & Gamification)
 
-Status: A1 AND A2 ARE BUILT AND MERGED TO MASTER (2026-07-18, not deployed).
-Everything from A3 onward is still planning. This is the "what we build next"
-doc; `HANDOFF.md` is the "what is already built" doc. Read both before starting.
-**A3 (reminders + weekly recap) is next, and it is BLOCKED on a sending domain:
-Resend needs a verified domain (SPF/DKIM/MX/DMARC) and `EMAIL_FROM` currently
-names a placeholder nobody owns. D-114 deferred buying one; that has to be
-reversed before A3 can ship. See HANDOFF for the full dependency.**
+Status: A1, A2 AND A3 ARE BUILT (A1/A2 merged to master 2026-07-18; A3 on
+`a3-reminders-recap`, 2026-07-20). Everything from A4 onward is still planning.
+This is the "what we build next" doc; `HANDOFF.md` is the "what is already
+built" doc. Read both before starting.
+
+**A3 is CODE-COMPLETE but STILL BLOCKED ON A SENDING DOMAIN, and building it did
+not unblock that.** Resend only sends from a verified domain (SPF/DKIM/MX/DMARC)
+and `EMAIL_FROM` still names `no-reply@codereader.dev`, a placeholder nobody
+owns. D-114 deferred buying one and that has to be reversed before a single mail
+goes out. Concretely: pasting a real `RESEND_API_KEY` and flipping
+`EMAIL_SENDING_ENABLED=true` is NECESSARY AND NOT SUFFICIENT -- without a
+verified domain every send returns a provider error, which the job will record
+as `failed` and retry to its cap. `APP_ORIGIN` must move at the same time, since
+both verification and unsubscribe links are built from it. See D-137(0) and
+HANDOFF.
+
+**Launch shape: FULL PUBLIC LAUNCH, not a 20 to 30 person invite beta.** The
+invite-beta plan and its D1/D7 retention criterion are withdrawn (see HANDOFF):
+a couple of dozen hand-picked invitees cannot produce a D1/D7 signal worth
+gating on. `BETA_GATE_ENABLED` stays wired and defaults false per D-92; it is a
+switch held in reserve, not a wall to remove.
 
 The MVP proved the hard part (execution-validated content, the daily loop). This
 layer is the retention engine. It is backed by research on Duolingo, Habitica,
@@ -43,7 +57,7 @@ conclusions are inlined below.
 
 ## Phase A : quick wins (low risk, mostly on existing seams)
 
-Do these first. They move retention in weeks and answer beta-user feedback directly.
+Do these first. They move retention in weeks and answer real user feedback directly.
 
 - A1 Streak safety net (**SHIPPED**, see the A1 spec section below): streak freeze, repair / earn-back, grace days, and a
   "celebrate the return" tone instead of guilt. Decouple the streak from any hard
@@ -58,8 +72,18 @@ Do these first. They move retention in weeks and answer beta-user feedback direc
   squatted. A3 reads `users.email` and sees either a deliverable address or NULL,
   never a maybe. The Resend client and the verification email exist; reminder
   scheduling and recap content were deliberately left to A3.
-- A3 Reminders + weekly recap email: built on `reminder_local_time`. Optimise copy
-  and timing, never frequency ("protect the channel"), and drop all guilt tone.
+- A3 Reminders + weekly recap email (**BUILT**, D-137): built on
+  `reminder_local_time`. Optimise copy and timing, never frequency ("protect the
+  channel"), and drop all guilt tone. Send-once is the load-bearing decision and
+  it is an `email_deliveries` LEDGER whose primary key `(user_id, kind,
+  period_key)` is the ceiling, claimed and committed BEFORE the provider call,
+  plus a deterministic Resend `Idempotency-Key` as a second layer so that
+  retrying an ambiguous failure is safe. Suppression is permanent and keyed on
+  `user_id`, never the address, so an unsubscribe survives a re-verify.
+  One-click unsubscribe is a stateless HMAC with RFC 8058 headers, and the
+  Profile toggles read and write the same suppression rows. The recap goes out
+  Monday 09:00 local covering the week that just ended, and an empty week is
+  skipped rather than sent. Bounce/complaint webhooks are DEFERRED, explicitly.
 - A4 Peek at tomorrow: a teaser of tomorrow's set. Why: a reason to return that the
   streak cannot supply; cheap dopamine (requested by a beta user).
 - A5 Personal cheat sheet: let a user save an explanation or snippet, tagged by
