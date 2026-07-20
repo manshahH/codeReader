@@ -1,12 +1,40 @@
 # 11 : Is the phone a first-class surface?
 
-Status: OPEN QUESTION, awaiting a product decision. Not a design question, which
-is why it is not being resolved inside docs/08.
+> **STATUS: RESOLVED, 2026-07-21. ANSWER A -- the phone IS a first-class
+> surface.** Decided by building it: the viewer rebuild shipped and is merged to
+> master. Nothing below is awaiting a decision. The rest of this document is
+> kept as the EVIDENCE that motivated the rebuild (the measurements, the three
+> defects, the options weighed), not as a live question.
+>
+> Where the answer was implemented:
+> - **D-129** the code viewer moves to a model that survives new exercise types
+>   (and **D-129 AMENDED** for the wrap tension)
+> - **D-130** the mobile layout: desktop separates in SPACE, mobile in TIME
+> - **D-131** phone-surface follow-ups: line-height, nav targets, sheet copy
+> - **D-132** the mobile viewer was unusable at 400px: five measured defects
+> - **D-133** the code pane could latch shut: root cause, not the guessed one
+> - **D-134** the bottom sheet withdrawn; two full-screen narrow states replace it
+> - **D-135** reaching the dev app from a phone on the LAN
+> - **D-136** seeded specs intermittently flaky -- **STILL OPEN**, the only part
+>   of this work that is not settled
+>
+> The three blocked items are all addressed: the code pane and the
+> predict_the_fix options by the two-state narrow layout (D-130, D-134), and the
+> line-number tap target by D-131/D-132.
+>
+> The "Recommendation" section below reasons from a 20-30 person beta invite.
+> That framing is also withdrawn -- the launch is a full public launch (see
+> HANDOFF) -- but the recommendation it reached, A, is the one that was taken.
 
-This blocks three things that are already identified and specified: the code
-pane on narrow viewports, the predict_the_fix answer options on narrow
-viewports, and the spot_the_bug line-number tap target. All three are held
-pending the answer here.
+Historical framing follows, unchanged.
+
+Status when written: OPEN QUESTION, awaiting a product decision. Not a design
+question, which is why it was not resolved inside docs/08.
+
+This blocked three things already identified and specified: the code pane on
+narrow viewports, the predict_the_fix answer options on narrow viewports, and
+the spot_the_bug line-number tap target. All three were held pending the answer
+here.
 
 ## Why this is being asked now
 

@@ -387,15 +387,22 @@ D-123) — it's the only type with a per-answer LLM cost.
 
 ## Resolved since the last handoff (kept for history)
 
-- ✅ **pytest DB-wipe guard (D-88).** `conftest.py` now calls
-  `assert_disposable_test_database()` and refuses to run unless the target DB is
-  an explicit `_test` database. The "every test run destroys content" footgun is
-  closed.
-- ✅ **Content restored and grown.** The corpus is now ~109 exercises in
-  production (D-110 review pass reviewed 77, killed 4). No longer 6 rows.
-- ⚠️ **Secrets:** prod uses its own cryptographic keys, separate from the dummy
-  local `.env` values (incident report §3). VERIFY the July-12 burned OpenAI /
-  GitHub keys were actually rotated at the provider, not just left unused.
+Re-verified against the code on 2026-07-21. Items nobody can check from the
+repo are marked UNVERIFIABLE HERE rather than left reading as fresh.
+
+- ✅ **pytest DB-wipe guard (D-88).** Confirmed present: `conftest.py` calls
+  `assert_disposable_test_database()` and refuses to run unless the target DB
+  is an explicit `_test` database. The "every test run destroys content"
+  footgun is closed.
+- ❓ **Content.** UNVERIFIABLE HERE: the ~109 figure was a PRODUCTION count and
+  nothing in the repo can confirm it. The local dev database currently holds 98
+  live / 8 pulled / 4 retired, which is a different database and not evidence
+  about production. Query production directly before trusting any number
+  (command in "Current content state").
+- ⚠️ **Secrets.** UNVERIFIABLE HERE, and still open: whether the July-12 burned
+  OpenAI / GitHub keys were actually rotated AT THE PROVIDER is a fact about
+  provider dashboards, not about this repo. No amount of code reading closes
+  it. Treat as open until someone checks and says so.
 
 ## Known production issues (low severity, understood)
 
@@ -553,16 +560,27 @@ be *cleanly false*, not "true but less relevant."
 
 ## Known open items
 
-**Seeded Playwright specs are flaky again (D-136, OPEN).** Three different
-specs each failed once across ~5 runs on :5173, never twice, never together,
-always passing in isolation: `session.spec.ts`, `scroll-reachability.spec.ts`,
-and (hermetic, so the best lead) `viewer-narrow.spec.ts` when grouped with
-`narrow-two-state.spec.ts`. Do NOT file this under D-122, which is closed on
-15/15 evidence; if it is the same race, that fix regressed and needs saying so.
-Undiagnosed. Note that runs against a harness server on :5174 fail two seeded
-specs DETERMINISTICALLY for an unrelated reason (APP_ORIGIN pins CORS to
-:5173) -- that is configuration, not flakiness, and the two must not be
-conflated.
+**Seeded Playwright specs are flaky (D-136, STILL OPEN, but with one clean
+data point since).** Three specs each failed once across ~5 runs on :5173,
+never twice, never together, always passing in isolation: `session.spec.ts`,
+`scroll-reachability.spec.ts`, and (hermetic, so the best lead)
+`viewer-narrow.spec.ts` grouped with `narrow-two-state.spec.ts`. Do NOT file
+this under D-122, which is closed on 15/15 evidence; if it is the same race,
+that fix regressed and needs saying so. Undiagnosed.
+
+**New evidence, 2026-07-21:** one full-suite run on merged master went **124
+passed / 0 failed / 0 skipped**. One clean run does not close an
+intermittent-failure entry, so D-136 stays open, but it is the first
+whole-suite green since the entry was written.
+
+**The CORS parenthetical was WRONG about the mechanism and is corrected here.**
+It blamed a :5174 harness port. The actual cause was that the local override
+sets a COMMA-SEPARATED `APP_ORIGIN` ("localhost plus a LAN address"), which
+only the D-135 code understands; before the viewer rebuild merged, master
+treated that whole string as one literal CORS origin, matched nothing, and
+failed two seeded specs deterministically. Both now pass with the
+comma-separated value in place, verified after the merge. That failure mode is
+gone, and it was never flakiness.
 
 
 **Pre-launch (from the Fable/Opus whole-system audit):**
@@ -577,15 +595,35 @@ conflated.
   and THAT GROUND NO LONGER HOLDS now the plan is a full public launch. An empty
   `ADMIN_METRICS_TOKEN` disables the endpoint (404), which is the safe default;
   anything else needs a deliberate decision.
-- ⚠️ alert catalog is **log-only** — nothing actually pages anyone
-- ⚠️ CI dependency-audit job has never run against live advisory feeds
+- ⚠️ alert catalog is **still log-only for the APPLICATION** — verified: the
+  catalog in `docs/ops-runbook.md` section 6 says what SHOULD page, but
+  delivery depends on Sentry / log-aggregation rules that are not configured,
+  and no external alerting exists in backend code. The one exception is the
+  job layer: D-140's healthchecks.io dead man's switch pages when the
+  reminder cron stops, once `HEARTBEAT_URL` is set (an outstanding launch
+  item, not yet done).
+- ⚠️ **CORRECTED: the CI dependency-audit job DOES run against live feeds now,
+  and it FAILS.** The old text said it "has never run" -- that was true when
+  written and D-128 fixed the job. Run on 2026-07-21 it reports real
+  advisories: `cryptography 45.0.7` (PYSEC-2026-35, PYSEC-2026-2141,
+  GHSA-537c-gmf6-5ccf) and `pytest 8.4.2` (PYSEC-2026-1845). So this is no
+  longer "unproven tooling", it is a **red CI job with a real upgrade
+  backlog**. A3 added no dependencies; this predates it.
 
-**Polish (deferred, agreed):**
-- "1 days" pluralization
-- streak should render as **gutter ticks**, not a single dot (docs/08 intent)
-- **the profile + session-complete screens are sparse and underdesigned** — the
-  session player is strong, the surrounding screens need a design pass. Own
-  milestone, after content exists.
+**Polish — two of these are DONE and were still listed as deferred:**
+- ✅ **"1 days" pluralization.** Fixed: `lib/format.ts` and `Dashboard.tsx`
+  both branch on `count === 1`.
+- ✅ **Streak renders as gutter ticks.** `StreakTicks` exists in
+  `components/gutter/Gutter.tsx` and is used on the Profile and in the
+  per-attempt Reveal. Shipped with the viewer rebuild; docs/08's intent is met.
+- ⚠️ **Still open: there is NO session-complete screen.** `Session.tsx`
+  redirects to the Dashboard when the last exercise is done (the comment at
+  `Session.tsx:94` says so). This is why A1's welcome-back state lives on the
+  Dashboard and why D-119 chased a screen that never existed. It is also the
+  natural home for A4's "peek at tomorrow" and A5's cheat sheet, so it is now
+  blocking roadmap work rather than being cosmetic. The Profile is less sparse
+  than it was (A2's email card, A3's reminders card, the streak ticks), so the
+  remaining gap is the session-complete screen specifically.
 
 **Then:** human-review the corpus via `review_cli packet` and flip to live.
 **This is a FULL PUBLIC LAUNCH, not a 20 to 30 person invite beta.** The earlier

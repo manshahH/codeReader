@@ -96,6 +96,44 @@ When JOBS_ENABLED=true is set, the backend spins up APScheduler in the lifespan 
 *   Ensure the Neon Postgres database is using a connection string compatible with syncpg. If you encounter timeouts (e.g., TimeoutError after 30-60 seconds during startup), verify that your connection string (like a Transaction Pooler URL) does not have incompatible parameters. 
 *   Because startup can take up to 8-9 minutes on FastAPI Cloud deployments when cold-starting with Jobs, checking the logs prematurely might show old runtime logs. Always wait for the deployment status to hit success before assuming a failure.
 
+## 4b. Redis (required in practice, and previously undocumented here)
+
+This runbook did not mention Redis at all, which is a gap that bites at deploy
+time. `REDIS_URL` is NOT a required setting in the pydantic sense -- it has a
+default of `redis://localhost:6379/0`, which is wrong everywhere except a dev
+box and will not stop the app booting. A deploy that forgets it therefore
+starts, passes a casual glance, and fails on the first request that touches
+Redis. Treat it as required in practice.
+
+**It is provisioned and reachable in production today.** Verified rather than
+assumed: `GET /healthz` checks postgres AND redis and returns `503` naming the
+failed dependency, and the live backend answers `{"status":"ok"}`. Whoever
+provisioned it did not write down how, so if it ever needs recreating, start
+from the FastAPI Cloud dashboard rather than from this document.
+
+**What breaks without it, in descending severity:**
+
+| Path | Behaviour with Redis down |
+|---|---|
+| `GET /healthz` | `503`, body names `redis` |
+| Rate limiting (`core/ratelimit.py`) | **The whole API 500s.** Verified: the middleware in `main.py` wraps `check_token_bucket` in `try/finally` with NO `except`, so a Redis error propagates and every rate-limited request becomes a 500 (with CORS headers, per D-121). This is the failure that takes the site down. |
+| `POST /attempts` idempotency (`core/idempotency.py`) | Replay protection is lost; invariant 4 no longer holds |
+| Session cache (`sessions/service.py`) | Degrades gracefully: falls back to the `daily_sessions` row (D-17) |
+| Grader health (`core/grader_health.py`) | Degraded-grader detection stops; self-heals via TTL |
+| A3 job overlap lock (`jobs/trigger.py`) | Degrades gracefully by design: jobs run UNLOCKED and still send (D-141). Correctness comes from the `email_deliveries` primary key, never the lock. |
+
+**Managed-provider notes.** `rediss://` (Upstash and other managed TLS Redis)
+works as-is: `redis.asyncio` maps the scheme to `SSLConnection` itself. Upstash
+has no `SELECT`, so use no `/N` database suffix. Unlike `DATABASE_URL`, the
+Redis URL gets NO normalization layer (contrast `app/db.py`, D-112), so a URL
+with provider-specific query parameters is passed through verbatim and any
+incompatibility surfaces as a connection error at first use, not at startup.
+
+**Deploy check.** After any deploy, `GET /healthz` returning `{"status":"ok"}`
+is the confirmation that both dependencies resolved. A `503` naming `redis`
+means the URL is wrong or the instance is unreachable, and rate limiting is
+refusing traffic until it is fixed.
+
 ## 5. Pending release: A1 streak safety net (not yet deployed)
 
 A1 is built and merged but NOT deployed; the plan is to build more of Phase A
