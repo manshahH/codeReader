@@ -13,6 +13,7 @@ the same answer without an advisory lock.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import uuid
 
@@ -20,7 +21,7 @@ from sqlalchemy import Select, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import EmailSuppression, User
+from app.models import EmailDelivery, EmailSuppression, User
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +174,7 @@ async def claim_period(
              WHERE email_deliveries.status = 'failed'
                AND email_deliveries.attempts < :max_attempts
                AND email_deliveries.claimed_at > now() - make_interval(hours => :window_h)
-            RETURNING attempts
+            RETURNING attempts, payload
             """,
         ),
         {
@@ -184,7 +185,8 @@ async def claim_period(
             "window_h": settings.EMAIL_SEND_RETRY_WINDOW_H,
         },
     )
-    return result.first() is not None
+    row = result.first()
+    return row is not None
 
 
 async def _finish(
@@ -254,6 +256,57 @@ async def mark_skipped(
     tick that day stops re-deriving the same nothing.
     """
     await _finish(session, user_id, kind, period_key, status="skipped", last_error=note)
+
+
+async def read_payload(
+    session: AsyncSession, user_id: uuid.UUID, kind: str, period_key: str
+) -> dict | None:
+    """The payload snapshotted by the FIRST attempt, or None if not rendered yet.
+
+    A retry MUST resend these exact bytes. Re-rendering would produce a
+    different body whenever the underlying data moved (a session built between
+    the failure and the retry changes the reminder's exercise count), and
+    Resend refuses a reused idempotency key carrying a changed payload with
+    409 invalid_idempotent_request -- so the reminder would fail forever
+    rather than duplicate. Quiet, and worse than a crash.
+    """
+    return await session.scalar(
+        select(EmailDelivery.payload).where(
+            EmailDelivery.user_id == user_id,
+            EmailDelivery.kind == kind,
+            EmailDelivery.period_key == period_key,
+        ),
+    )
+
+
+async def store_payload(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    kind: str,
+    period_key: str,
+    *,
+    payload: dict,
+) -> None:
+    """Snapshot the rendered email. Committed BEFORE the provider call.
+
+    Same ordering argument as the claim itself (D-137(3)): a crash between
+    rendering and sending must leave the retry something to resend, and the
+    only way to guarantee that is to have already committed it.
+    """
+    await session.execute(
+        text(
+            """
+            UPDATE email_deliveries SET payload = CAST(:payload AS jsonb)
+             WHERE user_id = :user_id AND kind = :kind AND period_key = :period_key
+            """,
+        ),
+        {
+            "user_id": str(user_id),
+            "kind": kind,
+            "period_key": period_key,
+            "payload": json.dumps(payload),
+        },
+    )
 
 
 def reminder_period_key(local_date: dt.date) -> str:

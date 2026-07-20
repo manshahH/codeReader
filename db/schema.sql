@@ -102,6 +102,11 @@ CREATE TABLE email_deliveries (
                CHECK (status IN ('claimed','sent','failed','skipped')),
   attempts   int         NOT NULL DEFAULT 0,
   last_error text,                                  -- exception TYPE only, never a body (D-120)
+  -- The rendered email, snapshotted on the FIRST attempt and resent verbatim by
+  -- every retry. Resend's idempotency contract is same-key-SAME-PAYLOAD; a
+  -- changed body under the same key is a 409, and a changed KEY would be a
+  -- duplicate. NULL = claimed but not rendered yet.
+  payload    jsonb,
   claimed_at timestamptz NOT NULL DEFAULT now(),
   sent_at    timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now(),

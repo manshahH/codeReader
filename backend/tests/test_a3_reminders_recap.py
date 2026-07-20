@@ -968,3 +968,73 @@ async def test_dst_spring_forward_does_not_swallow_the_reminder(
 
     assert result["sent"] == 1
     assert await ledger_rows(db_session, user.id) == [("reminder", "sent", 1)]
+
+
+@pytest.mark.asyncio
+async def test_retry_resends_the_original_payload_when_the_data_moved_underneath(
+    db_session: AsyncSession, session_factory
+) -> None:
+    """THE 409 CASE (D-137 addendum).
+
+    Resend's idempotency contract is same-key-SAME-PAYLOAD. A reused key
+    carrying a CHANGED body is refused with 409 invalid_idempotent_request, so
+    a retry whose content moved could never succeed -- quietly, all the way to
+    the attempt cap.
+
+    The reminder's body legitimately moves: it names today's exercise count
+    once a session row exists, and omits it otherwise. So this test fails the
+    first send, then BUILDS TODAY'S SESSION underneath (exactly what happens
+    when the user opens the app between the failure and the retry), then
+    retries.
+
+    The retry must resend the ORIGINAL bytes under the ORIGINAL key, and
+    exactly one email must result.
+    """
+    user = await make_verified_user(db_session)
+    failing = FailingSender()
+
+    first = await send_daily_reminders(session_factory, failing, now=TUESDAY_0900)
+    assert first["failed"] == 1
+
+    stored = await db_session.scalar(
+        text("SELECT payload FROM email_deliveries WHERE user_id = :u"),
+        {"u": str(user.id)},
+    )
+    # Rendered and committed BEFORE the send, so the failure did not lose it.
+    assert stored is not None
+    original_text = stored["text"]
+    # No session existed, so the count is omitted.
+    assert "Today's session is ready." in original_text
+    assert "exercises to read" not in original_text
+
+    # The data moves underneath: the user opens the app and a session is built.
+    await db_session.execute(
+        text(
+            "INSERT INTO daily_sessions (user_id, session_date, exercise_list)"
+            " VALUES (:u, :d, CAST(:l AS jsonb))",
+        ),
+        {
+            "u": str(user.id),
+            "d": TUESDAY_0900.date(),
+            "l": '[{"exercise_id":"a","version":1,"slot":1,"is_boss":false},'
+            '{"exercise_id":"b","version":1,"slot":2,"is_boss":false},'
+            '{"exercise_id":"c","version":1,"slot":3,"is_boss":true}]',
+        },
+    )
+    await db_session.commit()
+
+    recovered = RecordingSender()
+    second = await send_daily_reminders(session_factory, recovered, now=TUESDAY_0900)
+
+    assert second["sent"] == 1
+    assert len(recovered.sent) == 1
+    sent = recovered.sent[0]
+
+    # The ORIGINAL bytes, not a re-render. A re-render would now say
+    # "3 exercises to read" and would be refused by Resend as a 409.
+    assert sent.text == original_text
+    assert "exercises to read" not in sent.text
+    # And the ORIGINAL key, which is what makes resending safe rather than a
+    # second email.
+    assert sent.idempotency_key == f"reminder:{user.id}:2026-07-21"
+    assert await ledger_rows(db_session, user.id) == [("reminder", "sent", 2)]

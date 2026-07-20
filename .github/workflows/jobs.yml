@@ -1,0 +1,98 @@
+# The external clock for the notification jobs (D-138).
+#
+# FastAPI Cloud scales to zero, and the in-process scheduler runs from the
+# FastAPI lifespan, so it dies whenever the app sleeps. The idle trough is
+# overnight, which is exactly when an 08:00 reminder has to fire. This workflow
+# is the clock that lives outside the thing that sleeps; the request it makes
+# is itself what wakes the app.
+#
+# WHAT GITHUB'S CRON ACTUALLY PROMISES, because the design leans on knowing:
+#   * the shortest interval is every 5 minutes;
+#   * "the schedule event can be delayed during periods of high loads of
+#     GitHub Actions workflow runs. High load times include the start of every
+#     hour";
+#   * "if the load is sufficiently high enough, some queued jobs may be
+#     dropped";
+#   * in a PUBLIC repo, scheduled workflows are disabled automatically after
+#     60 days with no repository activity.
+#
+# So this is a BEST-EFFORT clock, and A3 is built to survive that. The job is a
+# SWEEP, not a scheduler: it mails everyone at or past their chosen local
+# minute for the rest of their local day, so a late trigger produces a late
+# reminder, and a DROPPED trigger produces a reminder on the next tick rather
+# than no reminder at all. The only thing that would make this fragile is a
+# narrow "the time just passed" window, which D-137(5) explicitly rejected.
+#
+# The offset minutes below are deliberate: */10 starting at :03 rather than
+# :00, to stay off the top-of-the-hour load spike GitHub names.
+
+name: Notification jobs
+
+on:
+  schedule:
+    # Reminders: every 10 minutes, offset off the hour. Worst-case lateness
+    # against a user's chosen minute is one interval plus GitHub's delay.
+    - cron: '3,13,23,33,43,53 * * * *'
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: 'Comma-separated job names (blank = all)'
+        required: false
+        default: ''
+
+concurrency:
+  # A delayed run must not stack on top of a running one. The endpoint also
+  # holds a Redis lock and the ledger makes overlap harmless regardless, but
+  # cancelling here is cheaper than making the request at all.
+  group: notification-jobs
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    # Generous: the request is synchronous by design (a fire-and-forget 202
+    # would let the platform suspend the instance mid-sweep) and it may pay a
+    # cold start on top of a capped, paced sweep.
+    timeout-minutes: 10
+    steps:
+      - name: Trigger the due jobs
+        env:
+          API_BASE: ${{ secrets.API_BASE_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_METRICS_TOKEN }}
+          JOBS: ${{ github.event.inputs.jobs }}
+        run: |
+          set -euo pipefail
+          if [ -z "${API_BASE:-}" ] || [ -z "${ADMIN_TOKEN:-}" ]; then
+            echo "API_BASE_URL or ADMIN_METRICS_TOKEN secret is not set; nothing to do."
+            exit 1
+          fi
+
+          if [ -n "${JOBS:-}" ]; then
+            body=$(printf '{"jobs":[%s]}' "$(echo "$JOBS" | sed 's/[^,]*/"&"/g')")
+          else
+            body='{}'
+          fi
+
+          # --fail-with-body so a non-2xx fails the step AND shows the reason.
+          # --max-time below the step timeout so a hung request is a clean
+          # failure rather than a cancelled job with no output.
+          http_code=$(curl -sS --fail-with-body \
+            --max-time 540 \
+            --retry 2 --retry-delay 10 --retry-connrefused \
+            -o /tmp/response.json -w '%{http_code}' \
+            -X POST "${API_BASE%/}/admin/jobs/run" \
+            -H "X-Admin-Token: ${ADMIN_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d "$body")
+
+          echo "HTTP $http_code"
+          cat /tmp/response.json
+          echo
+
+          # A 200 whose body reports a per-job error is still a failed run:
+          # the endpoint isolates job failures so one cannot kill another, and
+          # this is where that isolation has to become visible again.
+          if grep -q '"error"' /tmp/response.json; then
+            echo "::error::a job reported an error; see the body above"
+            exit 1
+          fi

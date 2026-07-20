@@ -26,7 +26,7 @@ import datetime as dt
 import uuid
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Text, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -78,6 +78,11 @@ class EmailDelivery(Base):
     # error can carry the request body, and that body is somebody's mail
     # (D-120's logging discipline).
     last_error: Mapped[str | None] = mapped_column(Text)
+    # The rendered email, snapshotted on the FIRST attempt so every retry
+    # resends the exact original bytes under the exact original key. Resend
+    # refuses a reused key carrying a CHANGED payload (409), and changing the
+    # key instead would risk the duplicate this whole table exists to prevent.
+    payload: Mapped[dict | None] = mapped_column(JSONB)
     claimed_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

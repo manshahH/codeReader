@@ -23,7 +23,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
 from app.email.address import mask_email
-from app.email.deliveries import claim_period, mark_failed, mark_sent, mark_skipped
+from app.email.deliveries import (
+    claim_period,
+    mark_failed,
+    mark_sent,
+    mark_skipped,
+    read_payload,
+    store_payload,
+)
 from app.email.sender import EmailSender, EmailSendError, OutboundEmail
 
 logger = logging.getLogger(__name__)
@@ -60,6 +67,31 @@ def delivery_idempotency_key(kind: str, user_id: uuid.UUID, period_key: str) -> 
     safe rather than a coin flip.
     """
     return f"{kind}:{user_id}:{period_key}"
+
+
+def _payload_from_message(message: OutboundEmail) -> dict:
+    """The bytes we will resend. `idempotency_key` is deliberately NOT stored:
+    it is derived from the ledger identity, so it is already immutable per
+    period and storing it would create a second source of truth for it."""
+    return {
+        "to": message.to,
+        "subject": message.subject,
+        "text": message.text,
+        "html": message.html,
+        "headers": dict(message.headers),
+        "dev_link": message.dev_link,
+    }
+
+
+def _message_from_payload(payload: dict) -> OutboundEmail:
+    return OutboundEmail(
+        to=payload["to"],
+        subject=payload["subject"],
+        text=payload["text"],
+        html=payload["html"],
+        dev_link=payload.get("dev_link"),
+        headers=dict(payload.get("headers") or {}),
+    )
 
 
 async def run_sweep(
@@ -128,7 +160,20 @@ async def run_sweep(
 
         try:
             async with session_factory() as work_session:
-                message = await build_message(work_session, candidate)
+                # RENDER ONCE PER PERIOD, then resend those exact bytes forever.
+                # Resend's idempotency contract is same-key-SAME-PAYLOAD: a
+                # reused key carrying a changed body is a 409, and a changed key
+                # would risk the duplicate the ledger exists to prevent. The
+                # reminder body legitimately moves between attempts (it names
+                # today's exercise count once a session exists), so without this
+                # a retry after the user opened the app could never succeed.
+                stored = await read_payload(
+                    work_session, candidate.user_id, kind, candidate.period_key
+                )
+                if stored is not None:
+                    message = _message_from_payload(stored)
+                else:
+                    message = await build_message(work_session, candidate)
 
                 if message is None:
                     await mark_skipped(
@@ -141,6 +186,19 @@ async def run_sweep(
                     await work_session.commit()
                     result.skipped += 1
                     continue
+
+                if stored is None:
+                    # Committed BEFORE the send, for the same reason the claim
+                    # is: a crash between rendering and sending must still
+                    # leave the retry something to resend.
+                    await store_payload(
+                        work_session,
+                        candidate.user_id,
+                        kind,
+                        candidate.period_key,
+                        payload=_payload_from_message(message),
+                    )
+                    await work_session.commit()
 
                 try:
                     await sender.send(

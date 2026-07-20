@@ -3809,3 +3809,92 @@ D-137 A3 reminders and weekly recap. Send-once is the whole problem, and it is
      explicitly. The general lesson: a value that only appears in an untracked
      local override is invisible to a suite that always supplies the tidy value,
      so the flow has to be walked at least once against the messy one.
+
+     ADDENDUM 2 (payload snapshot). Resend's idempotency contract is not "same
+     key, same outcome". It is same key + SAME PAYLOAD returns the original
+     response and sends nothing, while same key + DIFFERENT payload is refused
+     with 409 invalid_idempotent_request. A3's retry path could legitimately
+     change the payload: the reminder names today's exercise count once a
+     session row exists and omits it otherwise, so a user who opens the app
+     between a failed send and its retry changes the rendered body. The retry
+     then presents the original key with new bytes and is refused forever --
+     not a duplicate, but a reminder that can never succeed, failing quietly
+     all the way to the attempt cap.
+     THE FIX MAKES THE PAYLOAD IMMUTABLE PER PERIOD, NOT THE KEY VARIABLE. The
+     first attempt renders once, stores the exact bytes in
+     `email_deliveries.payload` (migration 0011), and commits BEFORE the send;
+     every retry resends those bytes under that key. Committed first for the
+     same reason the claim is: a crash between rendering and sending must leave
+     the retry something to resend.
+     REJECTED, a payload hash in the idempotency key. It also avoids the 409,
+     and it is the wrong fix: if the first attempt DID reach Resend before the
+     failure was observed, a new key is a new email, which is exactly the
+     duplicate this whole ledger exists to prevent. It trades a silent
+     never-sends for a silent sends-twice, in the wrong direction.
+     REJECTED, dropping exercise_count from the reminder. That fixes the
+     mechanism by deleting the content, and the count is the one concrete thing
+     the mail says.
+     VERIFIED: test_retry_resends_the_original_payload_when_the_data_moved_
+     underneath fails the first send, BUILDS today's session underneath, then
+     retries and asserts the original bytes go out under the original key with
+     exactly one email resulting.
+
+D-138 The scheduler cannot live inside the thing that sleeps. FastAPI Cloud
+     scales to zero (confirmed, not assumed), the in-process scheduler runs
+     from the FastAPI lifespan, and the idle trough is overnight -- which is
+     exactly when an 08:00 reminder has to fire.
+     THE SUBTLER HALF, and the reason a keepalive ping is not the fix: each job
+     loop waits `interval_s` from PROCESS START
+     (`asyncio.wait_for(stop.wait(), timeout=interval_s)`), so every cold start
+     restarts that clock at zero. An app that wakes for 40 seconds of traffic
+     and sleeps again NEVER reaches a 60s reminder tick, let alone a 900s recap
+     tick, no matter how warm it is kept. UPTIME IS NOT THE MISSING PROPERTY;
+     AN EXTERNAL CLOCK IS. A keepalive would also give no signal: you cannot
+     tell "warm and the job ran" from "warm and the timer never elapsed".
+     REJECTED, a separate always-on worker. It is the textbook answer and it is
+     real separation, but it doubles the deploy surface for a job that idles
+     99% of the time, needs its own secrets and monitoring, costs money
+     continuously, and is precisely the second always-on service docs/06's
+     "plain asyncio workers + cron (no Celery at MVP)" chose against.
+     CHOSEN: an external trigger. A scheduled GitHub Actions workflow POSTs
+     /admin/jobs/run, gated by ADMIN_METRICS_TOKEN like every other admin
+     route and 404 when that is unset. The clock is outside the thing that
+     sleeps, and the request itself is what wakes the app. The in-process
+     scheduler is left EXACTLY as it was, so local dev and any always-on
+     deployment keep working with no configuration -- this adds a second way to
+     run the jobs, it does not replace the first.
+     WHAT GITHUB'S CRON ACTUALLY GUARANTEES, checked rather than assumed:
+     minimum interval 5 minutes; "the schedule event can be delayed during
+     periods of high loads", with "the start of every hour" named as a high
+     load time; "if the load is sufficiently high enough, some queued jobs may
+     be dropped"; and in a PUBLIC repo scheduled workflows are auto-disabled
+     after 60 days of no repository activity. So it is a BEST-EFFORT clock.
+     THAT IS ACCEPTABLE ONLY BECAUSE THE JOB IS A SWEEP, NOT A SCHEDULER: it
+     mails everyone at or past their chosen local minute for the rest of their
+     local day, so a late trigger yields a late reminder and a DROPPED trigger
+     yields one on the next tick, never none. A narrow "the time just passed"
+     window would make this fragile, which is a second reason D-137(5) rejected
+     one. The cron is offset to :03,:13,... rather than :00 to stay off the
+     top-of-hour spike GitHub names.
+     SYNCHRONOUS, NOT FIRE-AND-FORGET, and this is the non-obvious one.
+     Returning 202 and sweeping in a background task reintroduces the original
+     bug in miniature: on a scale-to-zero platform the instance can be
+     suspended the moment the response is sent, killing the task mid-sweep. The
+     platform keeps an instance alive while a request is IN FLIGHT, so
+     completing the work inside the request is what guarantees it completes at
+     all. The cost is a slow request, and it is bounded already by
+     EMAIL_MAX_SENDS_PER_TICK and the send pacing.
+     OVERLAP IS SAFE BEFORE IT IS PREVENTED. Correctness does not depend on the
+     lock: claim_period's primary key means two concurrent sweeps cannot both
+     send a period, the same property that makes the in-process scheduler safe
+     across multiple app instances. A Redis SET NX EX per job is a WASTE guard
+     so a delayed trigger landing on a running one does not pay for a second
+     candidate query and a second round of losing races; it reports
+     already_running rather than 409, because a cron would report a 409 as a
+     failure. TTL 600s so a crashed run self-heals well inside one interval.
+     ONLY THE NOTIFICATION JOBS ARE TRIGGERABLE. grading_retry, percentiles and
+     partitions are idempotent, tolerate a long gap, and have no user-visible
+     deadline; exposing them would widen an admin surface for no benefit.
+     COST: a public admin endpoint that can cause sending, two new repo
+     secrets, and a workflow that must be re-enabled if the repo goes quiet for
+     60 days. The last one is a real trap and belongs in the runbook.
