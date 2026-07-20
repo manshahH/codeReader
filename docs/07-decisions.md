@@ -3994,3 +3994,38 @@ D-136 OPEN: seeded specs are flaky again. NOT D-122, and filing it there was
      standing between a cited spec and silent decay (D-128). A suite that
      fails one random spec per run trains everyone to re-run rather than read,
      which is the precondition for the next D-103.
+
+D-135 RECORDED LATE. Reaching the dev app from a phone on the LAN, cited in
+     config.py and frontend/src/lib/api.ts since 2026-07-19 with no entry
+     behind it. The commit that introduced it (9eac881) says "record
+     D-129..D-136" and did not record this one; found by an audit that grepped
+     every D-number citation in the repo against the log. A citation pointing
+     at nothing is worse than no citation, because it reads as "decided and
+     reviewed" to anyone who does not go looking.
+     TWO CHANGES, one on each side, and neither alters localhost behaviour.
+     (1) APP_ORIGIN ACCEPTS A COMMA-SEPARATED LIST, used ONLY for the CORS
+     allowlist. The FIRST entry stays canonical: it is the post-login redirect
+     target and the base for emailed links, both of which must be exactly one
+     URL. Exposed as APP_ORIGINS and PRIMARY_APP_ORIGIN.
+     WHY A DERIVED READING OF AN EXISTING SETTING rather than a new one: a new
+     setting would have to be added to BOTH committed .env.example files to
+     keep D-117's drift test green, and this needed to work without touching
+     them. Production sets a single value and is unaffected.
+     (2) THE DEV API BASE FOLLOWS THE HOST THE PAGE WAS LOADED FROM instead of
+     hard-coding localhost. A phone loading the app from 192.168.x.x then
+     called `localhost:8000`, which on a phone is the phone. An explicit
+     VITE_API_BASE_URL still wins, including the EMPTY STRING production sets
+     for same-origin behind the Vercel rewrite (D-114), because `??` falls
+     through only on undefined.
+     COST, and it was paid on another branch before anyone noticed: a
+     comma-separated APP_ORIGIN is only safe for code that knows to split it.
+     A3 branched off master, where APP_ORIGIN is a single origin used verbatim,
+     and the local override's two-origin value therefore produced
+     `http://localhost:5173,http://192.168.100.10:5173/unsubscribe?token=...`
+     in an email -- silently unclickable, in the one medium the reader cannot
+     retry. A2's verification link had the same latent bug. A3 fixed it in
+     email/links.py::link_origin(), which takes the first entry and is
+     deliberately the same semantics as PRIMARY_APP_ORIGIN above, so the two
+     converge rather than conflict when these branches meet. See D-137's late
+     addendum. THE GENERAL LESSON: a value that exists only in an untracked
+     local override is invisible to a suite that always supplies the tidy one.
