@@ -4461,3 +4461,65 @@ D-139 The product is Reedkode. The rename is PUBLIC-FACING ONLY, and that is a
      URI must name the FRONTEND origin or the refresh cookie lands on the wrong
      domain and every login silently fails to persist. Splitting that set is
      the way to break login.
+
+D-140 Nothing was watching the thing that sends the mail, and the trigger's own
+     failure mode is silence. Three findings, one mechanism fixes all three.
+     (1) THE REPO IS PUBLIC (verified: `gh repo view` -> visibility PUBLIC), so
+     GitHub's rule APPLIES: "in a public repository, scheduled workflows are
+     automatically disabled when no repository activity has occurred in 60
+     days". Post-launch a quiet repo is the NORMAL state, so this is not an
+     edge case, it is a scheduled outage with a 60-day fuse. When it fires,
+     reminders stop and every symptom is an absence: no error, no failed run,
+     an empty ledger and a silent inbox.
+     (2) `reminders.run_count` in /admin/metrics was offered as the proof the
+     layer is alive, and it is -- but only to someone LOOKING. Nothing polls
+     it. A metric nobody reads is not monitoring, and saying "watch run_count"
+     without saying "with what" was the gap.
+     (3) A SYSTEM CANNOT WATCH ITSELF FAIL. Every in-app alerting idea fails in
+     exactly the scenarios that matter: if the workflow is disabled nothing
+     runs to notice; if the app is asleep or down nothing runs to notice; if
+     the endpoint 500s the thing that would report it is the thing that broke.
+     CHOSEN: a DEAD MAN'S SWITCH. The workflow pings an external monitor
+     (healthchecks.io or equivalent) only on success, and the monitor alerts
+     when the ping STOPS. Inverting it is the whole point -- an alert triggered
+     by absence covers workflow-disabled, app-down, endpoint-broken,
+     Redis-down, database-down and credentials-expired with ONE mechanism,
+     because all of them look identical from outside: no ping.
+     The ping is optional (no HEARTBEAT_URL secret = silent no-op with a
+     workflow warning) so the trigger works before the monitor exists. That is
+     a deliberate convenience and it is also a trap, so HANDOFF records an
+     unset heartbeat as launch-incomplete rather than as a valid state.
+     ALSO RECOMMENDED, and it is one click: MAKE THE REPO PRIVATE. The 60-day
+     rule is scoped to public repositories, so private exempts it entirely. It
+     is not a substitute for the heartbeat, which covers the other five failure
+     modes, but it removes the most likely one outright and this is a
+     commercial product with a paid tier planned, so private is defensible on
+     its own terms. REJECTED as the primary fix: a scheduled "keepalive" commit
+     to reset the 60-day clock. It works, and it fills the history with noise
+     whose only purpose is to defeat a policy, which is the kind of thing that
+     gets deleted by someone tidying up and takes reminders with it.
+     COST: one external dependency (a free monitor), one more secret, and a
+     monitor that itself needs to be alive. Accepted: the alternative is a
+     system whose failure mode is silence.
+
+D-141 A waste guard must not become a hard dependency. The /admin/jobs/run
+     overlap lock is Redis SET NX EX, and D-138 says twice that correctness
+     comes from claim_period's primary key rather than from the lock. The code
+     did not honour that: `redis.set` raised straight out of `run_jobs`, so an
+     unreachable Redis turned "we skip an optimisation" into "reminders do not
+     send". Found by probing the path rather than by reading it, after being
+     asked whether it degrades or raises. It raised.
+     FIX: acquiring the lock is best-effort. Redis unreachable -> log and run
+     UNLOCKED, because the ledger is still what prevents a double send.
+     Releasing it is best-effort too, for a different reason: raising during
+     cleanup would discard a sweep that had already succeeded, and the TTL
+     releases the lock anyway.
+     VERIFIED in production that Redis IS provisioned: /healthz checks postgres
+     AND redis and 503s naming the failed dependency, and the live backend
+     answers {"status":"ok"}. So this is defence in depth rather than a live
+     bug -- but the whole argument for the lock being optional was that losing
+     it costs nothing, and that argument was false until now.
+     NOTE FOR THE RUNBOOK: docs/09 does not mention Redis at all. It is
+     provisioned and reachable, proven by the health check, but how it is
+     provisioned is undocumented. That is a gap in the deploy runbook, not in
+     this code.

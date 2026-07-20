@@ -76,6 +76,12 @@ async def run_jobs(
     SET NX EX rather than a Postgres advisory lock: it matches the existing
     per-address cooldown in email/service.py, and a TTL self-heals a crashed
     run without needing a session to stay open across the whole sweep.
+
+    A WASTE GUARD MUST NOT BECOME A HARD DEPENDENCY. If Redis is unreachable
+    the jobs still run, WITHOUT the lock -- because correctness never came from
+    the lock in the first place. Letting a Redis outage take reminders down
+    would make the optional thing load-bearing, which is precisely the failure
+    this docstring spends two paragraphs saying the lock is not for.
     """
     selected = names or list(TRIGGERABLE)
     unknown = [n for n in selected if n not in TRIGGERABLE]
@@ -85,14 +91,24 @@ async def run_jobs(
     results: dict[str, object] = {}
     for name in selected:
         lock_key = f"jobtrigger:running:{name}"
-        claimed = await redis.set(lock_key, "1", ex=_LOCK_TTL_S, nx=True)
-        if not claimed:
-            # Not an error. A trigger that arrives while the previous one is
-            # still working has nothing useful to do, and saying so plainly is
-            # better than a 409 that a cron job would report as a failure.
-            results[name] = {"skipped": "already_running"}
-            logger.info("jobtrigger.already_running", extra={"job": name})
-            continue
+        locked = False
+        try:
+            claimed = await redis.set(lock_key, "1", ex=_LOCK_TTL_S, nx=True)
+            locked = bool(claimed)
+            if not claimed:
+                # Not an error. A trigger that arrives while the previous one
+                # is still working has nothing useful to do, and saying so
+                # plainly is better than a 409 a cron would report as failure.
+                results[name] = {"skipped": "already_running"}
+                logger.info("jobtrigger.already_running", extra={"job": name})
+                continue
+        except Exception:
+            # Redis is down. Proceed unlocked and say so, rather than refusing
+            # to send. The ledger is still the thing preventing a double send.
+            logger.warning(
+                "jobtrigger.lock_unavailable", extra={"job": name}, exc_info=True
+            )
+
         try:
             results[name] = await TRIGGERABLE[name](session_factory)
         except Exception as exc:
@@ -102,7 +118,18 @@ async def run_jobs(
             results[name] = {"error": type(exc).__name__}
             logger.exception("jobtrigger.failed", extra={"job": name})
         finally:
-            await redis.delete(lock_key)
+            if locked:
+                try:
+                    await redis.delete(lock_key)
+                except Exception:
+                    # Redis died mid-run. The TTL releases the lock; failing
+                    # the whole request over a cleanup that will happen anyway
+                    # would throw away a sweep that already succeeded.
+                    logger.warning(
+                        "jobtrigger.lock_release_failed",
+                        extra={"job": name},
+                        exc_info=True,
+                    )
 
     logger.info("jobtrigger.ran", extra={"jobs": list(results)})
     return results

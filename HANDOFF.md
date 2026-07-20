@@ -119,23 +119,39 @@ empty. The A3 release checklist is therefore:
 | Setting | Value | Where |
 |---|---|---|
 | `JOBS_ENABLED` | `true` (already the default, and already `true` in both `.env.example`) | FastAPI Cloud |
-| `JOB_REMINDERS_INTERVAL_S` | `60` for launch, NOT the 300 code default (both `.env.example` now say 60) | FastAPI Cloud |
+| `JOB_REMINDERS_INTERVAL_S` | Local-dev knob only in practice; see below | (mostly not set) |
 | `JOB_WEEKLY_RECAP_INTERVAL_S` | `900` (default is fine) | FastAPI Cloud |
 | `RESEND_API_KEY` | the real key | FastAPI Cloud |
 | `EMAIL_SENDING_ENABLED` | `true` | FastAPI Cloud |
 | `EMAIL_FROM` | `Reedkode <no-reply@reedkode.com>` once the domain is verified | FastAPI Cloud |
 | `APP_ORIGIN` | the production frontend origin | FastAPI Cloud |
 
-**Why the interval must come down from 300.** The reminder job is a SWEEP, not
-a scheduler: it fires for everyone whose local time is at or past their chosen
-minute, so the tick interval IS the worst-case lateness. At the 300s default a
-user who picked 08:00 can be mailed at 08:04:59. At 60s the worst case is 59
-seconds, which is "near their chosen minute" in any sense a user would notice.
-The interval cannot be lowered indefinitely: each tick is a query plus up to
-`EMAIL_MAX_SENDS_PER_TICK` paced sends, so 60s is the floor at which a tick
-still finishes before the next one starts at launch volume. It is NOT an
-hour-late system by default -- 300s is five minutes, not sixty -- but 60s is
-the right launch value.
+**WHICH KNOB ACTUALLY CONTROLS REMINDER LATENESS IN PRODUCTION: the cron
+schedule in `.github/workflows/jobs.yml`, NOT `JOB_REMINDERS_INTERVAL_S`.**
+Tune the wrong one and nothing changes.
+
+The reason is D-138: on a scale-to-zero host the in-process scheduler counts
+its interval from PROCESS START, and the app is asleep between triggers, so it
+almost never reaches a tick of its own. What actually fires a sweep in
+production is the external trigger, and the worst-case lateness against a
+user's chosen minute is therefore the CRON INTERVAL (currently every 10
+minutes, offset off the hour) plus whatever delay GitHub adds.
+
+`JOB_REMINDERS_INTERVAL_S` is not dead in production, just marginal: during a
+sustained-traffic window the app stays awake and the in-process scheduler does
+fire, making reminders a bit prompter between cron ticks. It is a best-effort
+supplement, never the mechanism. Treat it as a LOCAL-DEV convenience (it is
+what makes reminders fire while you have the stack running) and leave it
+unset on FastAPI Cloud unless you have a specific reason.
+
+Both `.env.example` files say 60 because that is the sensible LOCAL value; the
+code default stays 300 deliberately, so an un-tuned deploy does not sweep every
+minute for no benefit. To make reminders land closer to the chosen minute in
+production, shorten the cron (GitHub's floor is every 5 minutes), not this.
+
+`JOBS_ENABLED` stays `true`: the in-process scheduler is harmless alongside the
+trigger (the ledger makes a double sweep unable to double-send) and it is what
+keeps local dev working with no extra setup.
 
 **Does the runner actually start on FastAPI Cloud?** Yes, and the mechanism is
 worth naming because it is the load-bearing assumption. The scheduler is
@@ -173,9 +189,42 @@ is when they are due. Steps:
 4. Trigger it once by hand (`workflow_dispatch`) and confirm a 200 whose body
    shows real sweep counters, then confirm `reminders.run_count` moved in
    `/admin/metrics`.
-5. **Calendar reminder: in a public repo GitHub disables scheduled workflows
-   after 60 days with no repository activity.** A quiet repo silently stops
-   sending reminders. This is the single most likely way this layer dies later.
+5. Add a third secret, `HEARTBEAT_URL`, and set up the dead man's switch
+   below. Without it NOTHING is watching, which is a launch-incomplete state
+   rather than a valid one.
+
+**MONITORING: A DEAD MAN'S SWITCH, BECAUSE THIS SYSTEM CANNOT WATCH ITSELF
+FAIL (D-140).** Every failure mode here looks identical from inside: no error,
+no failed run, an empty `email_deliveries` and a silent inbox. And every
+in-app alerting idea dies in the exact scenarios that matter -- if the workflow
+is disabled nothing runs to notice, if the app is asleep nothing runs to
+notice, if the endpoint is broken the thing that would report it is the thing
+that broke.
+
+So the alert is inverted: `.github/workflows/jobs.yml` pings `HEARTBEAT_URL`
+**only on success**, and an external monitor alerts when the ping STOPS. One
+mechanism covers workflow-disabled, app-down, endpoint-broken, Redis-down,
+database-down and expired credentials, because from outside they are all the
+same event: no ping.
+
+Set up: create a check on healthchecks.io (free) with a period of ~15 minutes
+and a grace of ~20, put its ping URL in the `HEARTBEAT_URL` repo secret, point
+it at your email or phone. With the secret unset the step is a silent no-op
+that logs a workflow warning, so the trigger works before the monitor exists.
+
+**THE 60-DAY AUTO-DISABLE IS REAL AND APPLIES TO US.** The repo is PUBLIC
+(verified), and GitHub disables scheduled workflows in public repositories
+after 60 days with no repository activity. Post-launch a quiet repo is the
+NORMAL state, so this is a scheduled outage with a 60-day fuse, not an edge
+case. Two mitigations, and do both:
+- **Make the repo private.** The rule is scoped to public repositories, so
+  private exempts it outright. One click, and defensible anyway for a
+  commercial product with a paid tier planned.
+- **The heartbeat above**, which catches it if it happens regardless, along
+  with the five other ways this layer can die.
+A scheduled keepalive commit would also reset the clock and was rejected: it
+fills the history with noise whose only purpose is defeating a policy, and
+that is exactly what someone tidying up later deletes.
 
 The in-process scheduler is left enabled and unchanged, so local dev needs none
 of this and an always-on host would work without the trigger.

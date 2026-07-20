@@ -213,3 +213,70 @@ async def test_triggered_reminders_actually_send(
 
     assert response.status_code == 200
     assert response.json()["reminders"]["sent"] == 1
+
+
+class _DeadRedis:
+    """Redis is unreachable. Every call raises, including the release."""
+
+    async def set(self, *args, **kwargs):
+        raise ConnectionError("redis is down")
+
+    async def delete(self, *args, **kwargs):
+        raise ConnectionError("redis is down")
+
+
+class _RedisDiesMidRun:
+    """The lock is taken, then Redis goes away before the release."""
+
+    def __init__(self) -> None:
+        self.released = False
+
+    async def set(self, *args, **kwargs):
+        return True
+
+    async def delete(self, *args, **kwargs):
+        self.released = True
+        raise ConnectionError("redis went away")
+
+
+@pytest.mark.asyncio
+async def test_jobs_still_run_when_redis_is_unavailable(db_session: AsyncSession) -> None:
+    """A WASTE GUARD MUST NOT BECOME A HARD DEPENDENCY.
+
+    The lock exists to stop a delayed trigger paying for a duplicate sweep. It
+    is not what makes overlap safe -- claim_period's primary key is. So a Redis
+    outage must degrade to "run unlocked", never to "do not send". Letting it
+    fail would make reminders depend on the one component the design explicitly
+    says they do not depend on.
+    """
+    engine = create_engine()
+    factory = create_session_factory(engine)
+    try:
+        result = await run_jobs(factory, _DeadRedis(), names=["reminders"])
+
+        # A real sweep ran, not an error and not a skip.
+        assert "considered" in result["reminders"]
+        assert "error" not in result["reminders"]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_redis_dying_mid_run_does_not_discard_a_successful_sweep(
+    db_session: AsyncSession,
+) -> None:
+    """NEGATIVE of the above, at the other end: the release is best-effort too.
+
+    Raising on cleanup would throw away a sweep that already succeeded, and the
+    TTL releases the lock anyway.
+    """
+    engine = create_engine()
+    factory = create_session_factory(engine)
+    dying = _RedisDiesMidRun()
+    try:
+        result = await run_jobs(factory, dying, names=["reminders"])
+
+        assert dying.released is True
+        assert "considered" in result["reminders"]
+    finally:
+        await engine.dispose()

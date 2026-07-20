@@ -62,8 +62,15 @@ jobs:
           JOBS: ${{ github.event.inputs.jobs }}
         run: |
           set -euo pipefail
-          if [ -z "${API_BASE:-}" ] || [ -z "${ADMIN_TOKEN:-}" ]; then
-            echo "API_BASE_URL or ADMIN_METRICS_TOKEN secret is not set; nothing to do."
+          # FAIL LOUDLY, never no-op. An unset secret must be a red run, not a
+          # green one that quietly sent nothing -- a silent success here is
+          # indistinguishable from "no reminders were due", which is exactly
+          # the confusion this whole layer keeps producing.
+          missing=
+          [ -z "${API_BASE:-}" ] && missing="${missing} API_BASE_URL"
+          [ -z "${ADMIN_TOKEN:-}" ] && missing="${missing} ADMIN_METRICS_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "::error::missing required repo secret(s):${missing}. Set them in Settings > Secrets and variables > Actions."
             exit 1
           fi
 
@@ -96,3 +103,30 @@ jobs:
             echo "::error::a job reported an error; see the body above"
             exit 1
           fi
+
+      - name: Heartbeat (dead man's switch)
+        # ONLY runs when the step above succeeded, which is the entire point:
+        # this pings an external monitor that alerts when the ping STOPS.
+        #
+        # A flat reminders.run_count is only evidence if something is watching
+        # it, and nothing inside this system can watch itself: if the workflow
+        # is disabled, the app is down, or the endpoint 500s, there is nobody
+        # left to send the alert. An outside monitor expecting a regular ping
+        # covers every one of those with one mechanism, including the 60-day
+        # auto-disable that is the most likely long-term failure (D-140).
+        #
+        # Optional: with no HEARTBEAT_URL secret this is a silent no-op, so the
+        # workflow works before the monitor is set up. That is deliberate --
+        # but an unset heartbeat means NOTHING is watching, which is the state
+        # HANDOFF calls out as launch-incomplete.
+        if: success()
+        env:
+          HEARTBEAT_URL: ${{ secrets.HEARTBEAT_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HEARTBEAT_URL:-}" ]; then
+            echo "::warning::HEARTBEAT_URL is not set -- nothing is watching this job."
+            exit 0
+          fi
+          curl -sS --max-time 20 --retry 2 -o /dev/null "$HEARTBEAT_URL"
+          echo "heartbeat sent"
