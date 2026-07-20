@@ -175,12 +175,30 @@ def build_recap_email(*, to: str, user_id: uuid.UUID, recap: WeeklyRecap) -> Out
     span = f"{recap.week_start.isoformat()} to {recap.week_end.isoformat()}"
     footer_text, footer_html = _footer(link, "the weekly recap")
 
+    # THE NUMBERS MUST RECONCILE ON THE PAGE. "Exercises read: 10" above
+    # "Correct: 2 of 9" reads as a contradiction: two counts that obviously
+    # should match, don't, with nothing accounting for the missing one. In a
+    # stats email that is worse than omitting the stat, because it makes the
+    # reader distrust all of it. The gap is real and has a real cause -- a skip
+    # is read but not gradeable (D-93) -- so the fix is to SAY so, not to
+    # quietly force the two numbers to agree.
+    #
+    # `answered` is named explicitly as the accuracy denominator, and the skip
+    # and pending lines only appear when they are nonzero, so a clean week
+    # stays two short lines instead of four with two zeroes in them.
     lines = [
         f"Sessions completed: {recap.sessions_completed}",
         f"Exercises read: {recap.exercises_attempted}",
     ]
     if recap.accuracy_pct is not None:
-        lines.append(f"Correct: {recap.correct} of {recap.graded} ({recap.accuracy_pct}%)")
+        lines.append(
+            f"Correct: {recap.correct} of {recap.graded} answered ({recap.accuracy_pct}%)"
+        )
+    if recap.skipped:
+        noun = "exercise" if recap.skipped == 1 else "exercises"
+        lines.append(f"Skipped: {recap.skipped} {noun} you marked as not knowing")
+    if recap.pending:
+        lines.append(f"Still being graded: {recap.pending}")
     if recap.concepts:
         lines.append("Concepts you got right: " + ", ".join(recap.concepts))
     if recap.current_streak > 0:

@@ -38,6 +38,53 @@ class EmailSendError(RuntimeError):
     """The provider refused or was unreachable."""
 
 
+# RFC 2606 / RFC 6761 reserved names. These can NEVER receive mail, anywhere,
+# by standard -- they exist precisely so documentation and tests have addresses
+# that cannot reach a real person. Sending to one is therefore always a bug,
+# never a legitimate delivery, and it costs a hard bounce against the sending
+# domain's reputation plus a unit of plan quota.
+#
+# Refused unconditionally, including in production: there is no environment in
+# which mailing example.com is correct, so this is not a dev-only guard that
+# someone has to remember to switch on.
+_UNDELIVERABLE_DOMAINS = frozenset(
+    {"example.com", "example.net", "example.org", "test", "invalid", "localhost"}
+)
+
+
+def _recipient_domain(address: str) -> str:
+    return address.rpartition("@")[2].strip().lower()
+
+
+def assert_deliverable(address: str) -> None:
+    """Refuse recipients that must never be mailed. Raises EmailSendError.
+
+    TWO LAYERS, and only the second is configurable:
+
+    * Reserved domains (above) are always refused. A dev or staging database
+      accumulates addresses from manual testing, and the reminder job sweeps
+      EVERY eligible user, so one forgotten @example.com row is enough to burn
+      reputation on a guaranteed bounce.
+    * EMAIL_ALLOWED_RECIPIENTS, when non-empty, is a hard allowlist: nothing
+      outside it can be mailed at all. This is the answer to "do not rely on
+      someone remembering to check the eligibility set before arming the
+      switch" -- set it to your own address locally and a mis-scoped sweep
+      becomes impossible rather than merely unlikely. EMPTY in production,
+      where the whole point is to mail everyone.
+    """
+    domain = _recipient_domain(address)
+    if domain in _UNDELIVERABLE_DOMAINS or domain.endswith((".test", ".invalid", ".localhost")):
+        raise EmailSendError(
+            f"Refusing to send: {domain!r} is a reserved, undeliverable domain."
+        )
+
+    allowed = get_settings().email_allowed_recipients
+    if allowed and address.strip().lower() not in allowed:
+        raise EmailSendError(
+            "Refusing to send: recipient is not in EMAIL_ALLOWED_RECIPIENTS."
+        )
+
+
 @dataclass(frozen=True)
 class OutboundEmail:
     to: str
@@ -113,6 +160,11 @@ class ResendEmailSender:
             # Lazy validation, D-44 pattern: this is the first point at which a
             # missing key is actually a problem.
             raise EmailSendError("RESEND_API_KEY is not configured.")
+
+        # Before anything else: this recipient must be one we are allowed to
+        # reach at all. Checked HERE, in the only class that can actually
+        # transmit, so no caller can route around it.
+        assert_deliverable(message.to)
 
         # Belt and braces. The address was already validated by
         # email/address.py before it was ever stored, and the subject is a

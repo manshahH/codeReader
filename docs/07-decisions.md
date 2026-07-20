@@ -4451,10 +4451,28 @@ D-139 The product is Reedkode. The rename is PUBLIC-FACING ONLY, and that is a
        - `CODEREADER_ALLOW_SEED` gates a script that writes gate-bypassing
          content. A rename silently disarms the guard, because the new name
          reads as unset and the old check disappears.
-     EMAIL_FROM IS A SUBDOMAIN, no-reply@send.reedkode.com, NOT the apex. A
-     deliverability incident on a sending subdomain does not touch the root
-     domain's reputation, and the root is what the site and any future
-     person-to-person mail depend on. Verify send.reedkode.com in Resend.
+     EMAIL_FROM WAS SPECIFIED AS A SUBDOMAIN, no-reply@send.reedkode.com, on
+     the reasoning that a deliverability incident on a sending subdomain does
+     not touch the root domain's reputation, and the root is what the site and
+     any future person-to-person mail depend on.
+     REVERSED, DELIBERATELY, and EMAIL_FROM is now no-reply@reedkode.com. The
+     Resend account had the APEX verified and the subdomain was never
+     registered there at all (checked via the API, not assumed: GET /domains
+     returned reedkode.com verified, sending enabled, and nothing else). Rather
+     than block the first real send on a DNS round trip for a reputation
+     concern that has no traffic behind it yet, the apex is adopted as the
+     sending identity now.
+     WHAT THIS COSTS, stated so it is not rediscovered as a surprise: the apex
+     accumulates sending reputation, so a future deliverability problem is a
+     problem for the root domain rather than something quarantined away from
+     it. That is an acceptable trade at zero volume and it stops being one at
+     scale.
+     THE SUBDOMAIN REMAINS THE FALLBACK, and reintroducing it is cheap: verify
+     send.reedkode.com in Resend, publish its DNS records, and change EMAIL_FROM
+     in config.py plus both .env.example. Nothing else in the code depends on
+     which of the two it is. Do it if bounce or complaint rates ever start
+     mattering, which is also when the deferred Resend webhook (D-137) should
+     land, since the two are the same conversation.
      THE DOMAIN CUTOVER IS NOT PART OF THIS. APP_ORIGIN, GITHUB_REDIRECT_URI,
      the vercel.json rewrite and the GitHub OAuth callback all move together as
      ONE atomic change at launch: per D-114 and docs/09 section 3 the redirect

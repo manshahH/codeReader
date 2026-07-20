@@ -40,6 +40,17 @@ class WeeklyRecap:
     concepts: list[str]
     current_streak: int
     longest_streak: int
+    # Carried so the email can EXPLAIN its own arithmetic. "Exercises read: 10"
+    # next to "Correct: 2 of 9" looks like a contradiction unless the reader is
+    # told where the tenth went. A skip is a real, deliberate user action
+    # ("I don't know"), and D-93 keeps it out of the accuracy denominator on
+    # purpose so it never inflates the score -- but silently dropping it from
+    # the numbers is what made them look wrong.
+    skipped: int = 0
+    # Rubric grades that had not resolved when the recap was built. Effectively
+    # always 0 while summarize is off (D-123), but carried so the four numbers
+    # always reconcile rather than nearly reconciling.
+    pending: int = 0
 
     @property
     def accuracy_pct(self) -> int | None:
@@ -105,6 +116,12 @@ async def build_weekly_recap(
                 func.coalesce(func.sum(case((Attempt.is_correct.is_(True), 1), else_=0)), 0).cast(
                     Integer
                 ),
+                func.coalesce(
+                    func.sum(case((Attempt.status == "skipped", 1), else_=0)), 0
+                ).cast(Integer),
+                func.coalesce(
+                    func.sum(case((Attempt.status == "grading_pending", 1), else_=0)), 0
+                ).cast(Integer),
             ).where(
                 Attempt.user_id == user_id,
                 Attempt.session_date >= week_start,
@@ -113,6 +130,7 @@ async def build_weekly_recap(
         )
     ).one()
     exercises_attempted, graded, correct = int(totals[0]), int(totals[1]), int(totals[2])
+    skipped, pending = int(totals[3]), int(totals[4])
 
     # "Concepts improved" is reported as "concepts you got right", and the
     # rename is the honest part (D-137(8)). user_concept_state.mastery is a
@@ -159,6 +177,8 @@ async def build_weekly_recap(
         correct=correct,
         graded=graded,
         concepts=concepts,
+        skipped=skipped,
+        pending=pending,
         current_streak=stats.current_streak if stats else 0,
         longest_streak=stats.longest_streak if stats else 0,
     )

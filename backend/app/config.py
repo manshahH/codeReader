@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     # unconditionally would block constructing Settings at all on any deploy
     # that does not send email (and on every test run).
     RESEND_API_KEY: str = ""
-    EMAIL_FROM: str = "Reedkode <no-reply@send.reedkode.com>"
+    EMAIL_FROM: str = "Reedkode <no-reply@reedkode.com>"
     EMAIL_VERIFICATION_TTL_H: int = 24
     # Throttle, two layers with deliberately different scopes (see
     # email/service.py::_enforce_send_throttle). The cooldown is a per-ADDRESS
@@ -112,6 +112,11 @@ class Settings(BaseSettings):
     # The hourly cap is per user AND per address: per-user alone lets one
     # account walk an address list, per-address alone lets many accounts
     # converge on one mailbox.
+    # A hard recipient allowlist for non-production use (comma separated).
+    # EMPTY = no restriction, which is the production value. Set it to your own
+    # address locally and an armed EMAIL_SENDING_ENABLED cannot reach anyone
+    # else, however many stray verified addresses a dev database has collected.
+    EMAIL_ALLOWED_RECIPIENTS: str = ""
     EMAIL_VERIFICATION_RESEND_COOLDOWN_S: int = 60
     EMAIL_VERIFICATION_SENDS_PER_HOUR: int = 5
     # A3 reminders + weekly recap (docs/10; D-137). Nothing here can send while
@@ -159,6 +164,12 @@ class Settings(BaseSettings):
     JOB_PERCENTILES_INTERVAL_S: float = 3600.0
     JOB_PARTITIONS_INTERVAL_S: float = 86400.0
     CODEREADER_ALLOW_SEED: bool = False
+
+    @property
+    def email_allowed_recipients(self) -> frozenset[str]:
+        return frozenset(
+            a.strip().lower() for a in self.EMAIL_ALLOWED_RECIPIENTS.split(",") if a.strip()
+        )
 
     @property
     def jwt_secrets(self) -> list[str]:

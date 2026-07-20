@@ -49,6 +49,7 @@ from tests.factories_m4 import (  # noqa: F401
     clean_m4_tables,
     clean_redis,
     m4_env,
+    make_stb_exercise,
     make_user,
 )
 
@@ -1043,3 +1044,177 @@ async def test_retry_resends_the_original_payload_when_the_data_moved_underneath
     # second email.
     assert sent.idempotency_key == f"reminder:{user.id}:2026-07-21"
     assert await ledger_rows(db_session, user.id) == [("reminder", "sent", 2)]
+
+
+@pytest.mark.asyncio
+async def test_recap_numbers_reconcile_when_an_exercise_was_skipped(
+    db_session: AsyncSession,
+) -> None:
+    """A SKIP IS READ BUT NOT GRADEABLE, and the email has to say so.
+
+    Found in a real recap: "Exercises read: 10" directly above "Correct: 2 of
+    9". Two counts that obviously should match, don't, with nothing accounting
+    for the missing one. The gap is real -- D-93 deliberately keeps a skip out
+    of the accuracy denominator so "I don't know" never inflates the score --
+    but silently dropping it from the numbers is what made them look wrong. In
+    a stats email that is worse than omitting the stat, because it makes the
+    reader distrust all of it.
+
+    So: read = answered + skipped (+ pending), and the copy names each one.
+    """
+    from app.email.messages import build_recap_email
+
+    user = await make_verified_user(db_session)
+    exercise = await make_stb_exercise(db_session, concepts=["off-by-one-slicing"])
+    week_start, week_end = week_bounds(dt.date(2026, 7, 20))
+    day = week_start + dt.timedelta(days=1)
+
+    # Two graded (one right, one wrong) and one SKIPPED, on the same day.
+    rows = [
+        ("graded", True),
+        ("graded", False),
+        ("skipped", None),
+    ]
+    for status, correct in rows:
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO attempts
+                    (user_id, exercise_id, exercise_version, session_date, answer,
+                     grading_mode, status, is_correct, created_at)
+                VALUES (:u, :e, 1, :d, CAST('{}' AS jsonb),
+                        'deterministic', :s, :c, :ts)
+                """,
+            ),
+            {
+                "u": str(user.id),
+                "e": str(exercise.id),
+                "d": day,
+                "s": status,
+                "c": correct,
+                "ts": dt.datetime.combine(day, dt.time(12, 0), tzinfo=dt.UTC),
+            },
+        )
+    await db_session.commit()
+
+    recap = await build_weekly_recap(
+        db_session, user.id, week_start=week_start, week_end=week_end
+    )
+
+    # The four numbers reconcile: 3 read = 2 answered + 1 skipped + 0 pending.
+    assert recap.exercises_attempted == 3
+    assert recap.graded == 2
+    assert recap.correct == 1
+    assert recap.skipped == 1
+    assert recap.pending == 0
+    assert recap.exercises_attempted == recap.graded + recap.skipped + recap.pending
+    # Accuracy uses the ANSWERED denominator, never the read count: a skip must
+    # not drag the percentage down (D-93).
+    assert recap.accuracy_pct == 50
+
+    body = build_recap_email(to="dev@example.com", user_id=user.id, recap=recap).text
+
+    # NEGATIVE: the old copy said "Correct: 1 of 2" with no explanation of the
+    # third exercise. The denominator must be named and the gap accounted for.
+    assert "Exercises read: 3" in body
+    assert "Correct: 1 of 2 answered (50%)" in body
+    assert "Skipped: 1 exercise you marked as not knowing" in body
+    # A zero count is not printed, so a clean week stays short.
+    assert "Still being graded" not in body
+
+
+@pytest.mark.asyncio
+async def test_recap_omits_the_skip_line_when_nothing_was_skipped(
+    db_session: AsyncSession,
+) -> None:
+    """NEGATIVE of the above: a clean week must not grow a 'Skipped: 0' line."""
+    from app.email.messages import build_recap_email
+    from app.email.recap import WeeklyRecap
+
+    recap = WeeklyRecap(
+        week_start=dt.date(2026, 7, 13),
+        week_end=dt.date(2026, 7, 19),
+        sessions_completed=3,
+        exercises_attempted=9,
+        correct=8,
+        graded=9,
+        concepts=[],
+        current_streak=3,
+        longest_streak=3,
+    )
+    body = build_recap_email(to="dev@example.com", user_id=uuid.uuid4(), recap=recap).text
+
+    assert "Correct: 8 of 9 answered (89%)" in body
+    assert "Skipped" not in body
+    assert "Still being graded" not in body
+
+
+# --------------------------------------------------------------------------
+# Recipient guards: a dev database must not be able to mail strangers
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "me@example.com",
+        "seed@example.net",
+        "someone@example.org",
+        "user@my-box.test",
+        "user@nope.invalid",
+        "root@localhost",
+    ],
+)
+def test_reserved_domains_can_never_be_mailed(address: str) -> None:
+    """NEGATIVE, and unconditional -- this is not a dev-only switch.
+
+    RFC 2606 / RFC 6761 reserve these precisely so tests and docs have
+    addresses that cannot reach a person. There is no environment in which
+    mailing one is correct, and doing it costs a guaranteed hard bounce against
+    the sending domain's reputation plus a unit of plan quota.
+
+    This exists because a real dev database had a verified `me@example.com` on
+    it from manual UI testing, and the reminder job sweeps EVERY eligible user.
+    One forgotten row was enough.
+    """
+    from app.email.sender import assert_deliverable
+
+    with pytest.raises(EmailSendError, match="reserved, undeliverable"):
+        assert_deliverable(address)
+
+
+def test_a_normal_address_passes_the_guard() -> None:
+    """The positive half: the guard must not block real delivery."""
+    from app.email.sender import assert_deliverable
+
+    assert_deliverable("someone@gmail.com")  # does not raise
+
+
+def test_allowlist_makes_a_mis_scoped_sweep_impossible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The answer to "do not rely on remembering to check before arming".
+
+    With EMAIL_ALLOWED_RECIPIENTS set, nothing outside it can be mailed at all,
+    so a dev database full of stray verified rows cannot reach anyone.
+    """
+    from app.email.sender import assert_deliverable
+
+    monkeypatch.setenv("EMAIL_ALLOWED_RECIPIENTS", "mine@gmail.com, other@gmail.com")
+    get_settings.cache_clear()
+
+    assert_deliverable("mine@gmail.com")  # allowed
+    assert_deliverable("OTHER@gmail.com")  # case-insensitive
+    with pytest.raises(EmailSendError, match="not in EMAIL_ALLOWED_RECIPIENTS"):
+        assert_deliverable("stranger@gmail.com")
+
+    get_settings.cache_clear()
+
+
+def test_empty_allowlist_means_no_restriction() -> None:
+    """NEGATIVE of the above: production sets it empty and must mail everyone."""
+    from app.email.sender import assert_deliverable
+
+    get_settings.cache_clear()
+    assert get_settings().EMAIL_ALLOWED_RECIPIENTS == ""
+    assert_deliverable("anyone@gmail.com")  # does not raise
