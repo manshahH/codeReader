@@ -4541,3 +4541,61 @@ D-141 A waste guard must not become a hard dependency. The /admin/jobs/run
      provisioned and reachable, proven by the health check, but how it is
      provisioned is undocumented. That is a gap in the deploy runbook, not in
      this code.
+
+D-137 ADDENDUM 3, appended here rather than edited into the entry above because
+     this log is append-only. A RETRY CAN NEVER PICK UP A TEMPLATE FIX, and the
+     production remedy is not the obvious one.
+     THE INTERACTION. Addendum 2 made the payload immutable per period: the
+     first attempt renders once, stores the bytes, and every retry resends THOSE
+     bytes under the same idempotency key. That is exactly what stops Resend
+     refusing a changed body with 409, and it also means a template correction
+     is invisible to any period already claimed. If a send fails for a
+     CONTENT-related reason -- the template renders something the provider
+     rejects -- fixing the template does nothing for the affected users. Their
+     retries resend the same broken bytes until EMAIL_SEND_MAX_ATTEMPTS is
+     exhausted, and then the period is abandoned.
+     THE OBVIOUS REMEDY IS WRONG TWICE OVER. Deleting the ledger row and
+     re-running is the move that suggests itself, and it must NOT be the
+     production remedy. It forfeits the send-once guarantee, which is the
+     entire point of the table. AND IT DOES NOT EVEN WORK: the idempotency key
+     is derived from (kind, user_id, period_key), so deleting the row does not
+     change the key. Inside Resend's 24h retention, re-sending that key with
+     corrected content is precisely the same-key-different-payload case that
+     returns 409. Outside 24h the key has expired and the send goes through --
+     as a genuine duplicate if the original ever reached Resend. So the
+     "remedy" is a no-op for a day and a duplicate risk after that.
+     THE PRODUCTION REMEDY, plainly: LET THE PERIOD GO. Fix the template, ship
+     it, and let the NEXT period carry the fix. Do not touch the ledger.
+     WHY THAT IS ACCEPTABLE RATHER THAN RESIGNED, and it is the same trade
+     D-137(3) already made deliberately: a missed reminder is a non-event, a
+     duplicate is a channel violation. A content bug is SYSTEMATIC, not
+     per-user -- a broken template is broken for everyone -- so it announces
+     itself as a wall of `failed` rows rather than hiding, and the fix protects
+     the entire next period, which is the population that still matters. The
+     cost is one day of reminders, or one week of recaps, for the affected
+     cohort. That is the cheap side of the trade.
+     LOCAL DEV IS THE EXCEPTION and the distinction is worth stating so nobody
+     generalises from it: deleting your own test row is fine because there is
+     no send-once obligation to a real person behind it. That is a debugging
+     convenience, not the operational procedure.
+     CONSIDERED AND REJECTED: making a definitive provider REJECTION (a 4xx
+     that is not 429) clear the payload and re-claim under a key suffixed with
+     an attempt counter. A rejection means the mail definitively did not land,
+     so a new key would be safe, and it would rescue the affected period. Three
+     reasons not to build it now. (a) It requires reliably separating
+     "definitively not delivered" from "unknown", and the failure mode of
+     getting that classification wrong is a duplicate -- trading a cheap, loud,
+     self-correcting failure for a rare, expensive, silent one. (b) The
+     information is not even available today: sender.py collapses every
+     httpx.HTTPError into EmailSendError and records only the exception TYPE
+     name, so a 422 and a 503 are indistinguishable downstream by construction.
+     (c) It leans on UNDOCUMENTED provider behaviour -- Resend documents key
+     retention and the 409, but not whether a rejected request records its key
+     at all, so the safety of the whole scheme rests on a detail we would be
+     guessing. Building on a guess to rescue a rare case is how the duplicate
+     gets shipped.
+     REVISIT IF: a content-caused failure actually happens more than once, or
+     the weekly recap proves too valuable to lose a period of. The first change
+     either would need is recording the HTTP status alongside the exception
+     type in email_deliveries.last_error, which is a diagnostics improvement
+     worth making on its own merits and is currently missing.
