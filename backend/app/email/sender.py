@@ -35,7 +35,25 @@ _SEND_TIMEOUT_S = 10
 
 
 class EmailSendError(RuntimeError):
-    """The provider refused or was unreachable."""
+    """The provider refused or was unreachable.
+
+    `status` carries the HTTP status when the provider ANSWERED and the answer
+    was an error, and is None when there was no answer at all (timeout, DNS,
+    connection reset) or when the refusal came from our own guards before any
+    request was built.
+
+    That distinction is the whole reason this attribute exists. Downstream, a
+    422 and a 503 recorded identically as "HTTPStatusError" make a broken
+    template and a provider outage look the same when you are staring at a wall
+    of `failed` rows, which is exactly the moment the difference matters most.
+    It is also the input the re-claim design rejected in D-137 addendum 3 would
+    need if it is ever revisited: "definitively not delivered" is a claim you
+    can only make from a definite 4xx, and None means you cannot make it.
+    """
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 # RFC 2606 / RFC 6761 reserved names. These can NEVER receive mail, anywhere,
@@ -204,14 +222,26 @@ class ResendEmailSender:
                 )
                 response.raise_for_status()
         except httpx.HTTPError as exc:
-            # The exception text can carry the request body on some httpx
-            # errors, and that body is a verification email. Log the shape, not
-            # the content.
+            # The STATUS is not content and is safe to keep: it is a three digit
+            # integer from the provider, never anything the user wrote. The
+            # exception TEXT still is not kept -- on some httpx errors it
+            # carries the request body, and that body is somebody's mail.
+            status = (
+                exc.response.status_code
+                if isinstance(exc, httpx.HTTPStatusError)
+                else None
+            )
             logger.warning(
                 "email.send.failed",
-                extra={"to": mask_email(message.to), "error": type(exc).__name__},
+                extra={
+                    "to": mask_email(message.to),
+                    "error": type(exc).__name__,
+                    "status": status,
+                },
             )
-            raise EmailSendError("Could not send the verification email.") from exc
+            raise EmailSendError(
+                "Could not send the email.", status=status
+            ) from exc
 
         logger.info(
             "email.send.ok",

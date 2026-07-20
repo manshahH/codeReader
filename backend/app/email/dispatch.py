@@ -214,12 +214,20 @@ async def run_sweep(
                     # period retryable. The exception TYPE only: an httpx error
                     # can carry the request body, and that body is somebody's
                     # mail (D-120).
+                    # Type AND status. "HTTPStatusError 422" says the
+                    # template is broken; "HTTPStatusError 503" says the
+                    # provider was down; "EmailSendError None" says we refused
+                    # it ourselves before building a request. Recording only
+                    # the type made all three look identical.
+                    detail = type(exc.__cause__ or exc).__name__
+                    if exc.status is not None:
+                        detail = f"{detail} {exc.status}"
                     await mark_failed(
                         work_session,
                         candidate.user_id,
                         kind,
                         candidate.period_key,
-                        error=type(exc.__cause__ or exc).__name__,
+                        error=detail,
                     )
                     await work_session.commit()
                     result.failed += 1

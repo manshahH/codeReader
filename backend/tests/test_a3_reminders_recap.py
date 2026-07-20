@@ -1218,3 +1218,97 @@ def test_empty_allowlist_means_no_restriction() -> None:
     get_settings.cache_clear()
     assert get_settings().EMAIL_ALLOWED_RECIPIENTS == ""
     assert_deliverable("anyone@gmail.com")  # does not raise
+
+
+class _RejectingSender:
+    """Provider ANSWERED with an error status (a broken payload, say)."""
+
+    def __init__(self, status: int) -> None:
+        self.status = status
+
+    async def send(self, message: OutboundEmail) -> None:
+        raise EmailSendError("provider refused", status=self.status) from _http_error(self.status)
+
+
+class _UnreachableSender:
+    """No answer at all: timeout, DNS, reset. Status is unknowable."""
+
+    async def send(self, message: OutboundEmail) -> None:
+        raise EmailSendError("unreachable") from TimeoutError("read timeout")
+
+
+def _http_error(status: int) -> Exception:
+    import httpx
+
+    request = httpx.Request("POST", "https://api.resend.com/emails")
+    response = httpx.Response(status, request=request)
+    return httpx.HTTPStatusError("boom", request=request, response=response)
+
+
+@pytest.mark.asyncio
+async def test_a_definite_rejection_records_its_status_code(
+    db_session: AsyncSession, session_factory
+) -> None:
+    """A 422 and a 503 must not look the same in the ledger.
+
+    Recording only the exception TYPE made a broken template and a provider
+    outage identical when diagnosing a wall of `failed` rows -- which is the
+    exact moment the difference decides what you do next. It is also the input
+    the re-claim design rejected in D-137 addendum 3 would need.
+    """
+    user = await make_verified_user(db_session)
+
+    await send_daily_reminders(session_factory, _RejectingSender(422), now=TUESDAY_0900)
+
+    error = await db_session.scalar(
+        text("SELECT last_error FROM email_deliveries WHERE user_id = :u"),
+        {"u": str(user.id)},
+    )
+    assert error == "HTTPStatusError 422"
+
+
+@pytest.mark.asyncio
+async def test_a_provider_outage_records_a_different_status(
+    db_session: AsyncSession, session_factory
+) -> None:
+    """The discriminating half: same code path, different diagnosis."""
+    user = await make_verified_user(db_session)
+
+    await send_daily_reminders(session_factory, _RejectingSender(503), now=TUESDAY_0900)
+
+    error = await db_session.scalar(
+        text("SELECT last_error FROM email_deliveries WHERE user_id = :u"),
+        {"u": str(user.id)},
+    )
+    assert error == "HTTPStatusError 503"
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_provider_records_no_status(
+    db_session: AsyncSession, session_factory
+) -> None:
+    """NEGATIVE, and the one that keeps the field honest: with no answer there
+    is no status, and it must be ABSENT rather than guessed. "Definitively not
+    delivered" is a claim you can only make from a definite status; None means
+    you cannot make it, which is what keeps a future re-claim design safe.
+    """
+    user = await make_verified_user(db_session)
+
+    await send_daily_reminders(session_factory, _UnreachableSender(), now=TUESDAY_0900)
+
+    error = await db_session.scalar(
+        text("SELECT last_error FROM email_deliveries WHERE user_id = :u"),
+        {"u": str(user.id)},
+    )
+    assert error == "TimeoutError"
+    assert "None" not in error
+
+
+def test_the_error_never_carries_the_message_body() -> None:
+    """NEGATIVE. The status is safe (a three digit int from the provider); the
+    exception TEXT is not, because httpx can put the request body in it and
+    that body is somebody's mail (D-120)."""
+    exc = EmailSendError("Could not send the email.", status=422)
+
+    assert exc.status == 422
+    assert "@" not in str(exc)

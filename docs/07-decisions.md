@@ -4595,7 +4595,22 @@ D-137 ADDENDUM 3, appended here rather than edited into the entry above because
      guessing. Building on a guess to rescue a rare case is how the duplicate
      gets shipped.
      REVISIT IF: a content-caused failure actually happens more than once, or
-     the weekly recap proves too valuable to lose a period of. The first change
-     either would need is recording the HTTP status alongside the exception
-     type in email_deliveries.last_error, which is a diagnostics improvement
-     worth making on its own merits and is currently missing.
+     the weekly recap proves too valuable to lose a period of.
+     DONE SINCE, and it is the prerequisite either revisit would need:
+     email_deliveries.last_error now records the HTTP STATUS alongside the
+     exception type -- "HTTPStatusError 422" (our payload is bad),
+     "HTTPStatusError 503" (the provider was down), "TimeoutError" with no
+     status (no answer at all). Recording only the type made a broken template
+     and a provider outage identical at exactly the moment the difference
+     decides what you do next.
+     THE ABSENCE OF A STATUS IS ITSELF THE SIGNAL, and that is why it is left
+     absent rather than defaulted. "Definitively not delivered" is a claim you
+     can only make from a definite status code; no status means no answer,
+     which means the send may have landed, which means a re-claim under a new
+     key would risk the duplicate D-137 exists to prevent. So the field now
+     carries exactly the discrimination the rejected design would need, and
+     equally carries the evidence for when that design must NOT fire.
+     THE STATUS IS SAFE TO STORE where the exception text is not: it is a three
+     digit integer from the provider, never anything a user wrote. httpx can
+     put the request body into an exception message, and that body is somebody's
+     mail (D-120), so the message is still discarded.
