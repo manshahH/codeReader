@@ -50,3 +50,4 @@ frontend/_final-*
 # D-129 viewer visual/DOM harness output (evidence, not source)
 frontend/viewer-shots/
 frontend/viewer-dom/
+frontend/narrow-audit/
