@@ -3738,8 +3738,16 @@ D-137 A3 reminders and weekly recap. Send-once is the whole problem, and it is
 
      (10) BATCHING IS SEQUENTIAL AND PACED, NOT CONCURRENT.
      EMAIL_JOB_BATCH_SIZE=200 candidates per tick, EMAIL_MAX_SENDS_PER_TICK=100
-     actually sent, paced at EMAIL_SENDS_PER_SECOND=2 (Resend's documented
-     default rate limit).
+     actually sent, paced at EMAIL_SENDS_PER_SECOND=2.
+     CORRECTION, made after checking rather than asserting: this entry
+     originally said 2/s WAS "Resend's documented default rate limit". It is
+     not. Resend documents 10 requests/second per TEAM, raisable on request.
+     2/s is therefore a deliberately conservative default at one fifth of the
+     ceiling, not a limit we are pinned to, and it is a knob: raising it to
+     8 shortens the worst-case 1,000-user drain from ~50 minutes to ~12
+     without touching code. The 429 handling is unchanged either way, because
+     a 429 is an EmailSendError like any other and lands the period in
+     `failed`, which is retryable and does not double-send.
      WHY NOT A CONCURRENT FAN-OUT: 200 simultaneous POSTs earns an immediate
      429 from any provider, and then we own a retry-storm problem strictly
      worse than being slow inside a background job that nobody is waiting on.

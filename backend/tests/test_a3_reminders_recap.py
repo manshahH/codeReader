@@ -903,3 +903,68 @@ def test_links_survive_a_comma_separated_app_origin(
     # The header URL is built the same way and must not be broken either.
     assert "5173,http" not in message.headers["List-Unsubscribe"]
     get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_east_of_utc_user_fires_on_their_local_date_not_the_server_date(
+    db_session: AsyncSession, session_factory, sender: RecordingSender
+) -> None:
+    """THE CLASSIC SILENT FAILURE: the user's local DATE differs from the
+    server's.
+
+    At 23:30 UTC on Monday, Tokyo (UTC+9) is already 08:30 on TUESDAY. A
+    reminder due at 08:00 local is due NOW, and the ledger must key it to the
+    user's Tuesday, not the server's Monday. Deriving the period from the
+    server clock passes every UTC-only test and is wrong in production for
+    everyone east of Greenwich -- and the failure is invisible, because the
+    mail still goes out, just filed under the wrong day, which lets a SECOND
+    one go out when the server date rolls over.
+    """
+    user = await make_verified_user(
+        db_session, timezone="Asia/Tokyo", reminder="08:00"
+    )
+    monday_2330_utc = dt.datetime(2026, 7, 20, 23, 30, tzinfo=dt.UTC)
+
+    result = await send_daily_reminders(session_factory, sender, now=monday_2330_utc)
+
+    assert result["sent"] == 1
+    # THE ASSERTION THAT MATTERS: the period is keyed to the user's local date,
+    # not the server's 2026-07-20.
+    period = await db_session.scalar(
+        text("SELECT period_key FROM email_deliveries WHERE user_id = :u"),
+        {"u": str(user.id)},
+    )
+    assert period == "2026-07-21"
+
+    # And 40 minutes later, when the SERVER date rolls over to Tuesday, the
+    # user must NOT be mailed again: they are still on the same local day.
+    tuesday_0010_utc = dt.datetime(2026, 7, 21, 0, 10, tzinfo=dt.UTC)
+    again = await send_daily_reminders(session_factory, sender, now=tuesday_0010_utc)
+
+    assert again["sent"] == 0
+    assert again["not_claimed"] == 1
+    assert len(sender.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_dst_spring_forward_does_not_swallow_the_reminder(
+    db_session: AsyncSession, session_factory, sender: RecordingSender
+) -> None:
+    """A reminder set inside the hour DST deletes must still fire.
+
+    On 2026-03-08 America/New_York jumps 02:00 -> 03:00, so 02:30 local never
+    happens. An exact "the reminder time just passed" match would silently drop
+    that day for every user whose time falls in the gap. The window is
+    deliberately wide (at or past, for the rest of the local day), so it fires
+    late rather than never (D-137(5)).
+    """
+    user = await make_verified_user(
+        db_session, timezone="America/New_York", reminder="02:30"
+    )
+    # 08:00 UTC on the transition day = 04:00 EDT, past the vanished 02:30.
+    after_the_gap = dt.datetime(2026, 3, 8, 8, 0, tzinfo=dt.UTC)
+
+    result = await send_daily_reminders(session_factory, sender, now=after_the_gap)
+
+    assert result["sent"] == 1
+    assert await ledger_rows(db_session, user.id) == [("reminder", "sent", 1)]

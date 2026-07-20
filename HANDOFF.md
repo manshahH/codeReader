@@ -111,6 +111,86 @@ same-origin rewrite and the `GITHUB_REDIRECT_URI` rule in docs/09 section 3.
 `EMAIL_SENDING_ENABLED` defaults false, so nothing sends until deliberately
 enabled.
 
+**A3 GO-LIVE ENV, and the job-runner half is the easiest thing to forget.** A
+correct reminder system that never ticks is the most likely way this fails
+silently: no error, no mail, nothing in Sentry, and the ledger simply stays
+empty. The A3 release checklist is therefore:
+
+| Setting | Value | Where |
+|---|---|---|
+| `JOBS_ENABLED` | `true` (already the default, and already `true` in both `.env.example`) | FastAPI Cloud |
+| `JOB_REMINDERS_INTERVAL_S` | `60` for launch, NOT the 300 default | FastAPI Cloud |
+| `JOB_WEEKLY_RECAP_INTERVAL_S` | `900` (default is fine) | FastAPI Cloud |
+| `RESEND_API_KEY` | the real key | FastAPI Cloud |
+| `EMAIL_SENDING_ENABLED` | `true` | FastAPI Cloud |
+| `EMAIL_FROM` | `Reedkode <no-reply@reedkode.com>` once the domain is verified | FastAPI Cloud |
+| `APP_ORIGIN` | the production frontend origin | FastAPI Cloud |
+
+**Why the interval must come down from 300.** The reminder job is a SWEEP, not
+a scheduler: it fires for everyone whose local time is at or past their chosen
+minute, so the tick interval IS the worst-case lateness. At the 300s default a
+user who picked 08:00 can be mailed at 08:04:59. At 60s the worst case is 59
+seconds, which is "near their chosen minute" in any sense a user would notice.
+The interval cannot be lowered indefinitely: each tick is a query plus up to
+`EMAIL_MAX_SENDS_PER_TICK` paced sends, so 60s is the floor at which a tick
+still finishes before the next one starts at launch volume. It is NOT an
+hour-late system by default -- 300s is five minutes, not sixty -- but 60s is
+the right launch value.
+
+**Does the runner actually start on FastAPI Cloud?** Yes, and the mechanism is
+worth naming because it is the load-bearing assumption. The scheduler is
+started from the FastAPI **lifespan** (`main.py`), not from a cron container
+and not from a separate worker process, so it runs wherever the ASGI app runs.
+Two consequences: (a) if FastAPI Cloud ever scales to more than one instance,
+EVERY instance runs the jobs -- which is safe, because the `email_deliveries`
+primary key means only one instance can claim any period, but it does multiply
+the harmless no-op queries; (b) if the platform idles the app to zero when
+there is no traffic, the jobs stop with it. **Verify after deploy** with
+`GET /admin/metrics`, which reports `run_count` and `last_run_at` per job:
+`reminders` climbing is the only proof the layer is alive. A `run_count` that
+stops climbing between two polls is the failure this metric exists to catch.
+
+**LAUNCH BLOCKER 2, alongside the domain: the Resend plan.** The free tier is
+**100 emails/day and 3,000/month**, and a public launch clears that almost
+immediately. Volume is deterministic, because A3 sends at most one reminder per
+user per day and one recap per user per week:
+
+| Subscribed users | Reminders/day | Recap day adds | Peak day (Monday) | Per month |
+|---|---|---|---|---|
+| 200 | up to 200 | +200 | **400** | ~6,800 |
+| 500 | up to 500 | +500 | **1,000** | ~17,000 |
+| 1,000 | up to 1,000 | +1,000 | **2,000** | ~34,000 |
+
+Those are ceilings, not forecasts: a reminder is skipped for anyone who already
+practised that day, and an empty week is skipped entirely, so real volume is
+lower and falls as engagement rises. Even so, **200 subscribed users exceed the
+free daily cap on any Monday, and ~90 users exceed it on an ordinary day.**
+
+Pricing: **Pro is $20/mo for 50,000 emails**, then $35/mo for 100,000; Scale
+starts at $90/mo for 100,000. Overage on Pro is $0.90 per 1,000. So the entry
+Pro plan covers 1,000 fully-subscribed users (~34,000/mo) with room to spare,
+and the decision at launch is simply free-to-Pro, a $20/mo line item. Free also
+allows only ONE verified domain, which is enough for reedkode.com but leaves no
+room for a separate staging sender.
+
+**Does the job degrade gracefully or hammer the limit?** It degrades, and this
+was designed rather than lucky, but the two limits fail differently:
+- **The per-second rate limit is respected by construction.** Sends are
+  sequential and paced at `EMAIL_SENDS_PER_SECOND` (2/s, against a documented
+  ceiling of 10/s per team), never a concurrent fan-out, and
+  `EMAIL_MAX_SENDS_PER_TICK` caps each tick. It cannot burst.
+- **The daily/monthly cap is NOT respected, because the job cannot see it.**
+  Once the plan quota is exhausted Resend starts refusing, and every refusal is
+  an `EmailSendError` that lands the period in `failed` with an attempt count.
+  That is graceful in the sense that matters -- it does not crash the job, does
+  not mark the period sent, does not double-send, and stops after
+  `EMAIL_SEND_MAX_ATTEMPTS` -- but it is NOT self-limiting: it will keep
+  re-attempting up to the cap for every user, every tick, and the visible
+  symptom is a pile of `failed` rows rather than an alert. **Watch for
+  `email_deliveries` rows with `status='failed'` after launch; that is the
+  quota signal.** Staying on the free tier past ~90 users therefore produces
+  mail that silently stops for most users while the job looks busy.
+
 **Three fixes rode in on the A2 branch, unrelated to email** (deliberately not
 split out; see the A2 merge commit):
 - **D-122**: first-of-day session creation is serialized by a per-(user, day)
