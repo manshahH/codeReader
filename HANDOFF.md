@@ -95,21 +95,34 @@ and COMMITTED before the provider call, with a deterministic Resend
 duplicate reminder costs more than a missed one. This is D-116's argument one
 layer up: a recorded fact, never a recomputation that a timezone change can move.
 
-**THE HARD PREREQUISITE IS STILL OPEN, and building A3 did not close it.**
-Resend will only send from a verified domain, needing SPF, DKIM, MX and DMARC
-records. `EMAIL_FROM` still points at `no-reply@codereader.dev`, **a placeholder
-nobody owns**, and neither `codereader-eight.vercel.app` nor
-`codereader.fastapicloud.dev` can be used (you cannot add DNS records to a
-domain you do not control). D-114 deferred buying a domain; A3 cannot SEND until
-that is reversed, and DNS propagation plus verification is a lead-time item.
-So "paste a real `RESEND_API_KEY` and flip `EMAIL_SENDING_ENABLED=true`" is
-NECESSARY AND NOT SUFFICIENT: with the key set but no verified domain, every
-send returns a provider error, which the job records as `failed` and retries to
-its cap. `APP_ORIGIN` should move at the same time, since verification AND
-unsubscribe links are built from it, and a domain change touches D-114's
-same-origin rewrite and the `GITHUB_REDIRECT_URI` rule in docs/09 section 3.
-`EMAIL_SENDING_ENABLED` defaults false, so nothing sends until deliberately
-enabled.
+**THE SENDING DOMAIN PREREQUISITE IS CLOSED (2026-07-20).** `reedkode.com` is
+verified in Resend with sending enabled, and a real email has been delivered to
+a real inbox from `Reedkode <no-reply@reedkode.com>`. This paragraph previously
+said A3 was blocked; it is not.
+
+DNS as actually deployed, which is worth writing down because it is NOT the
+shape you would guess and it cost one wrong diagnosis. Resend's custom
+return-path puts SPF and the bounce MX on a `send.` SUBDOMAIN while DKIM sits on
+the APEX:
+
+| Record | Name | Purpose |
+|---|---|---|
+| TXT | `send.reedkode.com` | `v=spf1 include:amazonses.com ~all` (envelope-from) |
+| MX | `send.reedkode.com` | `feedback-smtp.us-east-1.amazonses.com` (bounces) |
+| TXT | `resend._domainkey.reedkode.com` | DKIM, `d=reedkode.com` |
+| TXT | `_dmarc.reedkode.com` | `v=DMARC1; p=none;` |
+
+Looking for SPF at the apex finds nothing and looks like a gap. It is not one.
+Both DMARC mechanisms align (SPF via the organizational-domain match on
+`send.reedkode.com`, DKIM directly), so DMARC passes on either.
+
+**`p=none` is monitor-only.** Correct while establishing reputation; tighten to
+`quarantine` once the first weeks of sending look clean.
+
+What remains before mail actually flows in production is the ENV, not DNS: set
+`RESEND_API_KEY`, `EMAIL_SENDING_ENABLED=true`, `EMAIL_FROM` and `APP_ORIGIN` on
+FastAPI Cloud, plus the D-138 trigger secrets. `EMAIL_SENDING_ENABLED` defaults
+false, so nothing sends until deliberately enabled.
 
 **A3 GO-LIVE ENV, and the job-runner half is the easiest thing to forget.** A
 correct reminder system that never ticks is the most likely way this fails

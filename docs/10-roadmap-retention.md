@@ -5,16 +5,14 @@ Status: A1, A2 AND A3 ARE BUILT (A1/A2 merged to master 2026-07-18; A3 on
 This is the "what we build next" doc; `HANDOFF.md` is the "what is already
 built" doc. Read both before starting.
 
-**A3 is CODE-COMPLETE but STILL BLOCKED ON A SENDING DOMAIN, and building it did
-not unblock that.** Resend only sends from a verified domain (SPF/DKIM/MX/DMARC)
-and `EMAIL_FROM` still names `no-reply@codereader.dev`, a placeholder nobody
-owns. D-114 deferred buying one and that has to be reversed before a single mail
-goes out. Concretely: pasting a real `RESEND_API_KEY` and flipping
-`EMAIL_SENDING_ENABLED=true` is NECESSARY AND NOT SUFFICIENT -- without a
-verified domain every send returns a provider error, which the job will record
-as `failed` and retry to its cap. `APP_ORIGIN` must move at the same time, since
-both verification and unsubscribe links are built from it. See D-137(0) and
-HANDOFF.
+**A3 IS CODE-COMPLETE AND THE SENDING DOMAIN IS VERIFIED (2026-07-20).**
+`reedkode.com` is verified in Resend with sending enabled, and a real reminder
+and a real recap have both been delivered to a real inbox from
+`Reedkode <no-reply@reedkode.com>`. D-114's deferral is reversed and D-137(0)'s
+blocker is closed; D-139 records why the apex was adopted over the originally
+planned `send.` subdomain. What remains is production ENV, not DNS -- see the
+A3 go-live table in HANDOFF, including the D-138 external trigger without which
+the jobs never tick on a host that scales to zero.
 
 **Launch shape: FULL PUBLIC LAUNCH, not a 20 to 30 person invite beta.** The
 invite-beta plan and its D1/D7 retention criterion are withdrawn (see HANDOFF):
