@@ -102,14 +102,17 @@ CREATE TABLE email_deliveries (
                CHECK (status IN ('claimed','sent','failed','skipped')),
   attempts   int         NOT NULL DEFAULT 0,
   last_error text,                                  -- exception TYPE only, never a body (D-120)
+  claimed_at timestamptz NOT NULL DEFAULT now(),
+  sent_at    timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now(),
   -- The rendered email, snapshotted on the FIRST attempt and resent verbatim by
   -- every retry. Resend's idempotency contract is same-key-SAME-PAYLOAD; a
   -- changed body under the same key is a 409, and a changed KEY would be a
   -- duplicate. NULL = claimed but not rendered yet.
+  -- LAST on purpose: migration 0011 adds it with ALTER TABLE ADD COLUMN, which
+  -- always appends, so a database built from this file must order it the same
+  -- way or it stops matching a migrated one.
   payload    jsonb,
-  claimed_at timestamptz NOT NULL DEFAULT now(),
-  sent_at    timestamptz,
-  updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, kind, period_key)
 );
 
