@@ -1,10 +1,12 @@
 # CodeReader — Handoff Brief
 
 Paste this into a new chat to resume. Everything else lives in the repo
-(`CLAUDE.md`, `docs/00`–`docs/09`, `docs/07-decisions.md` = D-1..D-122).
+(`CLAUDE.md`, `docs/00`–`docs/11`, `docs/07-decisions.md` = D-1..D-141).
 Forward plan (what to build next) lives in `docs/10-roadmap-retention.md`.
 
-Last refreshed: 2026-07-18 (A1 and A2 both merged to master; D-116..D-122).
+Last refreshed: 2026-07-21 (A3 and the viewer rebuild merged to master;
+D-123..D-141). Product name is **Reedkode** public-facing; repo, database and
+internal identifiers stay `codereader` on purpose (D-139).
 
 ---
 
@@ -21,7 +23,7 @@ Stack: FastAPI + Postgres 16 + Redis, React 18/Vite/TS/Tailwind, a content
 pipeline with a Docker sandbox and adversarial LLM gates. Repo:
 `D:\projects\codereader`. Windows host; local dev runs via Docker Compose.
 
-**Deployed (soft launch live):**
+**Deployed (production, MVP only):**
 - Backend: FastAPI Cloud, `https://codereader.fastapicloud.dev`
 - Frontend: Vercel, `https://codereader-eight.vercel.app`
 - DB: Neon Postgres (free tier). Frontend proxies `/v1/*` to the backend via a
@@ -30,26 +32,79 @@ pipeline with a Docker sandbox and adversarial LLM gates. Repo:
 
 ---
 
-## Status: MVP built, deployed, and in soft launch
+## Status: master is four milestones ahead of production
 
-**Production and `master` are NOT the same thing right now.** LIVE IN
-PRODUCTION: the MVP only (M0-M8, soft launch). ON `master`, MERGED AND
-UNRELEASED: the whole retention layer so far, A1 (streak safety net) and A2
-(email capture), plus D-119/D-121/D-122. Nothing below describing A1 or A2 is
-running in production yet.
+**THE MOST EXPENSIVE MISTAKE THIS DOC CAN CAUSE IS CONFUSING THESE TWO.**
+Verified by probing production, not by reading: `GET /v1/streak/repair` and
+`GET /v1/unsubscribe/preview` both return **404** there, while `/healthz` is
+200. Those paths do not exist in production. They exist on `master`.
 
-All milestones M0-M8 complete and the app is live end to end in production:
-GitHub OAuth login, onboarding, daily session, instant deterministic grading,
-streaks, spaced repetition, stats, disputes. The session gate was removed so
-reaching `/session` opens the player directly (D-111). Frontend passed a full
-Playwright session smoke test and scored 0/16 on the anti-slop audit across every
-screen; the Review/Dashboard/Profile screens got a dual-pane + glassmorphism
-polish pass (see `docs/ops-incident-report-july-2026.md`). 517 backend tests green
-(456 predated A1; A1 took it to 457, A2 added 49, D-121/D-122 added 8, D-119's
-close added 3). The Playwright suite is 14 passed / 0 skipped: the last
-test.fixme was removed when D-119 closed.
+| | Production | `master` |
+|---|---|---|
+| MVP (M0-M8) | live | yes |
+| A1 streak safety net | **no** | merged |
+| A2 email capture | **no** | merged |
+| A3 reminders + recap | **no** | merged |
+| Mobile viewer rebuild | **no** | merged |
+| Migrations applied | through 0008 | through 0011 |
 
-**Retention layer: A1 and A2 are BUILT and MERGED TO MASTER. A3 is next.**
+So: **nothing in the retention layer is running.** Every A1/A2/A3 description
+below is describing `master`. Master is unpushed-to-production and carries four
+migrations production has never seen (0009 email, 0010 delivery ledger, 0011
+delivery payload).
+
+**Production** is the MVP end to end: GitHub OAuth login, onboarding, daily
+session, instant deterministic grading, streaks, spaced repetition, stats,
+disputes. The session gate was removed so `/session` opens the player directly
+(D-111).
+
+**On master, green:** 603 backend tests, 124 Playwright (0 skipped), ruff clean,
+migration chain reversible, schema.sql at parity.
+
+### What merged since the last refresh
+
+- **A1 streak safety net** (D-116..D-118) and **A2 email capture** (D-120).
+  Both detailed in full below; unchanged since the last refresh apart from
+  being further from production.
+- **A3 reminders + weekly recap** (D-137, D-138, D-140, D-141). Daily reminder
+  and Monday recap, both swept from an `email_deliveries` ledger whose PK
+  `(user_id, kind, period_key)` IS the send-once ceiling, claimed and committed
+  before the provider call, with a Resend `Idempotency-Key` as a second layer.
+  Suppression is permanent and keyed on `user_id`, so an unsubscribe survives a
+  re-verify. One-click unsubscribe (RFC 8058) plus Profile toggles on the same
+  rows. **D-138 is the part most likely to be missed: FastAPI Cloud scales to
+  zero, so the in-process scheduler dies with the app and a GitHub Actions cron
+  hitting `POST /admin/jobs/run` is what actually makes reminders fire.**
+- **Mobile viewer rebuild** (D-129..D-136). The code viewer moved to a model
+  that survives new exercise types; the phone layout separates in TIME, not
+  space, as two full-screen states with a toggle (the bottom sheet was withdrawn
+  in D-134). `useIsNarrow` (1024px, available width, never user-agent) is the
+  breakpoint; `ReadingPreferences` moved out of the session player into Profile.
+  D-132 fixed five measured defects at 400px. **D-136 is OPEN**: seeded specs
+  are intermittently flaky, undiagnosed, and must not be filed under D-122.
+
+### Outstanding launch mechanics
+
+Not code. None of it is done, and A3 does not function without the middle
+three. This is the checklist; the reasoning for each is further down under the
+A3 sections, which are the detail rather than a second opinion.
+
+1. **Domain cutover, ATOMIC.** `APP_ORIGIN`, `GITHUB_REDIRECT_URI`, the
+   `vercel.json` rewrite and the GitHub OAuth callback all move to
+   `reedkode.com` together. Split them and login breaks silently: per D-114 and
+   docs/09 section 3 the redirect URI must name the FRONTEND origin or the
+   refresh cookie lands on the wrong domain. Forces one re-authentication.
+2. **Resend paid tier.** Free is 100/day, 3,000/month. ~90 subscribed users
+   breaks that on an ordinary day, 200 on any Monday. Pro is $20/mo for 50,000.
+   The domain itself is done: `reedkode.com` verified, sending enabled.
+3. **GitHub repo secrets for the D-138 cron**: `API_BASE_URL`,
+   `ADMIN_METRICS_TOKEN` (matching FastAPI Cloud), `HEARTBEAT_URL`.
+4. **healthchecks.io heartbeat.** The workflow pings it only on success and the
+   monitor alerts when pings STOP. Nothing else watches this layer; a flat
+   `reminders.run_count` is only evidence if something is reading it.
+5. **Make the repo private.** It is PUBLIC today, so GitHub disables scheduled
+   workflows after 60 days of no repository activity, and a quiet repo is the
+   normal post-launch state. Private exempts the rule outright.
 
 A1 (streak safety net) added freeze accrual and consumption, repair / earn-back,
 an ops outage freeze, and a "welcome back" state in place of guilt copy. The
@@ -78,8 +133,8 @@ routes: `POST /v1/me/email`, `POST /v1/me/email/verify`,
 backfill needed. This is the first migration in the retention work, so A2's
 release is NOT the no-migration shape A1's was.
 
-**A3 (reminders + weekly recap) IS BUILT, on branch `a3-reminders-recap`
-(D-137). It is NOT deployed and NOT merged.** Migration **0010** adds
+**A3 (reminders + weekly recap) IS MERGED TO MASTER (D-137, D-138, D-140,
+D-141) and NOT DEPLOYED.** Migrations **0010** and **0011** add
 `email_deliveries` (the send-once ledger) and `email_suppressions` (permanent,
 per-user opt-out). New routes: `PATCH /v1/me/email-prefs`, and the two PUBLIC
 unsubscribe routes `POST /v1/unsubscribe?token=` (RFC 8058 one-click, no login)
@@ -300,8 +355,9 @@ split out; see the A2 merge commit):
   does not exist, so it failed 8 of 8 on a confusing selector. Fixed to assert
   the real completion signal. No `test.fixme` remains in the Playwright suite.
 
-**Both A1 and A2 are merged to master but NOT DEPLOYED**, and merging ships
-nothing: Vercel is CLI-only and the backend deploys separately. Branches
+**A1, A2, A3 and the viewer rebuild are merged to master but NOT DEPLOYED**,
+and merging ships nothing: Vercel is CLI-only and the backend deploys
+separately. Branches
 `a1-streak-safety-net` and `a2-email-capture` are retained, not deleted, and
 master is 25 commits ahead of `origin/master` and unpushed. The A1 release
 checklist is in `docs/09` section 5 (backend before frontend, no migration, no
@@ -324,7 +380,8 @@ Three exercise types, **all deterministically graded (zero per-answer LLM cost)*
   survivors; every distractor is *executed* and must still fail the test)
 
 `summarize` was built (M5, with real prompt-injection hardening) but **dropped
-from the soft launch** — it's the only type with a per-answer LLM cost.
+before launch and still off** (D-115, enforced by `SUMMARIZE_ENABLED` per
+D-123) — it's the only type with a per-answer LLM cost.
 
 ---
 
@@ -581,7 +638,12 @@ stop the dev server in the terminal that owns it.
 ## Commands
 
 **Production:** frontend `https://codereader-eight.vercel.app`, backend
-`https://codereader.fastapicloud.dev`, DB on Neon. Backend redeploy:
+`https://codereader.fastapicloud.dev`, DB on Neon. **These are the CURRENT
+production URLs and they are scheduled to change**: the `reedkode.com` cutover
+is an outstanding launch step (see "Outstanding launch mechanics" above), and
+`APP_ORIGIN`, `GITHUB_REDIRECT_URI`, the `vercel.json` rewrite and the GitHub
+OAuth callback all move together in one atomic change. Until that happens these
+remain correct. Backend redeploy:
 `fastapi cloud deploy backend` with the App Root Directory set to `.` (see
 `docs/09` for the directory / wheel / OAuth-cookie gotchas). The commands below
 are for LOCAL development.

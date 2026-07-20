@@ -1,8 +1,14 @@
 # CLAUDE.md
 
 Daily code-reading practice app for working developers ("Duolingo for reading,
-reviewing, and debugging code"). The MVP (docs/03) is BUILT and DEPLOYED
-(soft launch). Current work is the retention/gamification layer in docs/10.
+reviewing, and debugging code"). Product name is **Reedkode** (public-facing
+only, D-139); the repo, database and internal identifiers stay `codereader`
+deliberately.
+
+**PRODUCTION AND `master` ARE FAR APART. Check which one you mean.** Production
+runs the MVP only. `master` additionally carries A1, A2, A3 and the mobile
+viewer rebuild, none of it deployed. HANDOFF.md leads with the current split;
+read it before assuming a feature is live.
 
 ## Read order
 1. This file
@@ -10,7 +16,7 @@ reviewing, and debugging code"). The MVP (docs/03) is BUILT and DEPLOYED
 3. docs/10-roadmap-retention.md (what we build next, phased) for feature work
 4. The reference doc for the subsystem you touch (01 content, 04 db + db/schema.sql,
    05 api, 08/08b frontend, 09 deploy); docs/06 for the original MVP milestones
-5. docs/07-decisions.md before proposing any design change (D-1..D-115)
+5. docs/07-decisions.md before proposing any design change (D-1..D-141)
 
 ## Doc map
 - docs/00-product.md          what we are building and why
@@ -18,13 +24,18 @@ reviewing, and debugging code"). The MVP (docs/03) is BUILT and DEPLOYED
 - docs/02-architecture-full.md  end-state architecture (context, not MVP scope)
 - docs/03-mvp-scope.md        what is in/out NOW; security + perf floor
 - docs/04-database.md         schema rationale; DDL in db/schema.sql
-- docs/05-api-contract.md     the API, exactly; section 8 = CI-enforced invariants
+- docs/05-api-contract.md     the API, exactly; section 9 = CI-enforced invariants
 - docs/06-implementation-plan.md  milestones M0-M8 with acceptance criteria
 - docs/07-decisions.md        decision log; divergences are recorded here FIRST
 - docs/08-frontend-design.md  binding design direction; M6 cannot start without it
+- docs/08b-frontend-tokens-APPROVED.md  the approved token set (D-98 made it dark-only)
 - docs/09-fastapi-cloud-deployment.md  deploy runbook (FastAPI Cloud/Vercel/Neon)
 - docs/10-roadmap-retention.md  what we build next: retention/gamification, phased
-- HANDOFF.md                   current state: built, deployed, live, known issues
+- docs/11-phone-surface-question.md  open question, superseded in part by D-129..D-136
+- docs/ops-runbook.md          alert catalog, incident procedures
+- docs/ops-incident-report-july-2026.md  the production incidents behind D-121/D-122
+- HANDOFF.md                   current state: what is merged, what is deployed,
+                               known issues, outstanding launch mechanics
 - prompts/                    generator + gate templates; dryrun_stb_validation.py
                               is the executable reference for the sandbox gate
 

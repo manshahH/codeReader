@@ -1,9 +1,14 @@
 # 10 : Roadmap (Retention & Gamification)
 
-Status: A1, A2 AND A3 ARE BUILT (A1/A2 merged to master 2026-07-18; A3 on
-`a3-reminders-recap`, 2026-07-20). Everything from A4 onward is still planning.
-This is the "what we build next" doc; `HANDOFF.md` is the "what is already
-built" doc. Read both before starting.
+Status: A1, A2 AND A3 ARE ALL MERGED TO MASTER (2026-07-21), along with the
+mobile viewer rebuild (D-129..D-136). No feature branches remain outstanding.
+Everything from A4 onward is still planning.
+
+**MERGED IS NOT DEPLOYED.** Production runs the MVP only; none of A1, A2 or A3
+is live there, and master carries four migrations production has never seen.
+`HANDOFF.md` leads with that split and is the "what is already built, what is
+actually running" doc. This is the "what we build next" doc. Read both before
+starting.
 
 **A3 IS CODE-COMPLETE AND THE SENDING DOMAIN IS VERIFIED (2026-07-20).**
 `reedkode.com` is verified in Resend with sending enabled, and a real reminder
