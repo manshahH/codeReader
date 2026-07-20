@@ -878,3 +878,28 @@ async def test_email_prefs_rejects_unknown_fields(
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_links_survive_a_comma_separated_app_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REGRESSION. Found by walking the flow locally, not by a test, because
+    every test until now set a single-origin APP_ORIGIN.
+
+    The local compose override sets "localhost plus a LAN address" so a phone
+    can reach the dev app. Pasting that whole string in front of a path yields
+    `http://localhost:5173,http://192.168.100.10:5173/unsubscribe?token=...`,
+    which is silently unclickable in an email nobody gets to re-read.
+    """
+    monkeypatch.setenv("APP_ORIGIN", "http://localhost:5173,http://192.168.100.10:5173")
+    get_settings.cache_clear()
+
+    message = build_reminder_email(to="dev@example.com", user_id=uuid.uuid4())
+
+    assert message.dev_link is not None
+    assert message.dev_link.startswith("http://localhost:5173/unsubscribe?token=")
+    assert "192.168.100.10" not in message.dev_link
+    assert "http://localhost:5173/session" in message.text
+    # The header URL is built the same way and must not be broken either.
+    assert "5173,http" not in message.headers["List-Unsubscribe"]
+    get_settings.cache_clear()

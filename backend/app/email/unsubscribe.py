@@ -34,6 +34,7 @@ import hmac
 import uuid
 
 from app.config import get_settings
+from app.email.links import link_origin
 from app.models import SUPPRESSION_KINDS
 
 # Version prefix, mixed into the MAC input rather than merely prepended to the
@@ -121,7 +122,7 @@ def unsubscribe_api_url(user_id: uuid.UUID, kind: str) -> str:
     link (D-120): a link we mail out is exactly the thing worth pointing at an
     attacker's origin.
     """
-    origin = get_settings().APP_ORIGIN.rstrip("/")
+    origin = link_origin()
     return f"{origin}/v1/unsubscribe?token={mint_unsubscribe_token(user_id, kind)}"
 
 
@@ -133,5 +134,5 @@ def unsubscribe_page_url(user_id: uuid.UUID, kind: str) -> str:
     user. The page reads the token and POSTs on a button press. Same token,
     two entry points, and only one of them mutates.
     """
-    origin = get_settings().APP_ORIGIN.rstrip("/")
+    origin = link_origin()
     return f"{origin}/unsubscribe?token={mint_unsubscribe_token(user_id, kind)}"

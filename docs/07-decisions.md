@@ -3785,3 +3785,19 @@ D-137 A3 reminders and weekly recap. Send-once is the whole problem, and it is
      constructs a request, never imports a transport and never resolves a
      hostname. The ledger still fills in, which is what makes the whole flow
      walkable locally with nothing leaving the process.
+
+     LATE ADDITION, found by walking the flow locally rather than by a test, and
+     recorded because the way it was missed is the reusable part. Every emailed
+     link now goes through one `email/links.py::link_origin()`, which takes the
+     FIRST comma-separated entry of APP_ORIGIN. On this branch APP_ORIGIN is a
+     single origin, so that split is a no-op and no test could have caught it:
+     every test sets one origin. The local compose override does NOT -- it sets
+     "localhost plus a LAN address" so a phone can reach the dev app -- and
+     pasting that whole string in front of a path produced
+     `http://localhost:5173,http://192.168.100.10:5173/unsubscribe?token=...`,
+     silently unclickable, in the one medium where the reader cannot retry.
+     A2's `verification_link` had the same latent bug and is fixed by the same
+     helper. There is now a regression test that sets a comma-separated origin
+     explicitly. The general lesson: a value that only appears in an untracked
+     local override is invisible to a suite that always supplies the tidy value,
+     so the flow has to be walked at least once against the messy one.

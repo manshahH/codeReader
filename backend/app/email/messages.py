@@ -16,11 +16,13 @@ import uuid
 from urllib.parse import quote
 
 from app.config import get_settings
+from app.email.links import link_origin
 from app.email.recap import WeeklyRecap
 from app.email.sender import OutboundEmail
 from app.email.unsubscribe import unsubscribe_api_url, unsubscribe_page_url
 
 SUBJECT = "Confirm your email for CodeReader"
+
 
 # A3 (D-137(9)). docs/10's two hard rules for this audience are no guilt and no
 # streak-loss threat, and an email is the easiest place to break both, because
@@ -50,7 +52,7 @@ BANNED_REMINDER_PHRASES = (
 
 
 def verification_link(token: str) -> str:
-    origin = get_settings().APP_ORIGIN.rstrip("/")
+    origin = link_origin()
     return f"{origin}/verify-email?token={quote(token, safe='')}"
 
 
@@ -128,7 +130,7 @@ def build_reminder_email(
     a session as a side effect of reminding someone one exists.
     """
     link = unsubscribe_page_url(user_id, "reminder")
-    origin = get_settings().APP_ORIGIN.rstrip("/")
+    origin = link_origin()
     footer_text, footer_html = _footer(link, "reminders")
 
     if exercise_count is None:
@@ -170,7 +172,7 @@ def build_recap_email(*, to: str, user_id: uuid.UUID, recap: WeeklyRecap) -> Out
     get the tone wrong in.
     """
     link = unsubscribe_page_url(user_id, "recap")
-    origin = get_settings().APP_ORIGIN.rstrip("/")
+    origin = link_origin()
     span = f"{recap.week_start.isoformat()} to {recap.week_end.isoformat()}"
     footer_text, footer_html = _footer(link, "the weekly recap")
 
