@@ -150,6 +150,63 @@ in-product is not consent.
 
 Verification links are built from `APP_ORIGIN`, never from a request header.
 
+### Reminders and the weekly recap (A3, D-137)
+
+`GET /me` and `POST /auth/refresh` carry two more fields on the `user` object:
+`reminder_local_time` (`"08:00"` or `null`) and
+`email_prefs` (`{ "reminders_enabled": bool, "recap_enabled": bool }`).
+
+These are two DIFFERENT axes and the client must not collapse them.
+`reminder_local_time` is a SCHEDULE (when), `email_prefs` is CONSENT (whether).
+A user can be consented with no time set, which is a real state the Profile
+screen renders differently from "off". A reminder requires both.
+
+`reminder_local_time` was already documented above and already accepted by
+`PATCH /me`, but it was never actually in the serializer allowlist, so a client
+could set it and never read it back. A3 closes that.
+
+#### `PATCH /me/email-prefs`
+Body (all optional): `reminders_enabled`, `recap_enabled`. `200` with the full
+`email_prefs` object. Writes the SAME `email_suppressions` rows the one-click
+link writes, so the in-app toggle and an unsubscribe can never disagree. Turning
+a type back on is the only path that deletes a suppression, and it is
+authenticated on purpose: re-consent has to be a deliberate act by the owner.
+
+`400 validation_error` for an unknown field (the model is `extra="forbid"`).
+
+#### `POST /unsubscribe?token=...`
+**Unauthenticated**, and it has to be. This is the RFC 8058 one-click target: a
+mail provider POSTs it with no session, and a human clicking from an inbox may
+not be signed in. An unsubscribe that bounces to OAuth is a broken unsubscribe.
+
+The token is read from the QUERY STRING and the body is IGNORED, because the
+body a provider sends is the fixed form field `List-Unsubscribe=One-Click`. No
+CSRF token: there is no session to ride, and the worst outcome is that someone
+stops mail the owner turns back on in one click.
+
+**Idempotent.** Providers may deliver it more than once and users click the link
+in more than one email; a repeat is `200`, never an error.
+
+`200` -> `{ "unsubscribed": "reminder" }`. `400 unsubscribe_failed` is the
+**single** response for every failure (malformed, bad signature, unknown kind),
+for the same reason `verification_failed` is: anything finer is an oracle.
+
+#### `GET /unsubscribe/preview?token=...`
+Unauthenticated. Returns `{ "kind": "reminder" }` and **does not act**. It is a
+separate route rather than a GET on `/unsubscribe` precisely because a GET must
+never mutate: prefetchers, corporate link scanners and mail-client previews all
+follow GETs, and any of them would otherwise silently unsubscribe the user. The
+SPA page at `/unsubscribe` calls this to render the confirmation, then POSTs.
+
+Returns the kind only, never the address or user id: the token proves possession
+of a link, not of the account.
+
+Both unsubscribe URLs are built from `APP_ORIGIN`, never from a request header.
+
+The two emails themselves carry `List-Unsubscribe` (https + mailto) and
+`List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Both headers or neither:
+the Post header without a URL to POST to is meaningless.
+
 ### `GET /me/stats`
 ```json
 {
@@ -400,3 +457,4 @@ who have since spent their freezes. Run once after deploy. Returns
 3. `POST /attempts` is idempotent per key; identical replays are byte-identical responses.
 4. All state-changing endpoints require the access JWT; the refresh cookie alone can only hit `/auth/refresh` and `/auth/logout`.
 5. Streak transitions always produce a `streak_events` row.
+6. A reminder or recap is sent at most once per user per period: the claim is an `email_deliveries` row whose PRIMARY KEY `(user_id, kind, period_key)` is the ceiling, and it is committed before the provider call. A suppression is permanent and keyed on `user_id`, never on the address, so it survives removing and re-verifying an address.

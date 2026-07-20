@@ -48,6 +48,20 @@ class OutboundEmail:
     # log it in local dev without regex-scraping the body. Never read by the
     # real sender, and never included in the provider payload.
     dev_link: str | None = None
+    # A3 (D-137(4)): the SECOND send-once layer, and the one that makes
+    # retrying an ambiguous failure safe at all. Deterministic from the ledger
+    # key ("{kind}:{user_id}:{period_key}"), so a retry of the same period
+    # presents the same key and Resend collapses it. Without this, retrying a
+    # ReadTimeout is a coin flip on a duplicate, because a timeout does not
+    # tell us whether the request landed. None for A2's verification mail,
+    # which is user-initiated and has no period to be idempotent over.
+    idempotency_key: str | None = None
+    # A3 (D-137(7)): RFC 8058 one-click unsubscribe. Both headers or neither --
+    # List-Unsubscribe-Post without a URL to POST to is meaningless, and a URL
+    # without the Post header only gets a mail client's "unsubscribe" affordance
+    # in some clients. Server-owned values built from APP_ORIGIN, never from a
+    # request header.
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 class EmailSender(Protocol):
@@ -104,23 +118,37 @@ class ResendEmailSender:
         # email/address.py before it was ever stored, and the subject is a
         # server-owned constant, but a header-injection guard that only runs at
         # the far end of the call chain is one refactor away from being skipped.
-        for value in (message.to, message.subject, settings.EMAIL_FROM):
+        # A3 adds message.headers to the sweep: those values embed a token and
+        # an origin, and they are literally headers, so they are the one input
+        # here where injection would be immediately exploitable.
+        checked = [message.to, message.subject, settings.EMAIL_FROM]
+        checked.extend(message.headers.keys())
+        checked.extend(message.headers.values())
+        if message.idempotency_key:
+            checked.append(message.idempotency_key)
+        for value in checked:
             if "\r" in value or "\n" in value or "\x00" in value:
                 raise EmailSendError("Refusing to send: header injection attempt.")
 
-        payload = {
+        payload: dict[str, object] = {
             "from": settings.EMAIL_FROM,
             "to": [message.to],
             "subject": message.subject,
             "text": message.text,
             "html": message.html,
         }
+        if message.headers:
+            payload["headers"] = dict(message.headers)
+
+        request_headers = {"Authorization": f"Bearer {api_key}"}
+        if message.idempotency_key:
+            request_headers["Idempotency-Key"] = message.idempotency_key
         try:
             async with httpx.AsyncClient(timeout=_SEND_TIMEOUT_S) as client:
                 response = await client.post(
                     RESEND_ENDPOINT,
                     json=payload,
-                    headers={"Authorization": f"Bearer {api_key}"},
+                    headers=request_headers,
                 )
                 response.raise_for_status()
         except httpx.HTTPError as exc:

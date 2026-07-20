@@ -3504,3 +3504,284 @@ D-128 CI has been RED ON EVERY PUSH SINCE 2026-07-06 and nothing surfaced it.
      passed", while CI runs `ruff check backend`. My narrower scope silently
      excluded the one file that was failing. The rule going forward is to run
      exactly what CI runs before reporting green, and to name the command.
+
+D-126 RECORDED LATE, and the lateness is the first thing worth saying. The
+     dev-link log in email/sender.py cites "D-126" three times and
+     test_a2_email_capture.py cites it once, but no D-126 entry was ever
+     written: docs/07 jumps D-125 -> D-127. A citation pointing at nothing is
+     worse than no citation, because it reads as "this was decided and
+     reviewed" to anyone who does not go looking. Found while building A3 on
+     top of that exact mechanism. THE DECISION, as built: with
+     EMAIL_SENDING_ENABLED false no mail exists, and the verification token is
+     sha256-hashed at rest and deliberately never logged (D-120(4)), which
+     left no way to walk the verify path locally at all. DisabledEmailSender
+     therefore logs the actionable link. It is DOUBLE-GATED and the first gate
+     is structural: the class is only ever constructed by get_email_sender()
+     when the off-switch is false, so a sending deploy never reaches the code.
+     The explicit re-check of the setting inside send() covers the one way
+     that could be defeated, someone constructing DisabledEmailSender
+     directly. OutboundEmail.dev_link carries the link as its own field rather
+     than regex-scraping the body, and the real sender never reads it and
+     never puts it in the provider payload. A3 extends this unchanged: the
+     reminder and recap messages set dev_link to their unsubscribe URL, which
+     is the one link in them worth walking locally.
+     ALSO MISSING, not fixed here because it belongs to the viewer-mobile
+     branch and not to A3: D-135 is cited in config.py's APP_ORIGIN comment
+     and in a commit subject, and has no entry either, even though the commit
+     that introduced it claims to "record D-129..D-136". Whoever lands
+     viewer-mobile owes that entry.
+
+D-137 A3 reminders and weekly recap. Send-once is the whole problem, and it is
+     answered with a LEDGER plus a provider idempotency key, not with a
+     timestamp column. Ten decisions, written before any code.
+
+     (0) THE PREREQUISITE THIS DOES NOT SOLVE, first, because both HANDOFF and
+     docs/10 say A3 is BLOCKED on it and building the code does not unblock
+     it. Resend will only send from a VERIFIED DOMAIN (SPF, DKIM, MX, DMARC).
+     EMAIL_FROM still names no-reply@codereader.dev, a placeholder nobody
+     owns, and neither codereader-eight.vercel.app nor
+     codereader.fastapicloud.dev can be used because you cannot add DNS
+     records to a domain you do not control. So "paste RESEND_API_KEY and flip
+     EMAIL_SENDING_ENABLED" is necessary and NOT sufficient: without a
+     verified domain every send returns a provider error, which this job will
+     dutifully record as `failed` and retry to its cap. Everything else in A3
+     is built and tested; this one item is procurement plus DNS propagation,
+     and it is a lead-time item. APP_ORIGIN must move at the same time, since
+     both verification links (D-120) and unsubscribe links (below) are built
+     from it, and that touches D-114's same-origin rewrite and the
+     GITHUB_REDIRECT_URI rule in docs/09 section 3.
+
+     (1) ONLY VERIFIED ADDRESSES, ENFORCED IN ONE QUERY RATHER THAN AT EACH
+     CALL SITE. D-120 already guarantees users.email holds only a verified
+     address, so A3 could have simply trusted it. It does not: both jobs draw
+     candidates from a single `eligible_recipients()` builder whose predicate
+     is `email IS NOT NULL AND email_verified_at IS NOT NULL AND deleted_at IS
+     NULL`. WHY BOTHER, given D-120: because "the column is only ever written
+     with verified values" is an invariant held by a different module, and the
+     job is the wrong place to depend on someone else's discipline. Two jobs
+     sharing one predicate also means a future third job cannot get it subtly
+     wrong. pending_email is never selected by the jobs module at all.
+
+     (2) SEND-ONCE IS A LEDGER, AND THIS IS THE LOAD-BEARING DECISION.
+     New table `email_deliveries`, PRIMARY KEY (user_id, kind, period_key).
+     REJECTED: a `last_reminder_sent_at` timestamp on users, which is the
+     obvious cheap shape. It fails for the same reason D-116 rejected
+     inferring a covered day from the freeze balance: it makes "have we
+     already sent for this period" a COMPUTATION at read time rather than a
+     RECORDED FACT, and that computation depends on the user's timezone, which
+     can change underneath it. A ledger keyed by the period is immune, because
+     the key IS the answer. Same argument, one layer up, as D-116's "a covered
+     day is read from the streak_events ledger".
+     THE PK IS THE CEILING. Two overlapping job runs both attempt the claim;
+     exactly one INSERT wins and the loser gets zero rows back and skips. This
+     is the same un-raceable-DB-backstop discipline as
+     uq_streak_events_one_transition_per_day (H1/D-104), and it holds without
+     an advisory lock because unlike a streak transition there is nothing to
+     read-modify-write.
+
+     (3) CLAIM BEFORE SEND, COMMITTED SEPARATELY, AND `claimed` IS TERMINAL.
+     The claim row is INSERTed and COMMITTED before the provider call. The
+     alternative, send-then-record, has a window in which a crash loses the
+     record and the next tick sends again.
+     THE ASYMMETRY THAT DECIDES IT: a duplicate reminder is a channel
+     violation, and docs/10's A3 line is "optimise copy and timing, never
+     frequency (protect the channel)". A missed reminder is a non-event; the
+     user opens the app or does not. So every ambiguous outcome must resolve
+     to DO NOT SEND AGAIN.
+     Hence three states and their exact meanings. `sent`: the provider
+     accepted, terminal. `failed`: we caught a definite EmailSendError and
+     COMMITTED that fact in its own transaction, so we know a send did not
+     succeed; retryable, bounded by EMAIL_SEND_MAX_ATTEMPTS. `claimed`: the
+     ambiguous state, meaning the process died between claim and outcome, or a
+     send is in flight right now. TERMINAL, deliberately. We cannot distinguish
+     "died before the POST" from "died after Resend accepted it", and guessing
+     wrong in the retry direction double-sends.
+     CONSEQUENCE, accepted: a crash at exactly the wrong moment costs that user
+     that day's reminder. That is the cheap side of the trade, and it is the
+     side docs/10 asks for.
+
+     (4) THE PROVIDER IDEMPOTENCY KEY IS THE SECOND LAYER, AND IT IS WHAT MAKES
+     RETRYING A `failed` ROW SAFE AT ALL. Every send carries
+     `Idempotency-Key: {kind}:{user_id}:{period_key}`, deterministic from the
+     ledger key. Resend deduplicates on it for 24 hours.
+     WHY IT IS NOT OPTIONAL: a timeout is a `failed` we can commit but NOT a
+     failure we can interpret. httpx raising ReadTimeout does not tell us
+     whether the request landed. Without a provider-side key, retrying any
+     timeout is a coin flip on a duplicate, which would make (3)'s guarantee a
+     lie for precisely the most common transient failure. With it, the retry is
+     safe by construction.
+     SO THE TWO LAYERS DIVIDE CLEANLY: the PK stops the JOB sending twice; the
+     Idempotency-Key stops the PROVIDER delivering twice when the job
+     legitimately retries. This is the same discipline as invariant 4 (POST
+     /attempts idempotent per Idempotency-Key), applied outbound.
+     Retries are bounded to the period AND to 24h, because outside Resend's
+     idempotency window the second layer is gone and (3) takes over.
+
+     (5) PERIOD KEYS ARE USER-LOCAL, DERIVED THE WAY core/timezones.py ALREADY
+     DERIVES EVERYTHING. reminder period_key is the user-local calendar date
+     from `local_date_for(user.timezone)`, ISO `YYYY-MM-DD`: the same function
+     and the same notion of "day" the streak uses, so a user cannot have a
+     streak day and a reminder day that disagree. recap period_key is the ISO
+     year-week of that same local date, `%G-W%V`, e.g. `2026-W29`.
+     DST IS A NON-EVENT FOR THE KEY: a 23- or 25-hour day is still exactly one
+     calendar date, so the ledger key is unaffected in both directions.
+     DST DOES MATTER FOR ELIGIBILITY, and is why the window is WIDE rather than
+     an exact match. Eligibility is `current local time >= reminder_local_time`
+     for the whole remainder of the local day, not "just passed". SPRING
+     FORWARD with a reminder at 02:30 and 02:00 -> 03:00 skipped: an exact
+     match never fires and the user silently loses that day; the wide window
+     fires at 03:00, late rather than never. FALL BACK with a repeated hour:
+     the first tick past 01:30 claims the row, the second 01:30 finds it and
+     skips. One send. The wide window is only safe BECAUSE of (2); with a
+     timestamp column it would re-send all evening.
+     TIMEZONE CHANGE, and here streak_recon.py's precedent applies directly.
+     That module protects the WESTWARD direction, where the boundary moves
+     backward and would otherwise destroy something, and deliberately leaves
+     eastward alone. Same asymmetry: moving WESTWARD lands on a local date
+     whose key is already in the ledger, so no second send, protected for free
+     by (2). Moving EASTWARD can produce a fresh local date and therefore a
+     second reminder inside one absolute 24 hours. ACCEPTED, bounded at one
+     extra, and it is the honest reading of "one per local day" -- the user
+     really is in a new day. NOT reusing reconcile_streak_for_timezone_change:
+     that repairs streak bookkeeping, and delivery has no equivalent thing to
+     repair.
+
+     (6) SUPPRESSION IS PERMANENT, KEYED ON THE USER, AND ORTHOGONAL TO
+     reminder_local_time. New table `email_suppressions`, PK (user_id, kind),
+     kind IN ('reminder','recap','all').
+     KEYED ON user_id AND NOT ON THE ADDRESS. This is the entire reason "an
+     unsubscribe survives a re-verify" is true BY CONSTRUCTION rather than by a
+     check somebody has to remember to write. DELETE /me/email followed by a
+     new address and a fresh verification never touches this table, so the
+     suppression is still standing. Keyed on the address it would resurrect,
+     which is the exact bug.
+     PERMANENT: no expiry column, and nothing in the job path ever clears a
+     row. The only way back on is an explicit authenticated opt-in on Profile,
+     a deliberate act by the account owner, which is also the only defensible
+     basis for re-consent.
+     ORTHOGONAL TO reminder_local_time, stated because conflating them is the
+     obvious shortcut and it silently breaks the unsubscribe.
+     reminder_local_time is a SCHEDULE ("when"), suppression is a CONSENT
+     ("whether"). Setting a time does not clear a suppression and clearing a
+     suppression does not set a time; the job requires BOTH a non-NULL time and
+     no suppression. Otherwise an unrelated settings change would undo an
+     unsubscribe.
+     'all' exists so a spam complaint can stop everything, which is what a
+     complaint means; per-type is for a user choosing between them.
+
+     (7) UNSUBSCRIBE IS A STATELESS HMAC, WHICH IS THE OPPOSITE OF D-120(4)'s
+     STORED TOKEN, AND THE DIFFERENCE IS DELIBERATE. Token is
+     `b64url(payload).b64url(hmac_sha256(key, payload))` over `user_id:kind`,
+     domain-separated with a constant `unsub-v1` prefix so an unsubscribe token
+     and a JWT can never be confused even though both derive from JWT_SECRET.
+     Compared with hmac.compare_digest.
+     NO EXPIRY, deliberately: an unsubscribe link in a two-year-old email must
+     still work, which is both a deliverability expectation and the point of
+     the mechanism.
+     WHY NOT STORED AND SINGLE-USE LIKE THE VERIFICATION TOKEN: because that
+     token GRANTS something (it promotes an address), so single-use bounds the
+     damage of a leak. This one only REVOKES. The worst case for a leaked
+     unsubscribe token is that someone stops mail the owner can switch back on
+     in-app, and single-use would be actively harmful, since any mail client
+     that prefetches links would burn it before the human clicked. It also
+     means no row per sent email, no cleanup job, and the link survives a
+     restore.
+     RFC 8058 ONE-CLICK NEEDS BOTH HEADERS OR NEITHER: `List-Unsubscribe` with
+     the https URL and a mailto fallback, plus `List-Unsubscribe-Post:
+     List-Unsubscribe=One-Click`. The POST target takes the token from the
+     QUERY STRING and ignores the body, because the body a mail provider sends
+     is the fixed form field `List-Unsubscribe=One-Click`. It is unauthenticated
+     and CSRF-exempt by nature: there is no session, and "an attacker makes you
+     stop receiving marketing email you can re-enable in one click" is not a
+     threat worth a token exchange.
+     THE HUMAN LINK IN THE BODY POINTS AT THE SPA, NOT AT THE API. GET must not
+     act: prefetchers and link scanners follow GETs. The SPA page reads the
+     token and POSTs on a button press. Same one-click token, two entry points.
+
+     (8) THE RECAP GOES OUT MONDAY 09:00 USER-LOCAL, AND REPORTS THE WEEK THAT
+     JUST ENDED. RECAP_LOCAL_WEEKDAY=0, RECAP_LOCAL_HOUR=9.
+     WHY MONDAY: the ISO week ends Sunday, so Monday is the first moment the
+     week being reported is COMPLETE. A Sunday-evening send would silently omit
+     Sunday, which is a recap that is wrong rather than early.
+     WHY 09:00 AND WHY FIXED RATHER THAN AT reminder_local_time: a fixed hour
+     keeps (6)'s orthogonality honest, and it keeps the recap from landing in
+     the same minute as the daily reminder for users whose reminder is set to
+     the morning. Two of our emails arriving together is the "protect the
+     channel" failure in its most literal form.
+     CONTENT IS DERIVED, NO NEW COUNTERS, per the brief. Sessions completed
+     from daily_sessions (session_date in the week, completed_at NOT NULL);
+     exercises and accuracy from attempts (session_date in the week, graded
+     rows only as the denominator, matching accuracy's existing meaning);
+     streak state from user_stats.
+     "CONCEPTS IMPROVED" IS REPORTED AS "CONCEPTS PRACTISED CORRECTLY", and the
+     rename is the honest part. user_concept_state.mastery is a CURRENT
+     SNAPSHOT with no history, so a real week-over-week delta is not derivable
+     from existing tables, and manufacturing one means storing a weekly mastery
+     sample, which is a new counter. So the recap says what is true: which
+     concepts were answered correctly this week, from attempts joined to
+     exercises.concepts.
+     AN EMPTY WEEK IS NOT SENT. Zero attempts in the week writes a terminal
+     `skipped` ledger row and no mail. A report of nothing is not a report, and
+     "here is your week: nothing" is guilt copy no matter how it is worded,
+     which docs/10 rules out. The reminder is the nudge; the recap is the
+     report.
+
+     (9) COPY AND VOICE: NO GUILT, NO STREAK-LOSS THREAT, per docs/10's two
+     hard rules and docs/08's voice. The reminder does not mention what will be
+     lost, does not count down, and does not use the streak as leverage; it
+     says what is waiting. Concretely BANNED in these two templates: "don't
+     lose", "you'll lose", "your streak ends", "last chance", "still time",
+     scarcity framing, and any exclamation mark. A1 already replaced the reset
+     path with a welcome-back state precisely so nothing in the product
+     threatens a streak; an email that did so would reintroduce the thing A1
+     removed, out of the user's sight, in their inbox.
+
+     (10) BATCHING IS SEQUENTIAL AND PACED, NOT CONCURRENT.
+     EMAIL_JOB_BATCH_SIZE=200 candidates per tick, EMAIL_MAX_SENDS_PER_TICK=100
+     actually sent, paced at EMAIL_SENDS_PER_SECOND=2 (Resend's documented
+     default rate limit).
+     WHY NOT A CONCURRENT FAN-OUT: 200 simultaneous POSTs earns an immediate
+     429 from any provider, and then we own a retry-storm problem strictly
+     worse than being slow inside a background job that nobody is waiting on.
+     THE CAP DEFERS RATHER THAN DROPS, and that only works because (5)'s window
+     is wide: a user not reached this tick is still eligible next tick, because
+     eligibility runs to the end of their local day.
+     VOLUME AT 1,000 FULLY-SUBSCRIBED USERS: 1,000 reminders/day plus 1,000
+     recaps on Mondays, so a peak day of ~2,000 sends. At 2/s that is ~1,000
+     seconds of job time, drawn down 100 per tick against a 300s reminder tick.
+     Worst case, every one of the 1,000 sharing a single local reminder minute,
+     the last user is reached roughly 50 minutes late; realistic timezone and
+     time-of-day spread makes it far less, and 50 minutes late on a daily
+     reminder is not a defect.
+     THE REAL CEILING AT THAT SCALE IS THE RESEND PLAN, NOT THIS CODE: the free
+     tier is 100/day and 3,000/month, which 1,000 subscribed users exceed on
+     day one. That is a procurement decision to make alongside (0), and the job
+     will surface it as `failed` rows with a provider error rather than as
+     silence.
+
+     FAILURE ISOLATION, and it is per-user, not just per-job. JobScheduler
+     already isolates one job from another. A3 adds the inner ring: each
+     recipient's claim-send-record runs in its own transaction inside its own
+     try/except, so one bad address cannot end the sweep for the other 199.
+     A definite EmailSendError records `failed` and continues; any other
+     exception logs and leaves the row `claimed` per (3), and continues.
+     last_error stores the exception TYPE only, never the message and never the
+     body, matching D-120's logging discipline (an httpx error can carry the
+     request body, and that body is somebody's mail).
+
+     BOUNCE AND COMPLAINT SUPPRESSION IS DEFERRED, EXPLICITLY. The webhook is
+     not built. It would be a Resend-signed endpoint verifying the signing
+     secret, handling `email.bounced` (hard bounces only) and
+     `email.complained`, writing `email_suppressions(kind='all',
+     reason='bounce'|'complaint', source='webhook')`. It is deferred because it
+     needs a public HTTPS endpoint and a signing secret that do not exist until
+     (0) is resolved, and an untestable endpoint shipped now is a liability
+     rather than a feature. The table carries `reason` and `source` from the
+     start SO THAT adding it later is an endpoint and not a migration.
+
+     OFF-SWITCH: unchanged from A2 and structural for the same reason. The jobs
+     resolve their sender through get_email_sender(), so with
+     EMAIL_SENDING_ENABLED false they hold a DisabledEmailSender that never
+     constructs a request, never imports a transport and never resolves a
+     hostname. The ledger still fills in, which is what makes the whole flow
+     walkable locally with nothing leaving the process.

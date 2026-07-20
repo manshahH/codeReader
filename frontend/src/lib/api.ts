@@ -9,6 +9,7 @@ import type {
   ConceptMastery,
   DisputeRequest,
   DisputeResponse,
+  EmailPrefs,
   EmailState,
   Level,
   MeSessionSummary,
@@ -211,6 +212,35 @@ export function resendEmailVerification(): Promise<EmailState> {
 
 export function deleteEmail(): Promise<EmailState> {
   return request<EmailState>('/v1/me/email', { method: 'DELETE' });
+}
+
+/**
+ * A3 (D-137(6)). Writes the SAME email_suppressions rows the one-click link in
+ * the email footer writes, so the Profile toggle and an unsubscribe can never
+ * disagree about what is on.
+ */
+export function patchEmailPrefs(body: Partial<EmailPrefs>): Promise<EmailPrefs> {
+  return request<EmailPrefs>('/v1/me/email-prefs', { method: 'PATCH', body });
+}
+
+/**
+ * A3 (D-137(7)). PUBLIC on purpose: `skipAuth` because an unsubscribe link is
+ * opened from an inbox by someone who may not be signed in, and a 401 here must
+ * not trigger a refresh-and-retry that would only fail again. The token in the
+ * URL is the entire credential.
+ */
+export function previewUnsubscribe(token: string): Promise<{ kind: string }> {
+  return request<{ kind: string }>(
+    `/v1/unsubscribe/preview?token=${encodeURIComponent(token)}`,
+    { skipAuth: true },
+  );
+}
+
+export function confirmUnsubscribe(token: string): Promise<{ unsubscribed: string }> {
+  return request<{ unsubscribed: string }>(
+    `/v1/unsubscribe?token=${encodeURIComponent(token)}`,
+    { method: 'POST', skipAuth: true },
+  );
 }
 
 export function getMeStats(): Promise<MeStats> {

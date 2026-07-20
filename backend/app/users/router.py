@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import CurrentUser, CurrentUserDep, DbSessionDep
 from app.auth.service import user_response
 from app.core.errors import ApiError
+from app.email.deliveries import email_preferences
 from app.models import User
 from app.schemas.users import AccuracyHistoryDay, ActivityDay, MeSessionSummary, UpdateMeRequest
 from app.users.service import (
@@ -31,7 +32,9 @@ async def me(
     user = await session.get(User, current_user.id)
     if user is None:
         raise ApiError(401, "invalid_token", "Access token is invalid.")
-    return {"user": user_response(user)}
+    return {
+        "user": user_response(user, email_prefs=await email_preferences(session, user.id)),
+    }
 
 
 @router.patch("/me")
@@ -42,7 +45,9 @@ async def patch_me(
 ) -> dict[str, object]:
     updates = payload.model_dump(exclude_unset=True)
     user = await update_me(session, current_user.id, updates)
-    return {"user": user_response(user)}
+    return {
+        "user": user_response(user, email_prefs=await email_preferences(session, user.id)),
+    }
 
 
 @router.get("/me/stats")

@@ -14,6 +14,12 @@ from app.models.identity import (
     RefreshToken,
     User,
 )
+from app.models.notifications import (
+    DELIVERY_KINDS,
+    SUPPRESSION_KINDS,
+    EmailDelivery,
+    EmailSuppression,
+)
 from app.models.reviews import Review, ReviewHistory
 from app.models.sessions import DailySession
 from app.models.user_state import StreakEvent, UserConceptState, UserStats
@@ -21,6 +27,8 @@ from app.models.user_state import StreakEvent, UserConceptState, UserStats
 metadata = Base.metadata
 
 __all__ = [
+    "DELIVERY_KINDS",
+    "SUPPRESSION_KINDS",
     "Attempt",
     "Attempt202607",
     "Attempt202608",
@@ -29,6 +37,8 @@ __all__ = [
     "BetaInvite",
     "DailySession",
     "Dispute",
+    "EmailDelivery",
+    "EmailSuppression",
     "EmailVerificationToken",
     "Exercise",
     "ExerciseStat",
