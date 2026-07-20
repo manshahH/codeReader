@@ -1,4 +1,5 @@
 import { CodeBlock } from '../gutter/CodeBlock';
+import { documentById, documentsFromCode, normalizeCodePayload } from '../../lib/code/model';
 import type { SessionExercisePayload } from '../../lib/types';
 
 interface Props {
@@ -11,13 +12,20 @@ interface Props {
 // then picks which candidate fix makes the test pass. Each choice is a full
 // code diff, so choices render as code blocks rather than one-line radios.
 export function PredictTheFixAnswer({ payload, selectedChoiceId, onSelectChoice }: Props) {
+  // D-129 decision 4: this type's payload is genuinely several documents (the
+  // failing test plus one per candidate fix). They render in different places
+  // in this layout, so the component picks the document it wants by role/id
+  // rather than handing the whole list to one block.
+  const docs = normalizeCodePayload(payload);
+  const failingTestDoc = documentById(docs, 'failing_test');
+
   return (
     <div className="flex flex-col gap-6">
 
       {payload.failing_test ? (
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium text-ink-muted">Failing test</p>
-          <CodeBlock code={payload.failing_test} />
+          <CodeBlock documents={failingTestDoc ? [failingTestDoc] : documentsFromCode(payload.failing_test)} />
           {payload.test_output ? (
             <pre className="overflow-x-auto rounded-soft border border-incorrect/40 bg-incorrect-tint px-4 py-3 font-code text-code text-incorrect">
               {payload.test_output}
@@ -45,7 +53,7 @@ export function PredictTheFixAnswer({ payload, selectedChoiceId, onSelectChoice 
               onChange={() => onSelectChoice(choice.id)}
             />
             <div className="min-w-0 flex-1">
-              <CodeBlock code={choice.text} />
+              <CodeBlock documents={[documentById(docs, choice.id) ?? documentsFromCode(choice.text)[0]]} />
             </div>
           </label>
         ))}

@@ -3504,3 +3504,528 @@ D-128 CI has been RED ON EVERY PUSH SINCE 2026-07-06 and nothing surfaced it.
      passed", while CI runs `ruff check backend`. My narrower scope silently
      excluded the one file that was failing. The rule going forward is to run
      exactly what CI runs before reporting green, and to name the command.
+
+D-129 The code viewer moves to a model that survives new exercise types.
+     PROBLEM: today's viewer hardcodes five assumptions, and every exercise type
+     we have discussed adding breaks at least one of them: one selection
+     granularity (a row index), no overlays, one document, no folding, and short
+     lines. CodeBlock took `code: string` plus `selectedLine: number` and
+     `markLines: Record<number, ...>`, so "which line is selected" and "what is
+     marked" were both row-indexed and the marks were baked into spans at
+     construction. Adding a type that selects a sub-expression, shows two files
+     side by side, or renders a diff would have meant rewriting the component
+     rather than extending it. Five decisions, recorded before any code:
+       1. SELECTION IS A RANGE, NOT A ROW. {startLine, startCol} ->
+          {endLine, endCol}. A whole-line selection is just a range spanning
+          that line, so spot_the_bug's "tap the line number" keeps working with
+          no special case. Interaction logic addresses ranges; rendering maps
+          ranges onto rows. This is the decision that makes wrapping a PURE
+          RENDERING CONCERN: a wrapped line is several rows but still one range,
+          so nothing in the interaction layer learns about wrapping.
+       2. THE GUTTER IS A SLOT SYSTEM. A slot holds a line number, a diff
+          marker, a fold control, a mark, or nothing -- not a hardcoded
+          number-per-row column. Consistent with existing design intent, not a
+          departure from it: docs/08 calls the gutter our visual signature and
+          StreakTicks already renders non-number content in one.
+       3. DECORATIONS ARE DATA. A list of {range, kind} applied at render time,
+          not classes baked into spans at construction. Today's reveal marks
+          (correct/incorrect/noted) become kind values, which is why the reveal
+          views stop computing class names and start returning data.
+       4. A CODE PAYLOAD IS A LIST OF DOCUMENTS, even when the list has one
+          element. Not speculative: predict_the_fix already shows several
+          (buggy code, failing test, and one per candidate fix), and today it
+          does so by calling CodeBlock several times with unrelated strings.
+       5. LONG LINES SOFT-WRAP WITH A VISIBLE CONTINUATION MARKER. The gutter
+          carries the number on the first row and blanks continuation rows, and
+          the whole wrapped group is a single tap target -- which falls out of
+          decision 1 rather than needing special handling.
+     REJECTED: a content-side line-length constraint (capping generated lines at
+     N columns so the viewer never has to wrap). It is the cheaper fix and it is
+     wrong twice over. It contradicts docs/10's "deep tracks, not thin ones":
+     real code that teaches something worth learning is not uniformly short, and
+     a column cap silently biases generation toward toy snippets. And it fails
+     completely the moment we show code we did not author -- a real diff, a
+     stdlib excerpt, a user's own paste -- where we do not control the source and
+     a cap can only truncate or mangle. A rendering problem gets a rendering fix.
+     SERIALIZATION BOUNDARY (the constraint from invariant 3). Exercises are
+     immutable per (id, version) and fixes bump the version, so the 109 stored
+     payloads are NOT migrated and no backfill is written. Normalization happens
+     in _serialize_payload (backend/app/sessions/service.py), which already
+     exists as the allowlist that builds the wire payload from the stored JSONB:
+     it now also emits `documents`, a list built from the stored `code` (plus
+     `failing_test` and the per-choice fix code for predict_the_fix), each with a
+     stable id. Stored JSONB is read, never written. The wire keeps `code`
+     alongside `documents` so that (a) no existing backend or Playwright test
+     that reads `payload.code` has to change, and (b) a stored payload that one
+     day carries its own `documents` can pass through the same boundary. The
+     frontend reads `documents` and falls back to wrapping `code` in a
+     single-element list, so old and new both render through one path.
+     SCOPE HELD: CodeBlock, the gutter components, revealViews, the three answer
+     components, and the one backend function that serializes. Grading, sampling,
+     and the pipeline are untouched.
+     TENSION RECORDED, NOT RESOLVED BY ME: decision 5 asks for a per-user
+     wrap/scroll toggle, persisted, while the same brief requires no
+     user-visible change and pixel-identical before/after screenshots. Both
+     cannot hold at once -- a toggle control that is visible is a visible
+     change. Implemented here: the preference exists, persists per user, and the
+     renderer honors it, defaulting to SCROLL, which is today's behavior and
+     what keeps the screenshots identical. No visible control is mounted in the
+     session view this turn. Mounting one is a deliberate UI addition and wants
+     its own decision, because where it lives (per block, session header, or
+     profile settings) is a docs/08 question, not a refactor question.
+
+D-129 AMENDED (wrap tension resolved; see D-130 for the layout it belongs to).
+     The entry closed by recording a tension it could not settle: decision 5
+     asked for a persisted wrap/scroll toggle, while the same brief demanded no
+     user-visible change. It shipped the preference with NO visible control and
+     handed the question back. Settled now:
+       DEFAULT IS BY WIDTH, NOT GLOBAL. The stored preference is tri-state and
+       defaults to `auto`, which resolves to WRAP below the breakpoint and
+       SCROLL above it. Neither mode is globally right: horizontal scroll
+       inside a 360px column is the actual problem being solved (the reader
+       loses the left edge of every line and has to scrub back to it), while on
+       a wide screen there is width to spare and scroll preserves the authored
+       line structure, which some developers prefer for diff-like reading. A
+       single global default would be wrong at one end of the range.
+       `wrap` and `scroll` are explicit overrides that win at every width.
+       WHERE THE CONTROL LIVES (the docs/08 question). Attached to the code
+       block, as a thin strip in the block's own chrome, at the lowest visual
+       weight the app has (2xs, muted, monospace) -- the way an editor's status
+       bar states how the buffer is being displayed. docs/08 pins the session
+       player to "context note, code, answer control, nothing else competing",
+       so this may not become a fourth peer element, and it may not be a
+       settings screen the reader has to leave the session to reach. It is
+       exposed at BOTH widths, because the wrap preference is a reading
+       preference rather than a small-screen workaround.
+       WORDS, NOT ICONS. "wrap (auto)" / "scroll" / "A- A+" say what they do.
+       An icon-only wrap toggle is the discoverability failure ui-ux-promax
+       names, and a stock icon set is a slop tell.
+       COST, RECORDED HONESTLY: this is the ONE addition to the wide layout.
+       The DOM comparison at 1280x800 shows exactly one inserted element per
+       answer screen and zero removals or modifications; all three reveals are
+       byte-identical. "Desktop must not change" and "expose the toggle in
+       both" cannot both hold literally, and this is the smallest possible way
+       to hold both in substance.
+
+D-130 The mobile layout: desktop separates in space, mobile separates in time.
+     PROBLEM: below the breakpoint the session player was a squeezed desktop
+     layout, not a mobile one. The two-column grid collapsed to one column, so
+     the code block became a ~285px letterbox with the answer controls stacked
+     under it -- the code clipped horizontally AND vertically, and the thing the
+     product is actually about got the smallest region on the screen. The
+     narrow-viewport audit screenshots show it plainly.
+     THE THESIS: desktop has width, so it separates code and interaction IN
+     SPACE, side by side. Narrow has no width to spare, so it separates them IN
+     TIME: read the code, tap a line, and the answer controls rise from the
+     bottom. Same components, different arrangement -- the answer controls, the
+     submit row and the grading states are built once in Session.tsx and handed
+     to whichever arrangement is rendering. That is also what keeps the wide
+     branch byte-identical: there is only one copy to drift.
+     DECISIONS:
+       1. BREAKPOINT ON AVAILABLE WIDTH, NOT DEVICE CLASS. One constant
+          (WIDE_MIN_PX = 1024) behind a matchMedia hook, matching the `lg:`
+          breakpoint the grid already used, so the JS branch and the CSS
+          branch are the same line by construction. No user-agent sniffing, no
+          pointer:coarse. The question the layout asks is "is there room for
+          two columns", and that is a width.
+       2. LANDSCAPE IS SUPPORTED EXPLICITLY, not tolerated. 667x375 is narrow
+          by this rule -- correctly, since 667px cannot hold code and controls
+          side by side -- while still being a good code-reading WIDTH. So the
+          narrow arrangement gives the code the full width rather than
+          treating narrow as "small". It is a captured viewport in the visual
+          harness and an asserted one in the overflow tests.
+       3. CODE OWNS THE VIEWPORT. The narrow column is exactly the visible
+          height (100dvh, not vh -- a collapsing mobile URL bar otherwise
+          pushes the sheet's controls off-screen), and the code region is the
+          only element that grows. The answer sheet rests collapsed to a
+          summary bar showing the next thing to do.
+       4. THE SHEET IS NOT A MODAL. The code stays visible and scrollable above
+          it; it does not scrim, does not trap focus, and sits in normal flow
+          rather than fixed (a fixed sheet lands wrong as the URL bar
+          collapses). Escape closes it. For spot_the_bug, tapping a line raises
+          it: the tap is half the answer, so the other half comes to meet it
+          instead of waiting below the fold.
+       5. TAP TARGETS REACH THE SCREEN EDGE, WIDTHWISE ONLY. The line-number
+          hit area extends into the dead page margin by making the code block
+          FULL BLEED on narrow (it gives up its side borders and radius and
+          runs edge to edge). The first attempt -- a negative margin on the row
+          -- did not work: the block is overflow-hidden, so it clipped the
+          child trying to escape it, and the escape has to be the box's own.
+          The buttons are NOT padded vertically. At a ~24px line-height,
+          reaching 44px tall would make adjacent targets overlap, and a mistap
+          that selects the WRONG line is a worse failure than a small one --
+          in spot_the_bug the line number IS the answer. Recorded as a
+          deliberate partial: targets are >=44px wide and line-height tall.
+       6. STICKY CONTEXT HEADER. Scrolling into the middle of a long function
+          costs the reader the line that makes the body legible. The enclosing
+          signature pins to the top of the scrolling code area. It is a text
+          heuristic by indentation, not a parse: a real parser for every
+          language we might ship is a large dependency and a large surface for
+          being subtly wrong. When it cannot decide it returns null and no
+          header renders, which is the correct failure -- no header beats a
+          wrong header.
+       7. CODE SIZE IS A PERSISTED PREFERENCE, applied as a multiplier on the
+          existing type scale rather than a second scale, so the ratio to the
+          gutter and the line-height survive the change. Clamped 0.85-1.3.
+       8. SAFE-AREA INSETS are named tokens (--safe-top/bottom/left/right), so
+          components never call env() directly. The sheet pads its bottom by
+          --safe-bottom, which is zero in a browser tab and clears the home
+          indicator in standalone PWA mode.
+     CONTRADICTS docs/08, RECORDED RATHER THAN SILENTLY BROKEN. docs/08's
+     "Layout and structure" says code blocks "get horizontal scroll with the
+     gutter pinned, never wrapped or shrunk below readability", and docs/08
+     declares every constraint in it binding. Decision 1 above overrides the
+     "never wrapped" clause BELOW THE BREAKPOINT only; above it, scroll remains
+     the default exactly as docs/08 specifies. The rest of that sentence is
+     untouched: the gutter stays pinned, and nothing is shrunk below
+     readability (the code size preference has a floor). docs/08 has been
+     amended in place with a pointer to this entry rather than left to
+     contradict the code.
+     WHAT IS NOT DONE, so it is not mistaken for done: no visible control
+     exists yet for the SUMMARIZE type's sheet ergonomics (its textarea in a
+     60dvh sheet with a software keyboard up is untested -- no seeded
+     summarize content exists to test with, D-123 keeps the type off); the
+     sticky header covers python and c-family syntax only; and the reason
+     picker repeats the "Tap the line number in the code" instruction that the
+     sheet's own summary bar already gives, which is redundant copy left alone
+     because editing it would have changed the wide DOM.
+
+D-131 Phone-surface follow-ups to D-130: line-height, nav targets, sheet copy.
+     Three items unblocked by the phone becoming a first-class surface rather
+     than a viewport we tolerate.
+     1. CODE LINE-HEIGHT OPENS TO THE TOUCH FLOOR BELOW THE BREAKPOINT.
+        D-130 hit 44px on WIDTH only and recorded the height as a deliberate
+        partial: a line's tap target is exactly one line tall, and padding the
+        buttons to reach 44px would have overlapped neighbours, so a mistap
+        would select the WRONG line -- the one failure spot_the_bug cannot
+        have, since the line number IS the answer. The lever left unpulled was
+        the line-height itself, held pending this decision. Pulled now:
+        --code-line-height is 1.625 above the breakpoint and var(--tap-min)
+        (44px) below it, so a row is one touch target tall by construction and
+        no button is padded. The media query uses 1023.98px so it cannot both
+        match and disagree with WIDE_MIN_PX (1024) at exactly 1024.
+        THE TRADE, MEASURED NOT ASSUMED (fully visible lines, fixture snippet):
+          375x667   8 of 8 -> 5 of 8   (row 24.4px -> 44px)
+          360x480   4 of 8 -> 2 of 8   (row 48.8px -> 88px; that line wraps)
+          667x375   4 of 8 -> 2 of 8   (row 24.8px -> 44px)
+        Roughly half the lines, for a line you can reliably hit. That is the
+        right way round on a touch screen and the wrong way round on a
+        pointer, which is why it is scoped by width and not applied globally.
+     2. THE 44px FLOOR IS FOR NAVIGATION, AND ONLY BELOW THE BREAKPOINT.
+        Nav links (the wordmark, Profile, the review pager's Previous) grow
+        their hit area via inline-flex + min-h-tap, which grows the reachable
+        box without moving the text, so the header's visual rhythm is
+        unchanged. Prose links are deliberately excluded: padding an inline
+        link inside a paragraph to 44px wrecks the reading measure, which is
+        the product.
+        SCOPED TO NARROW, and this was a correction mid-change. Applied at all
+        widths first, which grew the desktop header and pushed every screen
+        down ~17px -- 75,000 changed pixels at 1280x800, a regression nobody
+        asked for. The floor is a TOUCH guideline (HIG 44pt / Material 48dp);
+        on a pointer device it buys nothing and costs layout. `lg:min-h-0`
+        returns it above the breakpoint.
+     3. THE REASON PICKER NO LONGER REPEATS THE SHEET'S INSTRUCTION.
+        "Tap the line number in the code where the bug is." is hidden below
+        the breakpoint, where the answer sheet's resting bar already says "Tap
+        the line with the bug" -- and says it at the moment it is actionable,
+        while the sheet is still down. Repeating it inside the RAISED sheet
+        told the reader to do the thing they had just done to raise it. Above
+        the breakpoint there is no sheet and no summary bar, so it stays.
+        Hidden with `hidden lg:block` rather than a JS branch: display:none is
+        not announced by screen readers either, so hiding is the whole claim
+        and it needs no hook.
+     DESKTOP, RE-MEASURED AFTER ALL THREE. Against the last commit: the three
+     reveals are PIXEL-IDENTICAL and the three answer screens differ only in
+     the left column below y=173, which is the D-130 controls strip and the
+     code block it pushes down. `leading-relaxed` became `leading-code` in the
+     viewer, which is a class RENAME with no computed change above the
+     breakpoint (verified: 1280px resolves to 1.625/25.58px, 1023px to 44px).
+     The D-130 constraint that the wide DOM must not change is retired as of
+     this entry; it did its job, which was to prove the mobile layout was
+     additive rather than a rewrite.
+
+D-132 The mobile viewer was unusable at 400px. Five defects, each measured.
+     Reported from real use at 400x844 with real content. D-130/D-131 were
+     validated against 8-line fixtures, on which every line fits and no density
+     problem can appear -- the fixtures could not have caught any of this. Every
+     number below is measured, and the measurement harness was itself wrong
+     twice before it was right (see MEASUREMENT, last).
+     1. THE WRAPPED-LINE INDENT MISREPRESENTED CODE STRUCTURE.
+        The hanging indent was `text-indent: -2ch` with
+        `padding-left: calc(1rem + 2ch)` -- relative to the CONTAINER, ignoring
+        the line's own leading whitespace. On a 12-space-indented line the
+        continuation rendered at x=92 while the code it continued started at
+        x=191: ~99px, twelve characters, to the LEFT. A wrapped statement read
+        as if it sat at a shallower nesting level.
+        For a code-comprehension app this is worse than the horizontal scroll
+        it was introduced to avoid. Scrolling HIDES structure; this MISSTATES
+        it, and a reader who cannot trust the indentation cannot trust
+        anything on the screen.
+        FIX: pad by (this line's own indent + hang) and pull the first row back
+        by the same amount, so row 1 lands where it always did and every
+        continuation starts strictly right of the code it continues.
+        SECOND BUG FOUND WHILE FIXING IT: prism's getLineProps returns BOTH
+        className and style, and `{...lineProps}` was spread AFTER our `style`,
+        so the indent was silently replaced by prism's value (usually
+        undefined) and never applied at all. The first fix changed nothing
+        until the spread order was fixed too. Now measured: code at 191.1,
+        continuation at 207.6.
+     2. THE LAST ROW WAS ALWAYS A FRAGMENT.
+        The pane is `flex-1`, so its height is whatever is left over and
+        essentially never a whole number of rows. Measured leftovers: 7.8px at
+        375x667, 8.6px at 400x844, 25.5px at 667x375. Half a line of code reads
+        as a different line of code.
+        Snapping arithmetically (floor(available / lineHeight)) failed twice,
+        each time for a contributor it did not know about: the pinned signature
+        header, which sits inside the scroller and takes flow space, and then
+        the code container's own vertical padding. FIX: snap on REAL GEOMETRY
+        -- find the last row whose bottom fits, set the scroller to exactly
+        that height. Immune to headers, padding, and wrapped rows of differing
+        heights without knowing any of them exist. partialRows is now 0 at
+        every viewport, type and phase.
+        SNAP vs CLIP, both built and photographed: CLIP constrains only the
+        scrolling area and leaves the pane's border at full height (22px of
+        background under the last row); SNAP lets the pane hug its snapped
+        content (7px, the container's own padding). SNAP ships -- the border
+        then means "the content ends here" rather than "the box ends here".
+     3. TAP-SIZED ROWS WERE COSTING MORE THAN THEY WERE WORTH.
+        D-131 gave EVERY code line a 44px row below the breakpoint. Measured
+        against a realistic 42-line snippet that left 5 lines visible at
+        400x844, 3 at 375x667, 2 at 360x480. You cannot reason about code you
+        cannot see, and only ONE type answers by tapping a line.
+        FIX: `tapSizedRows` is opted into per render -- spot_the_bug, WHILE
+        ANSWERING, below the breakpoint. Every other type answers in the sheet,
+        and every reveal (including spot_the_bug's own) is for reading. D-131's
+        blanket media query is deleted.
+        VISIBLE LINES, 42-line snippet, before -> after:
+          375x667  stb 3->5   trace 3->8    ptf 3->7
+          400x844  stb 5->7   trace 5->11   ptf 5->11
+          360x480  stb 2->2   trace 2->3    ptf 2->3
+          667x375  stb 2->3   trace 2->6    ptf 2->6
+        THE spot_the_bug REFLOW, answering -> reveal, is real: rows go 44px ->
+        24.4px, so the code roughly doubles in density at the moment the answer
+        is revealed. It is not jarring in practice because the whole screen is
+        already changing (the sheet is replaced by the reveal), and it is the
+        right way round -- the reveal is when you most want to see the code.
+        Recorded as a known reflow rather than hidden.
+     4. THE READING CONTROLS LEFT THE SESSION PLAYER.
+        Wrap and code-size sat in a strip directly above the code, costing
+        ~36px -- about one and a half lines -- on every exercise, at the width
+        where vertical pixels are scarcest. docs/08 is explicit: "The session
+        player is a single focused column: context note, code (the hero of
+        every screen), answer control, nothing else competing." A permanent
+        controls row is a fourth element competing, in the worst possible spot.
+        Both are set-once preferences: code size is a comfort setting nobody
+        changes per exercise, and wrap defaults to `auto`, which already
+        resolves correctly by width. So both move to Profile, under "Reading",
+        with a live code sample so size is judged against code rather than a
+        number. The cost is discoverability and it is the right cost: the
+        default is correct for almost everyone, and a rarely-needed control
+        does not belong in the reading surface. REVERSIBLE in one edit if the
+        in-session access turns out to matter.
+     5. THE SHEET RESTED AT 118px, NOT 44px.
+        It DID rest on first render -- measured `resting` at every viewport, so
+        the D-130 behaviour was correct. But the submit row was mounted while
+        resting, making the resting sheet 118px: 18% of a 667px viewport and
+        25% of a 480px one, permanently, for a button that cannot be used until
+        an answer exists. And the raised panel was capped at 60dvh, which with
+        bar and footer covered roughly HALF the viewport -- so engaging with
+        the answer buried the code being reasoned about.
+        FIX: the footer belongs to the raised sheet only (resting is now 45px,
+        measured), and the panel cap drops to 45dvh so the code keeps the
+        larger half even with the sheet up.
+     MEASUREMENT, recorded because it nearly produced two false all-clears.
+     The density harness reported "OK" for the indent bug and "did not wrap"
+     for a line that plainly wraps. Two errors: getClientRects() on a block
+     element returns ONE rect, not one per visual line (so wrapped rows were
+     counted as token fragments -- 64 "rows" for a 3-row line); and comparing
+     raw left edges compares row 1's leading WHITESPACE against row 2's TEXT,
+     which always looks fine. Correct method: group rects by `top` to get
+     visual lines, and compare against a collapsed Range at the first
+     non-whitespace character. A measurement that agrees with the code is worth
+     nothing until it can also disagree with it.
+
+D-133 The code pane could latch shut. Root cause, not the one that was guessed.
+     SYMPTOM: spot_the_bug rendered an empty code pane at 400x920 -- a black
+     void with the answer bar below it.
+     THE HYPOTHESIS WAS WRONG, AND CHECKING IT MATTERED. Both the report and my
+     own first instinct blamed D-132's row-snapping computing zero fitting rows
+     on a short viewport. It does not: the snapping loop already guarded that
+     case. Four reproduction attempts all showed healthy panes -- stub fixtures
+     across 7 viewports, a 45-line snippet, REAL seeded content walked through
+     every exercise at 5 viewports (panes 364-697px, 8-25 rows in view), and an
+     interaction ratchet test toggling the sheet six times (pane held at 672px).
+     ACTUAL CAUSE, found by reading the guard rather than the loop:
+       if (snapped <= 0) snapped = available;
+     `available` is the parent's clientHeight. If the parent is momentarily
+     ZERO-height -- which happens for real during a phase or exercise swap --
+     this wrote a 0px max-height onto the scroller. That collapsed the
+     scroller; a late CSS rule added in D-132 for a screenshot comparison
+     (`[&:has(>div[style*=max-height])]:flex-none`) then made the PANE size
+     itself from the collapsed scroller; so the next measurement read 0 as
+     well. Absorbing state: the pane never came back. Measured: one zero-height
+     moment took the pane from 672px to 0px permanently, and no amount of
+     further interaction recovered it.
+     This is why it looked viewport-dependent and irreproducible: it is not a
+     function of viewport at all, it is a function of having passed through a
+     zero-height moment.
+     FIX, structural rather than a bound:
+       - A degenerate measurement (available <= 0) now CLEARS the constraint
+         instead of writing one. A measurement you do not trust must never
+         become a layout rule.
+       - "No whole row fits" also clears rather than pinning, so a single very
+         long wrapped line scrolls instead of pinning the pane to a number.
+       - The `:has()` rule is deleted. It made the pane's height depend on the
+         scroller's max-height while that max-height was computed FROM the
+         pane's height -- a cycle. It existed only to make one screenshot
+         variant hug its content, which was never worth a circular dependency.
+     TEST: viewer-pane-nonempty.spec.ts asserts at least one code row renders
+     for all three types at all seven supported viewports PLUS two deliberately
+     hostile ones (320x400, 360x320) where tap rows, sticky header and padding
+     together exceed the viewport -- 28 assertions -- and one regression test
+     that forces a zero-height moment and asserts the pane recovers. A snapping
+     rule that can snap to zero is worse than a half row, so these assert the
+     floor, not the tidiness.
+     DESKTOP: pixel-identical to the last commit on five of six captures; the
+     sixth is the 33px progress-dot antialiasing flake proven pre-existing in
+     D-129 (it varies within a single unchanged build). The accumulated D-131
+     and D-132 class changes (nav min-h-tap with lg:min-h-0, leading-relaxed ->
+     leading-code where the token is 1.625 above the breakpoint, hidden
+     lg:block) are now PROVEN to have zero visual effect on desktop rather than
+     merely argued to.
+
+D-134 The bottom sheet is withdrawn. Two full-screen narrow states replace it.
+     WHY IT FAILED, and the failure was in the premise, not the polish. D-130
+     claimed "desktop separates in space, mobile separates in time", then built
+     a sheet -- which separates in SPACE after all: code above, controls below,
+     competing for one screen. It worked at 430x932 because there happened to
+     be room. At 375x667 and 400x670 it could not: the code needs ~300px to be
+     readable and the sheet needs a bar plus options plus a submit button.
+     Options clipped and the submit button was unreachable. predict_the_fix's
+     options are entire code blocks and were never going to fit beside anything
+     at any phone height.
+     THE SHEET'S OWN TESTS ALL PASSED. They asserted the sheet's behaviour --
+     that it rested, raised, and did not crush the code below a floor -- and
+     none of them asserted whether the SCREEN WAS USABLE. Ten minutes of hand
+     testing found four failures the suite was blind to. The replacement tests
+     assert usability directly: code pane non-empty, toggle on screen, submit
+     reachable without scrolling past the options, no option clipped, at 7
+     viewports x 3 types x 2 states.
+     THE MODEL: two states, each owning the whole viewport, with an explicit
+     toggle. Reading (code, plus one action bar). Answering (pinned way back,
+     scrolling options, pinned submit). For spot_the_bug a line tap IS the
+     first half of the answer, so it carries you into answering with the line
+     selected, and coming back preserves it.
+     BOTH PANES STAY MOUNTED, stacked absolutely, inactive one hidden via
+     `visibility` + `inert`. This is what makes the three acceptance conditions
+     hold rather than being hoped for: scroll position survives because neither
+     tree unmounts and no layout is discarded (display:none drops scroll
+     offsets; save/restore-by-ref races the first paint); the switch is a
+     visibility flip with no transform and no animation, so it is one frame;
+     and the code pane is never remounted, so it cannot re-run the measurement
+     D-133 showed can latch it shut. The cost is that both trees render at
+     once. They are small.
+     TOGGLE CONDITIONS, NOW TESTS RATHER THAN INTENTIONS: scroll preserved on
+     BOTH sides across a switch; the toggle visible at top, middle and bottom
+     scroll positions in both states (structural -- it is a sibling of the
+     scroll region, not inside it); and the switch under 150ms with no slide.
+     TWO MEASUREMENT CORRECTIONS while writing those, both my error, not the
+     app's: timing click()->expect() measures Playwright's protocol round trip
+     (~100-300ms) rather than the switch, so the timing is taken IN PAGE with a
+     MutationObserver plus one rAF; and asserting on `transition-property`
+     flags everything, because its CSS initial value is literally `all` -- what
+     decides whether anything moves is the DURATION.
+     DOCS/08 EXCEPTION, granted narrowly and recorded there too: the reading
+     state may pin one clamped line showing the currently selected option, for
+     `trace` only. trace asks you to compare candidate OUTPUTS against the
+     code; without it, verifying a candidate means holding a 40-character
+     string in working memory across a state switch, which tests memory rather
+     than reading. It renders ONLY once an option is selected, never as an
+     empty bar on first read, and it is one line, not a panel.
+     WHY NOT A SPLIT FOR trace, since that was the obvious alternative: a split
+     at 375x667 gives the code ~300px and the options ~250px, and neither is
+     usable -- it is the sheet again under a different name. What makes a
+     toggle work is switch COST, not simultaneity, which is why the three
+     conditions above are the acceptance criteria and not the layout.
+     DESKTOP: pixel-identical to the last commit on five of six captures; the
+     sixth is the 33px progress-dot antialiasing flake proven pre-existing in
+     D-129.
+
+D-136 OPEN: seeded specs are flaky again. NOT D-122, and filing it there was
+     my error.
+     THE MISATTRIBUTION, first, because it is the point of this entry. I twice
+     reported flaky seeded specs as "D-122's known session-build race". D-122
+     is CLOSED and was closed on evidence: reveal-error-boundary went 15/15
+     against an 11/15 baseline after the fix. Filing new failures under a
+     closed entry is exactly the move that let D-103's verification decay
+     unnoticed (D-127, D-128): it makes a live problem look like a known one
+     and stops anybody looking. If these failures are real, either D-122's fix
+     regressed or this is something new, and both deserve a fresh
+     investigation rather than a citation.
+     EVIDENCE, all against the dev server on :5173 with real seeded content,
+     over roughly five full-suite or group runs during the D-129..D-135 work:
+       - session.spec.ts failed once: locator.click timeout waiting for the
+         "Enter sandbox" link on the dashboard. 110 passed in that run. Passed
+         in isolation immediately afterwards.
+       - scroll-reachability.spec.ts failed once, on a DIFFERENT run, while
+         session.spec.ts passed. 110 passed in that run. Both passed in
+         isolation immediately afterwards.
+       - viewer-narrow.spec.ts's "continuation row selects it" failed once
+         when run in a group with narrow-two-state.spec.ts (42 passed), then
+         passed 2/2 in isolation and in every later full-suite run.
+       - Three clean full-suite runs on :5173 in the same period: 110, 111,
+         111 passed.
+     SO: three distinct specs, each failing once, never twice, never together,
+     always passing in isolation. That pattern is order- or timing-dependence
+     across specs, not one racy fixture.
+     NOT THE SAME AS THE CORS ARTIFACT, which must not be confused with this:
+     runs against the harness server on :5174 fail session.spec.ts and
+     reveal-error-boundary.spec.ts deterministically, because APP_ORIGIN pins
+     CORS to :5173. That is configuration, it is understood, and it is not
+     evidence of flakiness. Only the :5173 runs above count.
+     WHAT I DID NOT DO: diagnose it. No reproduction attempt, no seed-script
+     inspection, no check of whether D-122's fix is still in place. The
+     viewer-narrow one is the most tractable lead because it is hermetic
+     (stubbed routes, no backend), so an ordering or shared-state effect
+     between specs is the first thing to rule out -- note Playwright runs this
+     project with fullyParallel false and a single worker, so cross-test state
+     is plausible in a way it would not be under isolation.
+     WHY IT MATTERS BEYOND THE NOISE: the Playwright job is the only thing
+     standing between a cited spec and silent decay (D-128). A suite that
+     fails one random spec per run trains everyone to re-run rather than read,
+     which is the precondition for the next D-103.
+
+D-135 RECORDED LATE. Reaching the dev app from a phone on the LAN, cited in
+     config.py and frontend/src/lib/api.ts since 2026-07-19 with no entry
+     behind it. The commit that introduced it (9eac881) says "record
+     D-129..D-136" and did not record this one; found by an audit that grepped
+     every D-number citation in the repo against the log. A citation pointing
+     at nothing is worse than no citation, because it reads as "decided and
+     reviewed" to anyone who does not go looking.
+     TWO CHANGES, one on each side, and neither alters localhost behaviour.
+     (1) APP_ORIGIN ACCEPTS A COMMA-SEPARATED LIST, used ONLY for the CORS
+     allowlist. The FIRST entry stays canonical: it is the post-login redirect
+     target and the base for emailed links, both of which must be exactly one
+     URL. Exposed as APP_ORIGINS and PRIMARY_APP_ORIGIN.
+     WHY A DERIVED READING OF AN EXISTING SETTING rather than a new one: a new
+     setting would have to be added to BOTH committed .env.example files to
+     keep D-117's drift test green, and this needed to work without touching
+     them. Production sets a single value and is unaffected.
+     (2) THE DEV API BASE FOLLOWS THE HOST THE PAGE WAS LOADED FROM instead of
+     hard-coding localhost. A phone loading the app from 192.168.x.x then
+     called `localhost:8000`, which on a phone is the phone. An explicit
+     VITE_API_BASE_URL still wins, including the EMPTY STRING production sets
+     for same-origin behind the Vercel rewrite (D-114), because `??` falls
+     through only on undefined.
+     COST, and it was paid on another branch before anyone noticed: a
+     comma-separated APP_ORIGIN is only safe for code that knows to split it.
+     A3 branched off master, where APP_ORIGIN is a single origin used verbatim,
+     and the local override's two-origin value therefore produced
+     `http://localhost:5173,http://192.168.100.10:5173/unsubscribe?token=...`
+     in an email -- silently unclickable, in the one medium the reader cannot
+     retry. A2's verification link had the same latent bug. A3 fixed it in
+     email/links.py::link_origin(), which takes the first entry and is
+     deliberately the same semantics as PRIMARY_APP_ORIGIN above, so the two
+     converge rather than conflict when these branches meet. See D-137's late
+     addendum. THE GENERAL LESSON: a value that exists only in an untracked
+     local override is invisible to a suite that always supplies the tidy one.

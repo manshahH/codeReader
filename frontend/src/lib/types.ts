@@ -91,8 +91,23 @@ export interface TraceChoice {
   text: string;
 }
 
+/** D-129: the wire form of a code document. Mirrors CodeDocument in
+ * backend/app/schemas/session.py; the client-side model in lib/code/model.ts
+ * re-declares the same shape for components that never touch the API. */
+export interface PayloadDocument {
+  id: string;
+  role: 'primary' | 'failing_test' | 'choice';
+  code: string;
+  language: string;
+  label?: string | null;
+}
+
 export interface SessionExercisePayload {
   code: string;
+  /** D-129: normalized at the serialization boundary, so it is present on every
+   * response the current backend serves. Optional here because a cached or
+   * pre-D-129 response has only `code`; normalizeCodePayload() handles both. */
+  documents?: PayloadDocument[];
   context_note: string;
   answer_mode?: string | null;
   reason_options?: ReasonOption[] | null;

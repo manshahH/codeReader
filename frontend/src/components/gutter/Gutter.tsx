@@ -100,7 +100,7 @@ const LINE_STATE_CLASSES: Record<GutterCellState, string> = {
 /** A line number in the code gutter -- the exact spot spot_the_bug selection
  * happens (tap the number), and where reveal annotations anchor. */
 export function GutterLineButton({ line, state = 'default', onClick, hasNote, ariaLabel }: GutterLineButtonProps) {
-  const shared = `block w-full font-code text-code leading-relaxed tabular-nums text-right pr-3 transition-colors duration-fast ${LINE_STATE_CLASSES[state]}`;
+  const shared = `block w-full font-code text-code leading-code tabular-nums text-right pr-3 transition-colors duration-fast ${LINE_STATE_CLASSES[state]}`;
   const content = (
     <>
       {line}
@@ -124,6 +124,96 @@ export function GutterLineButton({ line, state = 'default', onClick, hasNote, ar
     <span aria-label={ariaLabel} className={shared}>
       {content}
     </span>
+  );
+}
+
+/**
+ * D-129 decision 2: the gutter is a SLOT SYSTEM, not a number-per-row column.
+ *
+ * A slot is one row of the gutter and can hold a line number, a diff marker, a
+ * fold control, a mark, or nothing. `blank` is the one that matters most right
+ * now: a soft-wrapped line occupies several visual rows but carries its number
+ * only on the first, and the continuation rows are blanks that keep the column
+ * aligned without repeating (or inventing) a number.
+ *
+ * Every variant renders at the same height as GutterLineButton, because the
+ * column only reads as a column if the rows line up.
+ */
+export type GutterSlot =
+  | {
+      kind: 'lineNumber';
+      key: string;
+      line: number;
+      state?: GutterCellState;
+      hasNote?: boolean;
+      onClick?: () => void;
+      ariaLabel?: string;
+    }
+  | { kind: 'blank'; key: string; state?: GutterCellState }
+  | { kind: 'mark'; key: string; label: ReactNode; state?: GutterCellState; ariaLabel?: string }
+  | { kind: 'fold'; key: string; folded: boolean; onClick?: () => void; ariaLabel?: string }
+  | { kind: 'diff'; key: string; marker: '+' | '-' | ' '; ariaLabel?: string };
+
+/** The shared row shape. GutterLineButton grew this string first; the other
+ * slot kinds reuse it verbatim so a blank and a number are the same height to
+ * the pixel. */
+const SLOT_ROW = 'block w-full font-code text-code leading-code tabular-nums text-right pr-3 transition-colors duration-fast';
+
+function GutterSlotRow({ slot }: { slot: GutterSlot }) {
+  switch (slot.kind) {
+    case 'lineNumber':
+      return (
+        <GutterLineButton
+          line={slot.line}
+          state={slot.state}
+          hasNote={slot.hasNote}
+          onClick={slot.onClick}
+          ariaLabel={slot.ariaLabel}
+        />
+      );
+    case 'blank':
+      // aria-hidden: a continuation row is a rendering artifact of wrapping,
+      // not a line, so it must not be announced or counted by a screen reader.
+      return (
+        <span aria-hidden="true" className={`${SLOT_ROW} ${LINE_STATE_CLASSES[slot.state ?? 'default']}`}>
+          {' '}
+        </span>
+      );
+    case 'mark':
+      return (
+        <span aria-label={slot.ariaLabel} className={`${SLOT_ROW} ${LINE_STATE_CLASSES[slot.state ?? 'default']}`}>
+          {slot.label}
+        </span>
+      );
+    case 'fold':
+      return (
+        <button
+          type="button"
+          onClick={slot.onClick}
+          aria-label={slot.ariaLabel ?? (slot.folded ? 'Unfold' : 'Fold')}
+          aria-expanded={!slot.folded}
+          className={`${SLOT_ROW} cursor-pointer text-ink-muted hover:text-action`}
+        >
+          {slot.folded ? '▸' : '▾'}
+        </button>
+      );
+    case 'diff':
+      return (
+        <span aria-label={slot.ariaLabel} className={`${SLOT_ROW} text-ink-muted`}>
+          {slot.marker}
+        </span>
+      );
+  }
+}
+
+/** Renders a column of slots. This is what a code gutter is now made of. */
+export function GutterSlots({ slots }: { slots: GutterSlot[] }) {
+  return (
+    <>
+      {slots.map((slot) => (
+        <GutterSlotRow key={slot.key} slot={slot} />
+      ))}
+    </>
   );
 }
 

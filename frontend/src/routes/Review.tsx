@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { CodeBlock } from '../components/gutter/CodeBlock';
+import { documentsFromCode } from '../lib/code/model';
 import {
   ExplanationSummary,
   PredictTheFixRevealView,
   SpotTheBugRevealView,
   TraceRevealView,
-  getSpotTheBugCodeMarks,
+  getSpotTheBugDecorations,
 } from '../components/session/revealViews';
 import { SessionProgressRail } from '../components/session/SessionProgressRail';
 import { ApiError, getSessionTodayReview } from '../lib/api';
@@ -42,20 +43,17 @@ function ReviewExerciseView({ row }: { row: SessionReviewExercise }) {
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-10 lg:grid-cols-2">
       {/* Left Column: Code */}
       <div className="flex-1 overflow-y-auto pr-2">
-        {row.reveal ? (
-          (() => {
-            let markLines;
-            let notedLines;
-            if (row.type === 'spot_the_bug') {
-              const marks = getSpotTheBugCodeMarks(row.reveal as STBReveal, row.answer);
-              markLines = marks.markLines;
-              notedLines = marks.notedLines;
-            }
-            return <CodeBlock code={row.code} markLines={markLines} notedLines={notedLines} />;
-          })()
-        ) : (
-          <CodeBlock code={row.code} />
-        )}
+        {/* The review row carries a bare `code` string (SessionReviewExercise
+            is a different shape from the session payload), so it normalizes
+            through the same boundary rather than growing its own path. */}
+        <CodeBlock
+          documents={documentsFromCode(row.code)}
+          decorations={
+            row.reveal && row.type === 'spot_the_bug'
+              ? getSpotTheBugDecorations(row.reveal as STBReveal, row.answer)
+              : []
+          }
+        />
       </div>
 
       {/* Right Column: Interaction */}
@@ -149,7 +147,10 @@ export function Review() {
           type="button"
           disabled={currentIndex === 0}
           onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-          className="text-sm text-ink-muted underline hover:text-ink disabled:opacity-40 disabled:hover:text-ink-muted"
+          // D-131: pager control, so it takes the 44px floor. It sits on its
+          // own row rather than inside prose, so growing the hit area costs
+          // nothing in reading measure.
+          className="inline-flex min-h-tap items-center pr-3 text-sm text-ink-muted underline hover:text-ink disabled:opacity-40 disabled:hover:text-ink-muted lg:min-h-0 lg:pr-0"
         >
           Previous
         </button>

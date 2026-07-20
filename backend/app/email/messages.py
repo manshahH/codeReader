@@ -21,7 +21,7 @@ SUBJECT = "Confirm your email for CodeReader"
 
 
 def verification_link(token: str) -> str:
-    origin = get_settings().APP_ORIGIN.rstrip("/")
+    origin = get_settings().PRIMARY_APP_ORIGIN
     return f"{origin}/verify-email?token={quote(token, safe='')}"
 
 

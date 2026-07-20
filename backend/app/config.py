@@ -17,6 +17,27 @@ class Settings(BaseSettings):
     GITHUB_REDIRECT_URI: str = "http://localhost:8000/auth/github/callback"
     TOKEN_ENC_KEY: str = Field(..., min_length=1)
     APP_ORIGIN: str = "http://localhost:5173"
+
+    # APP_ORIGIN accepts a COMMA-SEPARATED list (D-135). Deliberately a
+    # derived reading of an existing setting rather than a new one: a new
+    # setting would have to be added to both committed .env.example files to
+    # keep the drift test green, and this needs to work without touching them.
+    #
+    # The FIRST entry is canonical -- it is the origin the app redirects to
+    # after login and the base for emailed verification links, both of which
+    # must be exactly one URL. Any further entries are additional CORS origins
+    # only, which is what makes "localhost plus a LAN address" expressible for
+    # local device testing. Production sets a single value and is unaffected.
+
+    @property
+    def APP_ORIGINS(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.APP_ORIGIN.split(",") if o.strip()]
+
+    @property
+    def PRIMARY_APP_ORIGIN(self) -> str:
+        origins = self.APP_ORIGINS
+        return origins[0] if origins else "http://localhost:5173"
+
     # Optional (mirrors pipeline/config.py's PipelineSettings, D-44): this
     # project is OpenAI-only by default (GRADER_PROVIDER="openai" below).
     # Whichever grader provider is actually selected has its key validated
