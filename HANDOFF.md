@@ -119,7 +119,7 @@ empty. The A3 release checklist is therefore:
 | Setting | Value | Where |
 |---|---|---|
 | `JOBS_ENABLED` | `true` (already the default, and already `true` in both `.env.example`) | FastAPI Cloud |
-| `JOB_REMINDERS_INTERVAL_S` | `60` for launch, NOT the 300 default | FastAPI Cloud |
+| `JOB_REMINDERS_INTERVAL_S` | `60` for launch, NOT the 300 code default (both `.env.example` now say 60) | FastAPI Cloud |
 | `JOB_WEEKLY_RECAP_INTERVAL_S` | `900` (default is fine) | FastAPI Cloud |
 | `RESEND_API_KEY` | the real key | FastAPI Cloud |
 | `EMAIL_SENDING_ENABLED` | `true` | FastAPI Cloud |
@@ -147,8 +147,38 @@ primary key means only one instance can claim any period, but it does multiply
 the harmless no-op queries; (b) if the platform idles the app to zero when
 there is no traffic, the jobs stop with it. **Verify after deploy** with
 `GET /admin/metrics`, which reports `run_count` and `last_run_at` per job:
-`reminders` climbing is the only proof the layer is alive. A `run_count` that
-stops climbing between two polls is the failure this metric exists to catch.
+**`reminders.run_count` climbing in `/admin/metrics` is the ONLY proof the
+layer is alive.** Nothing else distinguishes "no reminders were due" from "the
+job has not run since the last deploy": both look like an empty
+`email_deliveries` table and a silent inbox. A `run_count` that stops climbing
+between two polls is exactly the failure this metric exists to catch, and on a
+scale-to-zero platform it is the expected failure (D-138) rather than an
+exotic one. Check it after every deploy.
+
+**THE EXTERNAL TRIGGER IS PART OF GO-LIVE, NOT AN OPTIONAL EXTRA (D-138).**
+FastAPI Cloud scales to zero, and the in-process scheduler dies with the app.
+Worse, each job loop counts its interval from PROCESS START, so a cold start
+resets the clock and an app that wakes briefly and sleeps again never reaches a
+tick at all. Without the trigger, reminders simply do not send overnight, which
+is when they are due. Steps:
+
+1. Add two **GitHub repo secrets**: `API_BASE_URL` (the backend origin, e.g.
+   `https://api.reedkode.com`) and `ADMIN_METRICS_TOKEN` (the same value set on
+   FastAPI Cloud).
+2. Set `ADMIN_METRICS_TOKEN` on **FastAPI Cloud**. While it is empty the
+   endpoint is 404, so an unconfigured deploy cannot be made to send.
+3. `.github/workflows/jobs.yml` runs every 10 minutes on the default branch.
+   It only runs from the DEFAULT BRANCH, so it does nothing until this is
+   merged and pushed.
+4. Trigger it once by hand (`workflow_dispatch`) and confirm a 200 whose body
+   shows real sweep counters, then confirm `reminders.run_count` moved in
+   `/admin/metrics`.
+5. **Calendar reminder: in a public repo GitHub disables scheduled workflows
+   after 60 days with no repository activity.** A quiet repo silently stops
+   sending reminders. This is the single most likely way this layer dies later.
+
+The in-process scheduler is left enabled and unchanged, so local dev needs none
+of this and an always-on host would work without the trigger.
 
 **LAUNCH BLOCKER 2, alongside the domain: the Resend plan.** The free tier is
 **100 emails/day and 3,000/month**, and a public launch clears that almost

@@ -4423,3 +4423,41 @@ D-138 The scheduler cannot live inside the thing that sleeps. FastAPI Cloud
      COST: a public admin endpoint that can cause sending, two new repo
      secrets, and a workflow that must be re-enabled if the repo goes quiet for
      60 days. The last one is a real trap and belongs in the runbook.
+
+D-139 The product is Reedkode. The rename is PUBLIC-FACING ONLY, and that is a
+     finished state, not a half-done one.
+     WHY THIS ENTRY EXISTS AT ALL: a repo whose database, containers, CI jobs
+     and test fixtures all say "codereader" while the product says "Reedkode"
+     looks exactly like an abandoned migration. Without this entry the next
+     person to notice will either "finish" it -- and that is the expensive,
+     risky half -- or waste a day deciding whether to. It is deliberate.
+     WHAT CHANGED, roughly 14 strings: the page <title>, the PWA manifest name
+     and short_name, the nine user-visible strings in email/messages.py, the
+     unsubscribe label, and a review aria-label. Plus EMAIL_FROM.
+     WHAT DID NOT, and why the split falls where it does: nobody sees a
+     database name. Renaming the infrastructure layer means a dump and restore
+     of production data, rewriting the D-88 test-isolation guard (the mechanism
+     that has already saved the content twice), touching every CI job's DB
+     name, the sandbox image name and its canary token. That is real risk for
+     zero user benefit. Running infrastructure under an old codename is a
+     normal industry state, not an unfinished job.
+     TWO IDENTIFIERS ARE LOAD-BEARING AND MUST NEVER BE RENAMED, even if
+     someone later does the infrastructure sweep:
+       - `_DOMAIN = b"codereader-unsubscribe-v1"` (email/unsubscribe.py) is the
+         HMAC domain separator. Changing it invalidates every unsubscribe link
+         ever sent, which is a compliance problem, not a cosmetic one. It is
+         versioned precisely so it CAN be rotated deliberately; a rename is not
+         a deliberate rotation.
+       - `CODEREADER_ALLOW_SEED` gates a script that writes gate-bypassing
+         content. A rename silently disarms the guard, because the new name
+         reads as unset and the old check disappears.
+     EMAIL_FROM IS A SUBDOMAIN, no-reply@send.reedkode.com, NOT the apex. A
+     deliverability incident on a sending subdomain does not touch the root
+     domain's reputation, and the root is what the site and any future
+     person-to-person mail depend on. Verify send.reedkode.com in Resend.
+     THE DOMAIN CUTOVER IS NOT PART OF THIS. APP_ORIGIN, GITHUB_REDIRECT_URI,
+     the vercel.json rewrite and the GitHub OAuth callback all move together as
+     ONE atomic change at launch: per D-114 and docs/09 section 3 the redirect
+     URI must name the FRONTEND origin or the refresh cookie lands on the wrong
+     domain and every login silently fails to persist. Splitting that set is
+     the way to break login.

@@ -66,7 +66,7 @@ export function ReviewPromptModal({ onClose, onSubmitted, initialRating = 0, ini
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Rate CodeReader"
+        aria-label="Rate Reedkode"
         className="w-full max-w-md rounded-loose border border-border bg-surface-reading p-6"
         onClick={(event) => event.stopPropagation()}
       >

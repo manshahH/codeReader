@@ -27,7 +27,7 @@ import { confirmUnsubscribe, previewUnsubscribe } from '../lib/api';
 const LABEL: Record<string, string> = {
   reminder: 'daily reminders',
   recap: 'the weekly recap',
-  all: 'all CodeReader email',
+  all: 'all Reedkode email',
 };
 
 type State = 'loading' | 'ready' | 'done' | 'failed';

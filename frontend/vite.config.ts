@@ -17,8 +17,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/v1\//],
       },
       manifest: {
-        name: 'Code Reader',
-        short_name: 'Code Reader',
+        name: 'Reedkode',
+        short_name: 'Reedkode',
         description: 'Daily code-reading practice: trace, spot the bug, summarize.',
         start_url: '/',
         display: 'standalone',

@@ -20,7 +20,7 @@ from app.email.recap import WeeklyRecap
 from app.email.sender import OutboundEmail
 from app.email.unsubscribe import unsubscribe_api_url, unsubscribe_page_url
 
-SUBJECT = "Confirm your email for CodeReader"
+SUBJECT = "Confirm your email for Reedkode"
 
 
 # A3 (D-137(9)). docs/10's two hard rules for this audience are no guilt and no
@@ -59,7 +59,7 @@ def build_verification_email(*, to: str, token: str, ttl_hours: int) -> Outbound
     link = verification_link(token)
     hours = f"{ttl_hours} hours" if ttl_hours != 1 else "1 hour"
     text = (
-        "Confirm this address to turn on CodeReader reminders and your weekly recap.\n\n"
+        "Confirm this address to turn on Reedkode reminders and your weekly recap.\n\n"
         f"{link}\n\n"
         f"The link works for {hours}. Until you confirm, nothing changes: if you "
         "already had an address on file, it keeps working.\n\n"
@@ -67,7 +67,7 @@ def build_verification_email(*, to: str, token: str, ttl_hours: int) -> Outbound
         "link is opened.\n"
     )
     html = (
-        "<p>Confirm this address to turn on CodeReader reminders and your weekly recap.</p>"
+        "<p>Confirm this address to turn on Reedkode reminders and your weekly recap.</p>"
         f'<p><a href="{link}">Confirm this address</a></p>'
         f"<p>The link works for {hours}. Until you confirm, nothing changes: if you "
         "already had an address on file, it keeps working.</p>"
@@ -101,11 +101,11 @@ def _unsubscribe_headers(user_id: uuid.UUID, kind: str) -> dict[str, str]:
 
 def _footer(link: str, what: str) -> tuple[str, str]:
     text = (
-        f"\n\nYou get this because you added your address to CodeReader.\n"
+        f"\n\nYou get this because you added your address to Reedkode.\n"
         f"Turn off {what}: {link}\n"
     )
     html = (
-        "<hr><p>You get this because you added your address to CodeReader. "
+        "<hr><p>You get this because you added your address to Reedkode. "
         f'<a href="{link}">Turn off {what}</a>.</p>'
     )
     return text, html
@@ -153,7 +153,7 @@ def build_reminder_email(
     )
     return OutboundEmail(
         to=to,
-        subject="Your CodeReader session is ready",
+        subject="Your Reedkode session is ready",
         text=text,
         html=html,
         dev_link=link,
@@ -187,20 +187,20 @@ def build_recap_email(*, to: str, user_id: uuid.UUID, recap: WeeklyRecap) -> Out
         lines.append(f"Current streak: {recap.current_streak} days")
 
     text = (
-        f"Your week on CodeReader, {span}.\n\n"
+        f"Your week on Reedkode, {span}.\n\n"
         + "\n".join(lines)
         + f"\n\n{origin}/profile"
         + footer_text
     )
     html = (
-        f"<p>Your week on CodeReader, {span}.</p><ul>"
+        f"<p>Your week on Reedkode, {span}.</p><ul>"
         + "".join(f"<li>{line}</li>" for line in lines)
         + f'</ul><p><a href="{origin}/profile">See the full picture</a></p>'
         + footer_html
     )
     return OutboundEmail(
         to=to,
-        subject=f"Your week on CodeReader, {span}",
+        subject=f"Your week on Reedkode, {span}",
         text=text,
         html=html,
         dev_link=link,

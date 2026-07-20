@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     # unconditionally would block constructing Settings at all on any deploy
     # that does not send email (and on every test run).
     RESEND_API_KEY: str = ""
-    EMAIL_FROM: str = "CodeReader <no-reply@codereader.dev>"
+    EMAIL_FROM: str = "Reedkode <no-reply@send.reedkode.com>"
     EMAIL_VERIFICATION_TTL_H: int = 24
     # Throttle, two layers with deliberately different scopes (see
     # email/service.py::_enforce_send_throttle). The cooldown is a per-ADDRESS
