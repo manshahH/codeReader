@@ -87,8 +87,10 @@ Do these first. They move retention in weeks and answer real user feedback direc
   Profile toggles read and write the same suppression rows. The recap goes out
   Monday 09:00 local covering the week that just ended, and an empty week is
   skipped rather than sent. Bounce/complaint webhooks are DEFERRED, explicitly.
-- A4 Peek at tomorrow: a teaser of tomorrow's set. Why: a reason to return that the
-  streak cannot supply; cheap dopamine (requested by a beta user).
+- A4 Peek at tomorrow (**BUILT**, D-142/D-144; see the A4 spec section below): a
+  teaser of tomorrow's set. Why: a reason to return that the streak cannot
+  supply; cheap dopamine (requested by a beta user). Shipped on the Dashboard's
+  completed state (Dashboard-only, D-144).
 - A5 Personal cheat sheet: let a user save an explanation or snippet, tagged by
   topic, and revisit it. Why: this is the habit-loop "investment" step and the
   ownership drive; it turns 5-minute sessions into a durable personal reference.
@@ -267,16 +269,59 @@ as decisions rather than absorbed silently.
   wrong in both directions: it drops the reset day, which is itself an active
   day, and over-credits any day the user was not active.
 
-**DEFERRED, and the reason it is not a bug:** the spec says the "celebrate the
-return" state appears on "the dashboard and session-complete". **There is no
-session-complete screen.** `frontend/src/routes/Session.tsx` redirects to the
-Dashboard once the last exercise is done, and a `latestStreak` state there was
-written but never read (removed in A1, with a comment left at the write site).
-So the welcome-back state lives on the Dashboard, and the per-attempt reveal
-carries the warmed reset copy. Building a real session-complete screen is its
-own piece of work and a natural home for a session-level streak summary,
-`first_completed_session` (already in the API and unused by the client), and the
-A4 "peek at tomorrow" teaser. Pick it up with A4 or as a standalone UI task.
+**WAS DEFERRED, now CLOSED (D-143/D-144).** The spec said the "celebrate the
+return" state appears on "the dashboard AND session-complete". At A1 there was no
+session-complete screen, so only the Dashboard half shipped. The screen now
+exists at `/session/complete` (D-143), and A1's welcome-back + repair affordance
+renders on BOTH surfaces via the shared `StreakReturn` component (D-143 Addendum
+2 records that A1's spec explicitly mandated both), so the both-surfaces
+deferral is closed. `first_completed_session` is no longer unused: it is
+hoisted to the session response top level (D-144) and drives the screen's own
+first-day state. The A4 teaser is NOT on the screen; it is Dashboard-only
+(D-144), for the reason recorded in the A4 spec section below.
+
+## A4 spec : peek at tomorrow
+
+### A4 as actually built (2026-07-22)
+
+Built as a Dashboard hook, then briefly moved to the session-complete screen,
+then moved back. The final placement and the reason are load-bearing, because
+this doc's original one-line pitch above says "Dashboard" and that word is now
+correct AGAIN, but for a decided reason, not by default.
+
+- **D-142** is the spec: a one-concept forward hook derived at request time from
+  `user_concept_state.next_review_at` within the user's LOCAL day after today.
+  Never a persisted "tomorrow's session" (that set cannot exist before today's
+  answers land, so persisting it would re-serve just-practised concepts, D-142(1)).
+  Strict tomorrow-only window disjoint from due-today; weakest-mastery pick; the
+  empty case shows nothing. Copy is a schedule tease, not a promise ("Coming up
+  for review tomorrow: X"). Five addenda: render rate measured (Addendum 1),
+  the disjoint-rule/backlog argument (Addendum 2), copy softened to a tease
+  (Addendum 3), first_completed_session recomputation (Addendum 4), and the
+  first-completed-day fallback to the weakest-mastery concept, "Next up: X" with
+  NO date claim (Addendum 5).
+- **D-143(3)** placed the teaser on the new session-complete screen exclusively.
+- **D-144 REVERSED that: the teaser is Dashboard-ONLY.** The Dashboard's
+  completed state persists across the whole completion day, so the teaser is
+  there in the evening when the user is deciding whether tomorrow is worth it,
+  which is the impression docs/10 justified A4 on. Screen-only threw that away
+  for a five-second head start. So the teaser lives on the Dashboard, and
+  `first_completed_session` was hoisted OUT of the teaser to the session-response
+  top level so the session-complete screen can own its first-day state without
+  depending on the teaser (D-144(3)). This is why the pitch above reads
+  "Dashboard": it is the D-144 decision, not the un-revised original.
+
+### Still OPEN on A4 (recorded, not decided)
+
+- **Render-rate levers for the weekly-cadence cohort.** A4 clears the 40% render
+  threshold for daily-to-every-few-days users, but a weekly-or-sparser user sees
+  it ~18% of completed days (D-142 Addendum 1). Two levers were named and NOT
+  taken: widening to a two-day window, or a weakest-mastery fallback for the
+  weekly cohort. Both remain the roadmap owner's call.
+- **Senior under-exposure.** Render rate FALLS as accuracy RISES (intervals push
+  to 7 then 21 days), so the strongest, most-engaged seniors see A4 LEAST -- the
+  cohort docs/10 says we cannot afford to bore. Inherent to spaced repetition,
+  not fixable inside A4; flagged for the senior-retention work (D-142 Addendum 1).
 
 ## Open decisions (to resolve before building the relevant phase)
 

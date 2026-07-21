@@ -6,9 +6,10 @@ only, D-139); the repo, database and internal identifiers stay `codereader`
 deliberately.
 
 **PRODUCTION AND `master` ARE FAR APART. Check which one you mean.** Production
-runs the MVP only. `master` additionally carries A1, A2, A3 and the mobile
-viewer rebuild, none of it deployed. HANDOFF.md leads with the current split;
-read it before assuming a feature is live.
+runs the MVP only. `master` additionally carries A1, A2, A3, the mobile viewer
+rebuild, A4 (peek at tomorrow) and the session-complete screen, none of it
+deployed. HANDOFF.md leads with the current split; read it before assuming a
+feature is live.
 
 ## Read order
 1. This file
@@ -16,7 +17,7 @@ read it before assuming a feature is live.
 3. docs/10-roadmap-retention.md (what we build next, phased) for feature work
 4. The reference doc for the subsystem you touch (01 content, 04 db + db/schema.sql,
    05 api, 08/08b frontend, 09 deploy); docs/06 for the original MVP milestones
-5. docs/07-decisions.md before proposing any design change (D-1..D-141)
+5. docs/07-decisions.md before proposing any design change (D-1..D-144)
 
 ## Doc map
 - docs/00-product.md          what we are building and why

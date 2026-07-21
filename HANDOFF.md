@@ -1,12 +1,13 @@
 # CodeReader — Handoff Brief
 
 Paste this into a new chat to resume. Everything else lives in the repo
-(`CLAUDE.md`, `docs/00`–`docs/11`, `docs/07-decisions.md` = D-1..D-141).
+(`CLAUDE.md`, `docs/00`–`docs/11`, `docs/07-decisions.md` = D-1..D-144).
 Forward plan (what to build next) lives in `docs/10-roadmap-retention.md`.
 
-Last refreshed: 2026-07-21 (A3 and the viewer rebuild merged to master;
-D-123..D-141). Product name is **Reedkode** public-facing; repo, database and
-internal identifiers stay `codereader` on purpose (D-139).
+Last refreshed: 2026-07-22 (A4 "peek at tomorrow" and the session-complete
+screen merged to master; D-142..D-144). Product name is **Reedkode**
+public-facing; repo, database and internal identifiers stay `codereader` on
+purpose (D-139).
 
 ---
 
@@ -32,7 +33,7 @@ pipeline with a Docker sandbox and adversarial LLM gates. Repo:
 
 ---
 
-## Status: master is four milestones ahead of production
+## Status: master is far ahead of production
 
 **THE MOST EXPENSIVE MISTAKE THIS DOC CAN CAUSE IS CONFUSING THESE TWO.**
 Verified by probing production, not by reading: `GET /v1/streak/repair` and
@@ -46,23 +47,32 @@ Verified by probing production, not by reading: `GET /v1/streak/repair` and
 | A2 email capture | **no** | merged |
 | A3 reminders + recap | **no** | merged |
 | Mobile viewer rebuild | **no** | merged |
+| A4 peek at tomorrow | **no** | merged |
+| Session-complete screen | **no** | merged |
 | Migrations applied | through 0008 | through 0011 |
 
-So: **nothing in the retention layer is running.** Every A1/A2/A3 description
-below is describing `master`. Master is unpushed-to-production and carries four
-migrations production has never seen (0009 email, 0010 delivery ledger, 0011
-delivery payload).
+So: **nothing in the retention layer is running.** Every A1/A2/A3/A4 and
+session-complete-screen description below is describing `master`. Master is
+unpushed-to-production and carries three migrations production has never seen
+(0009 email, 0010 delivery ledger, 0011 delivery payload). **A4 and the
+session-complete screen added NO migration** (A4 is a read over
+`user_concept_state`; the screen is frontend-only reading existing endpoints),
+so the migration gap did not move: production 0008, master 0011.
 
 **Production** is the MVP end to end: GitHub OAuth login, onboarding, daily
 session, instant deterministic grading, streaks, spaced repetition, stats,
 disputes. The session gate was removed so `/session` opens the player directly
 (D-111).
 
-**On master, green:** 603 backend tests, 124 Playwright (0 skipped), ruff clean,
+**On master, green:** 618 backend tests, 134 Playwright (0 skipped), ruff clean,
 migration chain reversible, schema.sql at parity.
 
 ### What merged since the last refresh
 
+- **A4 "peek at tomorrow"** (D-142, five addenda) and the **session-complete
+  screen** (D-143, three addenda; D-144). Merged together as one --no-ff stack
+  (the screen branch was cut from A4). NO migration, no new env. Detail below
+  under "A4 and the session-complete screen".
 - **A1 streak safety net** (D-116..D-118) and **A2 email capture** (D-120).
   Both detailed in full below; unchanged since the last refresh apart from
   being further from production.
@@ -352,8 +362,9 @@ split out; see the A2 merge commit):
   browser saw a rejected fetch and the SPA said "Could not reach the server".
   That disguise cost two misdiagnoses.
 - **D-119**: CLOSED. `session.spec.ts` asserted a "Session complete" screen that
-  does not exist, so it failed 8 of 8 on a confusing selector. Fixed to assert
-  the real completion signal. No `test.fixme` remains in the Playwright suite.
+  did not exist AT THE TIME, so it failed 8 of 8 on a confusing selector. Fixed
+  then to assert the Dashboard redirect. That screen now EXISTS (D-143/D-144),
+  and the spec asserts it directly; no `test.fixme` remains in the suite.
 
 **A1, A2, A3 and the viewer rebuild are merged to master but NOT DEPLOYED**,
 and merging ships nothing: Vercel is CLI-only and the backend deploys
@@ -364,14 +375,14 @@ checklist is in `docs/09` section 5 (backend before frontend, no migration, no
 new required env, one post-deploy backfill call); A2 adds migration 0009 and the
 `EMAIL_*` env knobs to that list.
 
-Deferred out of A1, deliberately: there is **no session-complete screen**.
-`Session.tsx` redirects to the Dashboard when the last exercise is done, so A1's
-"dashboard and session-complete" requirement is met on the Dashboard and in the
-per-attempt reveal only. Building that screen is its own piece of work.
-This absence bit once already (D-119): `session.spec.ts` asserted a "Session
-complete" screen and failed 8 of 8 on a confusing selector for it. Anything
-asserting end-of-session must target the Dashboard redirect and its completed
-state until that screen actually exists.
+Deferred out of A1, then BUILT (D-143/D-144): the **session-complete screen now
+exists** at `/session/complete`. `Session.tsx` redirects there (not to the
+Dashboard) when the last exercise is done, and the screen derives completion
+from server state (`GET /session/today.completed`), redirecting to the dashboard
+otherwise. It carries A1's welcome-back + repair affordance (via the shared
+`StreakReturn`, closing A1's "dashboard AND session-complete" deferral) and its
+own first-day state. End-of-session assertions now target the screen; the
+D-119-era guidance to assert the Dashboard redirect is superseded.
 
 Three exercise types, **all deterministically graded (zero per-answer LLM cost)**:
 - `spot_the_bug` — tap the buggy line + pick why (the flagship)
@@ -382,6 +393,44 @@ Three exercise types, **all deterministically graded (zero per-answer LLM cost)*
 `summarize` was built (M5, with real prompt-injection hardening) but **dropped
 before launch and still off** (D-115, enforced by `SUMMARIZE_ENABLED` per
 D-123) — it's the only type with a per-answer LLM cost.
+
+---
+
+## A4 and the session-complete screen (D-142, D-143, D-144)
+
+Merged together (the screen branch was cut from A4), NO migration, no new env.
+
+**A4 "peek at tomorrow"** (D-142 + five addenda). A one-concept forward hook on
+the Dashboard's completed state, derived at request time from
+`user_concept_state.next_review_at` falling within the user's LOCAL day after
+today. It is a property of the SCHEDULE, never a persisted "tomorrow's session"
+(that set cannot exist before today's answers land, so persisting it would
+re-serve just-practised concepts). Strict tomorrow-only window, weakest-mastery
+pick, empty case shows nothing. Copy is a schedule tease, not a promise:
+"Coming up for review tomorrow: X", and for the first-day fallback (below)
+"Next up: X" with NO date claim (`is_fallback` drives that). Render rate is high
+for the daily-to-every-few-days audience (measured, D-142 Addendum 1). D-142
+Addendum 5 adds a first-completed-day fallback to the weakest-mastery concept so
+day-1 users still get a Dashboard hook.
+
+**Session-complete screen** (D-143 + three addenda). A real route
+`/session/complete`, the redirect target of the last exercise. Completion is
+derived from SERVER STATE, not navigation history, and it redirects to the
+dashboard otherwise, so refresh/deep-link/back all work. It houses A1's
+welcome-back + repair affordance (shared `StreakReturn`, closing A1's
+both-surfaces deferral) and its OWN first-day state.
+
+**D-144, the placement reversal, is the part most likely to be misread.** A4's
+teaser was briefly placed on this screen (D-143(3)) then moved BACK to the
+Dashboard EXCLUSIVELY (D-144): the evening impression on the Dashboard is the
+value docs/10 justified A4 on, and screen-only threw it away. So the teaser is
+Dashboard-only, and to keep the screen's first-day moment,
+`first_completed_session` was HOISTED out of the teaser to the `SessionResponse`
+top level (a session-level fact the screen reads directly, `{concept,
+is_fallback}` left on the teaser). The screen owns its first-day copy ("That was
+your first session."); the Dashboard teaser is purely forward. docs/10's
+original A4 prose said "Dashboard", which is now correct again FOR THE D-144
+REASON, not because it was never contested.
 
 ---
 
@@ -616,14 +665,12 @@ gone, and it was never flakiness.
 - ✅ **Streak renders as gutter ticks.** `StreakTicks` exists in
   `components/gutter/Gutter.tsx` and is used on the Profile and in the
   per-attempt Reveal. Shipped with the viewer rebuild; docs/08's intent is met.
-- ⚠️ **Still open: there is NO session-complete screen.** `Session.tsx`
-  redirects to the Dashboard when the last exercise is done (the comment at
-  `Session.tsx:94` says so). This is why A1's welcome-back state lives on the
-  Dashboard and why D-119 chased a screen that never existed. It is also the
-  natural home for A4's "peek at tomorrow" and A5's cheat sheet, so it is now
-  blocking roadmap work rather than being cosmetic. The Profile is less sparse
-  than it was (A2's email card, A3's reminders card, the streak ticks), so the
-  remaining gap is the session-complete screen specifically.
+- ✅ **Session-complete screen BUILT (D-143/D-144).** `Session.tsx` now
+  redirects to `/session/complete` when the last exercise is done. The screen
+  carries A1's welcome-back + repair (shared `StreakReturn`, closing A1's
+  both-surfaces deferral) and its own first-day state. A4's "peek at tomorrow"
+  was briefly placed here (D-143) then moved back to the Dashboard exclusively
+  (D-144). A5's cheat sheet, if built, has a natural home here too.
 
 **Then:** human-review the corpus via `review_cli packet` and flip to live.
 **This is a FULL PUBLIC LAUNCH, not a 20 to 30 person invite beta.** The earlier
