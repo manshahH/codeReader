@@ -311,6 +311,14 @@ Guarantees:
 - Exact difficulty numbers are internal; clients get `difficulty_band` (`easy|medium|hard|boss`).
 - If the LLM grader is degraded, `summarize` slots are replaced at sampling time; already-issued sessions are unchanged.
 
+`payload` fields vary by exercise `type`; every payload carries `code`, `context_note`, and `documents` (the D-129 normalized code-document list: one `primary` document, plus `failing_test` and per-choice `choice` documents where they apply). Per type, `payload` additionally carries:
+- `spot_the_bug`: `answer_mode`, `reason_options`.
+- `trace`: `question`, `choices` (id + text; the `misconception` tag is dropped so it cannot leak the answer).
+- `predict_the_fix`: `answer_mode`, `question`, `failing_test`, `test_output`, `choices` (id + code candidate fixes).
+- `summarize`: `max_words`.
+
+No answer key ever appears: `correct_lines`/`correct_reason_id`/`correct_choice_id` live only in `grading`, never in `payload`.
+
 `first_completed_session` (top-level; D-95 semantics, hoisted here by D-144) is `true` only on the single completed response that is the user's first-ever finished daily session; `false` on any non-completed or non-first response. It is a SESSION-level fact: the session-complete screen renders its own first-day state from it, decoupled from the teaser. It is gated on `completed`.
 
 `tomorrow` (A4 "peek at tomorrow", D-142; Dashboard-only per D-144) is `null` in every response except a completed session that also has a concept to surface:
