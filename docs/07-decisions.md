@@ -4981,6 +4981,8 @@ D-143 ADDENDUM 1 (review): THE EXCLUSIVE MOVE RE-FRAMED A4, and the decision is
      forward beat is valued more than cleanliness, the alternative is to accept
      the mild 5-second repeat and show it on both. Awaiting the owner's call;
      until then the shipped behaviour (exclusive on screen) stands.
+     DECIDED (D-144): the recommendation was taken -- teaser dashboard-only, and
+     the screen given its own decoupled first-day state. See D-144.
 
 D-143 ADDENDUM 2 (review): THE STREAKRETURN DOUBLE-SHOW IS NOT INCONSISTENT WITH
      REMOVING THE TEASER, and here is why the same "appears twice" fact is right
@@ -5014,3 +5016,85 @@ D-143 ADDENDUM 3 (review): THE FIRST-DAY WARMTH IS A LOAD-BEARING DEPENDENCY ON
      session with NOTHING extra seeded (empty strict window) and asserts the
      teaser is non-null. It fails the moment the fallback stops covering this
      case, which is the point.
+     SUPERSEDED IN PART by D-144: the coupling this addendum tests is REMOVED
+     (the screen now owns its first-day state; it no longer rides the teaser),
+     so the test is re-scoped to guard A4's fallback as an A4 property in its own
+     right rather than the first-day celebration. See D-144.
+
+D-144 TEASER GOES DASHBOARD-ONLY, and the screen gets its own first-day state.
+     Reverses D-143(3)'s "exclusive on the completion screen" after the D-143
+     review. Two decisions here, and the second is forced by the first.
+
+     (1) PLACEMENT: the teaser moves to the DASHBOARD exclusively and comes OFF
+     the session-complete screen (the exact opposite of D-143(3)). Once the
+     "suppress for the remainder of the day" middle option was shown to collapse
+     into the exclusive removal (D-143 Addendum 1), the real choice was
+     screen-only vs dashboard-only, and dashboard-only nearly dominates: the user
+     lands on the dashboard within seconds of finishing, so the post-completion
+     forward beat survives almost intact, AND the EVENING impression -- the thing
+     docs/10 line 90 actually justified A4 on ("a reason to return") -- survives
+     ONLY under dashboard-only, because the dashboard teaser persists across the
+     completed day like "Upcoming reviews" while the screen is seen once.
+     Screen-only traded a persistent return hook for a five-second head start on
+     the same impression; a bad trade for a feature whose whole purpose is the
+     return. So: restore TomorrowPeek on Dashboard.tsx (all three variants:
+     plain, and the Addendum-5 fallback -- see below on the warm variant),
+     remove it from SessionComplete.tsx.
+
+     (2) THE FORCED CONSEQUENCE: first_completed_session rode the teaser
+     (D-143(5)), so moving the teaser would take the first-day warmth with it and
+     leave a first-ever finisher looking at a heading, one line and a button --
+     the flattest that screen will ever be, on the one occasion it matters most.
+     Not acceptable as a side effect. So the screen gets its OWN first-day state,
+     DECOUPLED from the teaser. This is strictly better than the D-143 Add-3
+     guard: a dependency REMOVED beats a dependency tested, and A4's fallback is
+     no longer load-bearing for the first-day celebration.
+
+     (3) HOIST vs REACH-IN, argued on the code as it is. first_completed_session
+     lives INSIDE TomorrowTeaser (schemas/session.py). The screen now renders NO
+     teaser, so to read the flag it must either (a) have it hoisted to the
+     session top level, or (b) reach into the tomorrow object it does not
+     display. CHOSEN: (a) hoist. (b) is rejected on two counts: it BREAKS when
+     tomorrow is null (a non-first-day completion with nothing due has tomorrow
+     null, and reaching in throws or reads undefined), and it KEEPS exactly the
+     teaser coupling this change exists to remove -- the screen would still
+     depend on A4's fallback guaranteeing a non-null teaser. (a) puts a
+     session-level fact (did this session complete the user's first-ever day) at
+     session level where it belongs, and survives tomorrow being null. COST of
+     (a): a real wire change (SessionResponse gains first_completed_session), a
+     docs/05 update, and test churn -- but it also lets first_completed_session
+     come OUT of TomorrowTeaser entirely, leaving the teaser as {concept,
+     is_fallback}, which is cleaner (the teaser stops carrying a fact it does not
+     describe). Worth it; the churn is bounded and mechanical.
+     CONSEQUENCE FOR THE DASHBOARD TEASER COPY: the "That's your first day done"
+     warm LEAD-IN is removed from the teaser, because that acknowledgement is now
+     the screen's job -- keeping it on the dashboard teaser too would double-show
+     the first-day moment (the very thing D-143(3) tried to avoid, reappearing
+     one layer up). The dashboard teaser is now purely forward: is_fallback ->
+     "Next up: X." (no date, concept not scheduled), else "Coming up for review
+     tomorrow: X." So the teaser no longer needs first_completed_session for copy
+     at all, which is why hoisting-and-removing (not hoisting-and-duplicating) is
+     correct.
+
+     (4) THE SCREEN'S FIRST-DAY COPY, exact strings as shipped, no schedule claim
+     (the teaser is gone, so there is no concept name to carry), no guilt, no
+     hype, no emoji (docs/10 rule 2):
+       - subtitle: "That was your first session."
+       - warm line: "One down. The habit is reading code you didn't write, a
+         little every day."
+     A non-first-day completion keeps the plain subtitle "That's today's reading
+     done." and shows neither first-day line. NEGATIVE TEST: a non-first-day
+     completed session must not render the first-day copy.
+
+     (5) ALLOWLIST: extra="forbid" stays on both SessionResponse and
+     TomorrowTeaser; the leak test asserts EXACT set equality on BOTH the
+     top-level session body {session_date, completed, exercises,
+     first_completed_session, tomorrow} AND the nested teaser {concept,
+     is_fallback} -- neither loosened to a subset. NO migration, schema or env:
+     first_completed_session is a computed RESPONSE field (Settings.model_fields
+     unchanged, so the D-117 drift check stays green; db/schema.sql untouched).
+
+     SUPERSEDES: D-143(3) (placement, reversed) and D-143 Addendum 3 (the
+     first-day-rides-the-teaser coupling, removed; its test re-scoped to guard
+     A4's fallback). D-143 Addendum 1's recommendation is now the taken decision.
+     Pointers added to those addenda; history not rewritten.

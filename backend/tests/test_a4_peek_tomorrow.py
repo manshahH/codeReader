@@ -163,9 +163,9 @@ async def test_completed_session_teases_the_weakest_mastery_concept_due_tomorrow
     assert body["completed"] is True
     assert body["tomorrow"] is not None
     assert body["tomorrow"]["concept"] == "dict-mutation-during-iteration"
-    # First-ever finished day -> the one-time warm cue is on. A real scheduled
-    # concept exists, so this is NOT the fallback path.
-    assert body["tomorrow"]["first_completed_session"] is True
+    # First-ever finished day -> the top-level flag is on (D-144: hoisted out of
+    # the teaser). A real scheduled concept exists, so this is NOT the fallback.
+    assert body["first_completed_session"] is True
     assert body["tomorrow"]["is_fallback"] is False
     # Invariant 1/2: nothing gradey ever appears under the teaser.
     assert _walk_keys(body["tomorrow"]).isdisjoint(
@@ -269,8 +269,8 @@ async def test_first_completed_session_is_false_once_a_prior_day_completed(
     body = (await client.get("/v1/session/today", headers=headers)).json()
     assert body["tomorrow"] is not None
     assert body["tomorrow"]["concept"] == "dict-mutation-during-iteration"
-    # Second finished day -> the warm cue is off, but the teaser still shows.
-    assert body["tomorrow"]["first_completed_session"] is False
+    # Second finished day -> the top-level flag is off, but the teaser still shows.
+    assert body["first_completed_session"] is False
 
 
 # --- invariant 1/2: the whole wire body, teaser populated (BLOCKER 1.4) -----
@@ -283,9 +283,13 @@ async def test_completed_teaser_body_leaks_no_grading_explanation_or_exercise_id
 ) -> None:
     """The m4/m5 leak tests walk an IN-PROGRESS body, where `tomorrow` is null.
     This walks the WHOLE completed body with the teaser POPULATED and the
-    rendered exercise present, and asserts the A4 field adds no answer-key
+    rendered exercise present, and asserts the A4/D-144 fields add no answer-key
     surface: no grading/explanation key anywhere, and the teaser exposes no
-    exercise id under any code path (only a concept string + a bool)."""
+    exercise id under any code path (only a concept string + a bool).
+
+    D-144(5): EXACT set equality on BOTH the top-level session body and the
+    nested teaser, so a future stray field on either fails here (allowlist, not
+    a subset check)."""
     user = await make_user(db_session)
     headers = auth_headers(user)
     exercise, _today = await _seed_uncompleted_session(db_session, user)
@@ -301,9 +305,18 @@ async def test_completed_teaser_body_leaks_no_grading_explanation_or_exercise_id
     keys = _walk_keys(body)
     assert "grading" not in keys
     assert "explanation" not in keys
-    # The teaser is exactly {concept, first_completed_session, is_fallback} --
-    # no id leaks.
-    assert set(body["tomorrow"].keys()) == {"concept", "first_completed_session", "is_fallback"}
+    # Top-level session body is exactly these keys (D-144 hoisted
+    # first_completed_session here).
+    assert set(body.keys()) == {
+        "session_date",
+        "completed",
+        "first_completed_session",
+        "exercises",
+        "tomorrow",
+    }
+    # The teaser is exactly {concept, is_fallback} -- no id leaks, and
+    # first_completed_session is NOT nested here anymore (D-144).
+    assert set(body["tomorrow"].keys()) == {"concept", "is_fallback"}
     assert str(exercise.id) not in _walk_values(body["tomorrow"])
 
 
@@ -411,9 +424,9 @@ async def test_first_completed_empty_window_falls_back_to_weakest_mastery(
     body = (await client.get("/v1/session/today", headers=headers)).json()
 
     assert body["completed"] is True
+    assert body["first_completed_session"] is True
     assert body["tomorrow"] is not None
     assert body["tomorrow"]["concept"] == "weakest-overall"
-    assert body["tomorrow"]["first_completed_session"] is True
     assert body["tomorrow"]["is_fallback"] is True
 
 
@@ -465,28 +478,26 @@ async def test_first_completed_nonempty_window_uses_scheduled_not_fallback(
     await _complete_session(client, exercise, headers)
     body = (await client.get("/v1/session/today", headers=headers)).json()
 
+    assert body["first_completed_session"] is True
     assert body["tomorrow"] is not None
     assert body["tomorrow"]["concept"] == "scheduled-tomorrow"
-    assert body["tomorrow"]["first_completed_session"] is True
     assert body["tomorrow"]["is_fallback"] is False
 
 
 @pytest.mark.asyncio
-async def test_first_completed_session_always_yields_a_teaser_D143(
+async def test_first_completed_empty_window_still_yields_a_fallback_teaser(
     client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    """D-143 dependency, enforced (not just noted). The session-complete screen
-    delivers the first_completed_session warm greeting THROUGH the teaser, with
-    no separate field -- safe ONLY while A4's fallback guarantees a
-    first-completed user always has a non-null teaser.
+    """A4 fallback guard (re-scoped from the D-143 first-day coupling, which
+    D-144 removed by giving the screen its own first-day state). This still earns
+    its place as a guard on A4's Addendum 5 fallback in its own right: a
+    first-completed user with an empty strict window must still get a DASHBOARD
+    teaser (the forward hook), or the dashboard shows nothing on day 1.
 
-    This completes a first session with NOTHING extra seeded: the ONLY concept
-    state is the one the completed session itself creates, and it is scheduled 7
-    days out (a first correct), so the strict tomorrow window is empty. The
-    teaser must still be non-null (the fallback covers it). If a future change --
-    the two-day-window lever, a fallback revisit -- stops guaranteeing this, the
-    screen's first-day warmth breaks silently; this test fails first."""
+    Completes a first session with NOTHING extra seeded: the ONLY concept state
+    is the one the completed session creates, scheduled 7 days out, so the strict
+    tomorrow window is empty. The fallback must still produce a teaser."""
     user = await make_user(db_session)
     headers = auth_headers(user)
     exercise, _today = await _seed_uncompleted_session(db_session, user)
@@ -495,9 +506,9 @@ async def test_first_completed_session_always_yields_a_teaser_D143(
     body = (await client.get("/v1/session/today", headers=headers)).json()
 
     assert body["completed"] is True
+    assert body["first_completed_session"] is True
     assert body["tomorrow"] is not None, (
-        "first-completed session must always yield a teaser (D-143 relies on it)"
+        "first-completed + empty window must still yield a fallback teaser (A4 Addendum 5)"
     )
-    assert body["tomorrow"]["first_completed_session"] is True
     # Nothing was due tomorrow, so this is the fallback path specifically.
     assert body["tomorrow"]["is_fallback"] is True

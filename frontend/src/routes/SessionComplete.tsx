@@ -3,25 +3,25 @@ import { Link, Navigate } from 'react-router-dom';
 import { StreakReturn } from '../components/session/StreakReturn';
 import { getMeStats, getSessionToday } from '../lib/api';
 import { usePanel } from '../lib/usePanel';
-import type { MeStats, SessionResponse, TomorrowTeaser } from '../lib/types';
-
-function readable(concept: string): string {
-  return concept.replace(/-/g, ' ');
-}
+import type { MeStats, SessionResponse } from '../lib/types';
 
 /**
  * The session-complete screen (D-143). It is the redirect target of the last
- * exercise (Session.tsx), and the home for three things that had none: A1's
- * "celebrate the return" streak state, the first-completed warm cue, and A4's
- * "peek at tomorrow" teaser (relocated here exclusively, D-143(3)).
+ * exercise (Session.tsx), and the home for A1's "celebrate the return" streak
+ * state and the first-day acknowledgement.
+ *
+ * D-144: the A4 "peek at tomorrow" teaser moved to the Dashboard exclusively
+ * (its evening impression is the value), and this screen owns its OWN first-day
+ * state, read from the hoisted top-level `first_completed_session` rather than
+ * from the teaser. That decouples the first-day moment from A4's fallback.
  *
  * Completion is derived from SERVER STATE, never navigation history (D-143(2)):
  * `GET /session/today.completed`. A user who reaches this route without a
  * completed session -- a deep-link, or tomorrow when today is fresh -- is sent
  * to the dashboard. Refresh re-fetches and re-guards, so it never renders blank.
  *
- * No new endpoint or field: it reads the same GET /session/today (completed +
- * teaser) and GET /me/stats (streak, repair) the dashboard already uses.
+ * No new endpoint: it reads GET /session/today and GET /me/stats (streak,
+ * repair), both already fetched by the dashboard.
  */
 export function SessionComplete() {
   const session = usePanel<SessionResponse>(getSessionToday);
@@ -47,7 +47,7 @@ export function SessionComplete() {
     return <Navigate to="/" replace />;
   }
 
-  const tomorrow = session.data.tomorrow;
+  const isFirstSession = session.data.first_completed_session;
   const streak = stats.status === 'ok' ? stats.data.current_streak : null;
   const restoresTo = stats.status === 'ok' ? stats.data.repair_restores_to : null;
 
@@ -55,12 +55,26 @@ export function SessionComplete() {
     <Shell>
       <header className="flex flex-col gap-2">
         <h1 className="font-explanation text-3xl text-ink">Session complete</h1>
-        <p className="text-sm text-ink-muted">That’s today’s reading done.</p>
+        {isFirstSession ? (
+          // D-144: the screen's own first-day state, decoupled from the teaser.
+          // A plain acknowledgement -- no schedule claim (the teaser is on the
+          // dashboard now), no guilt, no hype (docs/10 rule 2).
+          <>
+            <p className="text-sm text-ink">That was your first session.</p>
+            <p className="text-sm text-ink-muted">
+              One down. The habit is reading code you didn’t write, a little every day.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-ink-muted">That’s today’s reading done.</p>
+        )}
       </header>
 
       {/* Streak: the A1 welcome-back + repair affordance when a reset is
           restorable (this is the half of A1 that was never built), otherwise a
-          plain, non-nagging streak line. No guilt in either branch. */}
+          plain, non-nagging streak line. No guilt in either branch. On a first
+          session there is no streak history worth showing, so this is empty and
+          the first-day copy above carries the moment. */}
       {restoresTo !== null ? (
         <StreakReturn restoresTo={restoresTo} className="w-full" />
       ) : streak !== null && streak > 0 ? (
@@ -68,8 +82,6 @@ export function SessionComplete() {
           You’re on a <span className="font-code text-ink">{streak}</span>-day streak.
         </p>
       ) : null}
-
-      {tomorrow ? <TomorrowPeek teaser={tomorrow} /> : null}
 
       <div className="flex flex-col items-start gap-4 pt-2">
         <Link
@@ -86,28 +98,6 @@ export function SessionComplete() {
         </Link>
       </div>
     </Shell>
-  );
-}
-
-/**
- * A4 "peek at tomorrow" (D-142), relocated here from the dashboard (D-143(3)).
- * A single-concept forward hook, no guilt, no to-do-list count. Copy is a
- * schedule TEASE, not a promise (D-142 Addendum 3): "coming up for review"
- * states next_review_at, which this code owns, not the sampled set, which it
- * does not. The fallback variant (Addendum 5) makes NO date claim.
- */
-function TomorrowPeek({ teaser }: { teaser: TomorrowTeaser }) {
-  const concept = <span className="text-ink">{readable(teaser.concept)}</span>;
-  return (
-    <p className="text-sm text-ink-muted">
-      {teaser.is_fallback ? (
-        <>That’s your first day done. Next up: {concept}.</>
-      ) : teaser.first_completed_session ? (
-        <>That’s your first day done. {concept} is coming up for review tomorrow.</>
-      ) : (
-        <>Coming up for review tomorrow: {concept}.</>
-      )}
-    </p>
   );
 }
 

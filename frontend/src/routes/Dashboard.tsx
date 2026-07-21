@@ -6,7 +6,13 @@ import { useAuth } from '../lib/auth-context';
 import { formatRelativeDate } from '../lib/format';
 import type { Panel } from '../lib/usePanel';
 import { usePanel } from '../lib/usePanel';
-import type { ConceptMastery, MeSessionSummary, MeStats, SessionResponse } from '../lib/types';
+import type {
+  ConceptMastery,
+  MeSessionSummary,
+  MeStats,
+  SessionResponse,
+  TomorrowTeaser,
+} from '../lib/types';
 
 const UPCOMING_REVIEWS_SHOWN = 5;
 
@@ -85,11 +91,9 @@ export function Dashboard() {
                   Today covers: <span className="text-ink">{todayConcepts.map(readable).join(' · ')}</span>
                 </p>
               ) : null}
-              {/* A4's "peek at tomorrow" teaser moved to the session-complete
-                  screen exclusively (D-143(3)): the finish moment is its home,
-                  and showing it here too would repeat the same line seconds
-                  later. The dashboard's "Upcoming reviews" panel still carries
-                  the forward schedule. */}
+              {completed && sessionData?.tomorrow ? (
+                <TomorrowPeek teaser={sessionData.tomorrow} />
+              ) : null}
             </>
           ) : (
             <p className="text-sm text-ink-muted">Check back in a little while.</p>
@@ -111,6 +115,33 @@ export function Dashboard() {
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * A4 "peek at tomorrow" (D-142), Dashboard-only (D-144). A single-concept
+ * forward hook on the completed state -- a reason to return that the streak
+ * cannot supply, persisting across the completed day so it is there in the
+ * evening when the user is deciding whether tomorrow is worth it (which is the
+ * impression docs/10 justified A4 on). It reuses the muted/ink pair the "Today
+ * covers" line uses, no new colour or border.
+ *
+ * FORWARD-ONLY copy (D-144): the "first day done" warmth moved to the
+ * session-complete screen, so the teaser no longer reads first_completed_session
+ * and never claims the first day here. `is_fallback` picks "Next up" (no date,
+ * the concept is not scheduled) over the schedule tease; neither over-promises,
+ * per D-142 Addendum 3.
+ */
+function TomorrowPeek({ teaser }: { teaser: TomorrowTeaser }) {
+  const concept = <span className="text-ink">{readable(teaser.concept)}</span>;
+  return (
+    <p className="text-sm text-ink-muted">
+      {teaser.is_fallback ? (
+        <>Next up: {concept}.</>
+      ) : (
+        <>Coming up for review tomorrow: {concept}.</>
+      )}
+    </p>
   );
 }
 
