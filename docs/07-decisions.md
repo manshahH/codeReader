@@ -4750,6 +4750,16 @@ D-142 ADDENDUM 1 (review response): RENDER RATE MEASURED. The concern was that a
      fallback (Addendum 5). Widening to a two-day window is NOT taken -- it would
      lift the weekly cohort but re-open Addendum 2's disjoint rule for everyone;
      recorded as an available lever for the roadmap owner.
+     PLACEMENT POINTER (added at D-143 review): every render-rate figure above
+     counts IMPRESSIONS-PER-COMPLETED-DAY under the DASHBOARD placement A4
+     shipped with -- i.e. the teaser visible on every dashboard visit of the
+     completed day. D-143(3) then moved the teaser to the session-complete
+     screen EXCLUSIVELY, so under that placement it renders roughly once (the
+     seconds after finishing) rather than on every same-day dashboard visit.
+     These numbers therefore describe render RATE (does anything exist to show
+     on a given day), which is unchanged, NOT impression FREQUENCY, which
+     D-143(3) cut. Do not read them later as describing the shipped placement;
+     the placement itself is under review in D-143 Addendum 1.
 
 D-142 ADDENDUM 2 (review response): THE DISJOINT RULE EXCLUDES THE BACKLOG, ON
      PURPOSE. Confirmed against sampler build_session_slots
@@ -4930,3 +4940,77 @@ D-143 The session-complete screen, and the three homeless things it houses. Buil
      hermetic session-complete.spec.ts covers the guard (both directions), the
      three streak states, the relocated teaser and the narrow layout. D-136 is
      NOT touched: no seeded spec is added.
+
+D-143 ADDENDUM 1 (review): THE EXCLUSIVE MOVE RE-FRAMED A4, and the decision is
+     reopened for the roadmap owner. Stated plainly: docs/10 line 90 specs A4 as
+     "a reason to RETURN that the streak cannot supply." Removing the teaser from
+     the dashboard (D-143(3)) converts it from a RETURN HOOK into a
+     SESSION-COMPLETION REWARD -- it now renders in the seconds after a session
+     ends and is absent for the rest of that day, so a user who finishes at 08:00
+     and opens the app at 21:00 (still the same local day, deciding whether
+     tomorrow is worth it) sees nothing. That is the moment A4 was meant to
+     serve.
+     THE MERIT ARGUMENT FOR THE REWARD FRAMING, so it is judged on more than the
+     double-show: ending a finished session on a forward note ("here is what
+     tomorrow holds") is a legitimate habit-loop close -- the completion screen
+     is the peak-affect moment, and a teaser there rewards the finish and plants
+     the next visit while attention is highest. It is defensible. It is simply
+     NOT what docs/10 argued, and D-142's render numbers were measured under the
+     dashboard placement (see the pointer added to D-142 Addendum 1).
+     MIDDLE OPTION EVALUATED (review item 1c), reported not implemented: "keep the
+     teaser on the dashboard but suppress it for the remainder of the local day
+     the screen already showed it." IT DOES NOT DO WHAT IT PROMISES. The
+     dashboard's COMPLETED state exists ONLY on the completion day (an
+     in-progress or fresh day shows the CTA, not the teaser), so "the remainder
+     of the local day" IS the whole window the dashboard teaser would ever have
+     shown in -- suppressing it there collapses exactly to D-143(3)'s exclusive
+     removal and kills the 21:00 impression it was meant to save. Preserving the
+     evening impression while removing ONLY the immediate back-click repeat needs
+     client-side ephemeral state (a "shown-at-completion" timestamp, suppress for
+     N minutes), which is lost on refresh, per-tab, and derived from navigation
+     history -- precisely the client-navigation state D-143(2) refused to trust.
+     Expensive relative to the payoff.
+     RECOMMENDATION (decision deferred, no code changed): put the teaser on the
+     DASHBOARD ONLY and leave it OFF the completion screen. This uniquely meets
+     both of the review's goals -- no double-show ever (the surfaces never carry
+     it at the same time), and the evening impression preserved (the dashboard
+     teaser persists across the completed day like "Upcoming reviews") -- with
+     ZERO new state and full server-derivability. Cost: the screen loses the
+     forward beat (it keeps the completion heading and the A1 streak state), and
+     D-142(2)'s "the teaser can relocate here" becomes "does not". If that
+     forward beat is valued more than cleanliness, the alternative is to accept
+     the mild 5-second repeat and show it on both. Awaiting the owner's call;
+     until then the shipped behaviour (exclusive on screen) stands.
+
+D-143 ADDENDUM 2 (review): THE STREAKRETURN DOUBLE-SHOW IS NOT INCONSISTENT WITH
+     REMOVING THE TEASER, and here is why the same "appears twice" fact is right
+     for one and wrong for the other. StreakReturn renders on BOTH the dashboard
+     (Dashboard.tsx) and the screen (SessionComplete.tsx). That is not an
+     oversight: docs/10 A1 spec section 4 (lines 202-204) EXPLICITLY specs the
+     welcome-back plus the "restore your N-day streak" affordance on "the
+     dashboard AND session-complete reveal". The teaser (A4) has no such
+     both-surfaces spec, so D-143(3) had a placement call to make where A1 did
+     not. Beyond the spec, the two are different KINDS of element: the repair
+     affordance is a rare, high-value, ONE-SHOT recovery ACTION that self-retires
+     the instant it is used (state -> done/gone, and repair_available flips false
+     server-side), so surfacing the same offer wherever a returning user lands is
+     the standard "the action is available here too" pattern, not repetition. The
+     teaser is a PERSISTENT ROUTINE informational line with no action; the same
+     sentence twice within seconds is what reads as a glitch. A one-shot offer
+     and a routine line do not carry the same double-show cost. No behaviour
+     changed; recorded as the reconciliation the review asked for.
+
+D-143 ADDENDUM 3 (review): THE FIRST-DAY WARMTH IS A LOAD-BEARING DEPENDENCY ON
+     A4's FALLBACK, now enforced by a test rather than only noted. D-143(5) has
+     the screen deliver the first_completed_session warm greeting THROUGH the
+     teaser (it carries the warm copy), with no separate top-level field. That is
+     safe ONLY while A4's Addendum 5 fallback guarantees a first-completed user
+     always has a non-null teaser (a completed session created concept states, so
+     the weakest-mastery fallback always finds one). If a future change -- the
+     two-day-window lever, or a fallback revisit -- broke that guarantee, a
+     first-ever completed session would silently lose its celebration. To make
+     that trip a test instead of shipping silently, test_a4_peek_tomorrow.py::
+     test_first_completed_session_always_yields_a_teaser_D143 completes a first
+     session with NOTHING extra seeded (empty strict window) and asserts the
+     teaser is non-null. It fails the moment the fallback stops covering this
+     case, which is the point.

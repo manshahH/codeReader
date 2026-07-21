@@ -469,3 +469,35 @@ async def test_first_completed_nonempty_window_uses_scheduled_not_fallback(
     assert body["tomorrow"]["concept"] == "scheduled-tomorrow"
     assert body["tomorrow"]["first_completed_session"] is True
     assert body["tomorrow"]["is_fallback"] is False
+
+
+@pytest.mark.asyncio
+async def test_first_completed_session_always_yields_a_teaser_D143(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """D-143 dependency, enforced (not just noted). The session-complete screen
+    delivers the first_completed_session warm greeting THROUGH the teaser, with
+    no separate field -- safe ONLY while A4's fallback guarantees a
+    first-completed user always has a non-null teaser.
+
+    This completes a first session with NOTHING extra seeded: the ONLY concept
+    state is the one the completed session itself creates, and it is scheduled 7
+    days out (a first correct), so the strict tomorrow window is empty. The
+    teaser must still be non-null (the fallback covers it). If a future change --
+    the two-day-window lever, a fallback revisit -- stops guaranteeing this, the
+    screen's first-day warmth breaks silently; this test fails first."""
+    user = await make_user(db_session)
+    headers = auth_headers(user)
+    exercise, _today = await _seed_uncompleted_session(db_session, user)
+
+    await _complete_session(client, exercise, headers)
+    body = (await client.get("/v1/session/today", headers=headers)).json()
+
+    assert body["completed"] is True
+    assert body["tomorrow"] is not None, (
+        "first-completed session must always yield a teaser (D-143 relies on it)"
+    )
+    assert body["tomorrow"]["first_completed_session"] is True
+    # Nothing was due tomorrow, so this is the fallback path specifically.
+    assert body["tomorrow"]["is_fallback"] is True
