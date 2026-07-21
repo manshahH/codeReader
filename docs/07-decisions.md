@@ -4614,3 +4614,487 @@ D-137 ADDENDUM 3, appended here rather than edited into the entry above because
      digit integer from the provider, never anything a user wrote. httpx can
      put the request body into an exception message, and that body is somebody's
      mail (D-120), so the message is still discarded.
+
+D-142 A4 "peek at tomorrow". A teaser of what greets the user tomorrow, shown
+     on the Dashboard's completed state, derived from real spaced-repetition
+     data and committing to NOTHING it cannot honour. Four settled points.
+
+     (1) TEASE THE SHAPE, NOT THE SET, and this is a correctness decision, not a
+     product preference. "Tomorrow's session" cannot be built or persisted
+     today. First-of-day sampling reads three inputs that TODAY's attempts are
+     still writing right up to the last answer -- due concepts from
+     user_concept_state.next_review_at, concept_mastery, and the 14-day
+     recently_seen_ids set (sessions/service.py::_build_and_persist_session,
+     verified: the due query at ~135-143, mastery at ~145-150, recently-seen at
+     ~152-159; attempts/service.py::_update_streak_and_attempt_count and
+     update_concept_state mutate exactly those rows on every submission).
+     Persisting tomorrow's session now would freeze it against a snapshot taken
+     BEFORE today's answers land, so spaced repetition would systematically
+     re-serve concepts the user just practised or just mastered -- the core loop
+     degraded to decorate its edge. Building without persisting is worse: the
+     teaser would promise a set the user then does not get. VERIFIED STILL TRUE
+     against master before building. So the teaser is derived at request time
+     from user_concept_state.next_review_at falling within the user's LOCAL day
+     after today: real data, already present, no sampling, no schema change, no
+     commitment to any exercise id. It is honest precisely because it is a
+     property of the schedule ("this concept is due tomorrow"), not a promise
+     about a set that does not exist yet.
+
+     (2) IT SHIPS ON THE DASHBOARD, and the session-complete screen stays a
+     separate unbuilt task. VERIFIED: Session.tsx redirects to the Dashboard
+     (`<Navigate to="/" replace />` at Session.tsx:152) the instant the last
+     exercise is done, and the Dashboard renders a distinct completed state
+     (todayState "Completed", the "Review today's session" CTA). The user
+     arrives there at exactly the moment a session-complete screen would have
+     appeared. docs/10's A4 bullet and its line 274 have been read at least once
+     as putting A4 on a session-complete screen; settling it here plainly: A4
+     ships on the Dashboard completed state. The session-complete screen does
+     NOT exist (deferred in A1, still deferred, HANDOFF and docs/10 line 272-279
+     both say so) and building it remains its own UI task. When it is built the
+     same teaser payload can move onto it unchanged.
+
+     (3) THE THREE CONSTRAINTS.
+     - AT MOST ONE NAMED CONCEPT. A hook, not a list. "Tomorrow: a return to
+       dict-mutation-during-iteration" reads as curiosity; three identifiers
+       read as a chore (and a to-do list is the anxiety tone docs/10 rule 2
+       forbids). When several concepts are due tomorrow the pick is
+       DETERMINISTIC: weakest mastery first, tie-broken by most overdue within
+       the window (earliest next_review_at), then concept name. Weakest-mastery
+       over most-overdue on purpose: the whole window is "due tomorrow", so
+       ordering by due-time alone is a scheduling artifact, whereas the concept
+       the user is least solid on is the meaningful reason to return and is what
+       docs/10's mastery/curiosity/meaning engine points at. Recorded so it is
+       not arbitrary later.
+     - THE WINDOW IS TOMORROW ONLY, strictly [start of tomorrow local, start of
+       the day after local), computed as local_day_end_utc(tz, today) to
+       local_day_end_utc(tz, tomorrow). This is disjoint from "due today"
+       (next_review_at < local_day_end_utc(tz, today), the sampler's own
+       cutoff), so the teaser never surfaces a concept that is already today's
+       problem and already shown in the Dashboard's "Upcoming reviews" panel.
+       Overdue-today items are deliberately NOT pulled forward: they belong to
+       today. A concept the user just practised today has its next_review_at
+       pushed out by days, so it falls outside tomorrow's window and is
+       naturally excluded -- which is point (1) paying off.
+     - THE EMPTY CASE SHOWS NOTHING. Some days nothing is due tomorrow. The
+       teaser field is then null and the client renders nothing. A bare "N
+       concepts due" count is not a reason to return (it is the volume metric
+       docs/10 rule 2 bans), and a weak promise is worse than silence.
+       Negative-tested: completed session, no rows in the window -> tomorrow is
+       null.
+
+     (4) first_completed_session IS USED, not gated on. The field already
+     exists on the POST /attempts response (D-95) and is unused by the client
+     (docs/10 line 274/278 flagged it for exactly this). It is a LIFETIME-once
+     signal -- true only on the single attempt that completes a user's
+     first-ever daily session -- so it CANNOT gate whether the teaser appears:
+     A4 is a recurring reason to return and must show on every completed day
+     with something due. Instead it selects a one-time warmer lead-in on the
+     first finish ("That's your first day done. Tomorrow you come back to X."),
+     the habit-forming moment docs/10 line 278 reserved it for; every day after
+     it is the plain hook. Because A4 renders on the Dashboard (GET
+     /session/today) and not on the POST response, the flag is RECOMPUTED there
+     from the same rule as attempts/service.py: exactly one daily_sessions row
+     with completed_at set. Recomputing a lifetime-once count only when the day
+     is already completed is cheap (the hot, not-yet-completed path never runs
+     it) and keeps the two call sites reading the identical ledger fact rather
+     than threading a boolean through a client redirect that a refresh would
+     drop.
+
+     WHERE IT LIVES ON THE WIRE: GET /session/today gains a nullable `tomorrow`
+     object ({concept, first_completed_session}), populated only when
+     `completed` is true. It carries no grading/explanation (invariant 1/2 hold
+     structurally, same allowlist as the rest of SessionResponse; the CI leak
+     test walks it). NO SCHEMA CHANGE and NO NEW ENV: A4 is a read over
+     user_concept_state, so there is no migration to reverse and nothing to add
+     to either .env.example (the D-117 drift check stays green because
+     Settings.model_fields is unchanged). docs/04 records the read-only use;
+     docs/05 documents the field. Deferred, deliberately: moving the teaser onto
+     a real session-complete screen (that screen does not exist yet), and any
+     "peek" that names exercise ids or difficulty (would recreate the
+     persistence trap in (1)).
+
+D-142 ADDENDUM 1 (review response): RENDER RATE MEASURED. The concern was that a
+     strict tomorrow-only window disjoint from due-today could be so narrow the
+     feature almost never shows. Measured with a throwaway simulation grounded
+     in the real intervals (attempts/service.py:86-92: wrong=2, right-first=7,
+     right-again=21, skip=1) and the real dev corpus (31 concepts, 1
+     concept/exercise, session 3-5 concepts/day). On a COMPLETED day, "renders"
+     means some concept has next_review at exactly tomorrow.
+     RESULT: high for the target audience. Daily practice: ~0-52% on the user's
+     literal first day (nothing is scheduled for tomorrow yet -- addressed by the
+     fallback in Addendum 5), then ~99% by day 7 and 64-99% steady-state at
+     day 90 across accuracy assumptions from p=0.34 (dev-like) to p=0.85.
+     CADENCE, with RANDOMISED per-user start phase (the first cut fixed every
+     user's sessions to days k, 2k, 3k... which biases against the 7/21-day
+     cycles; re-run with a random offset in [0,k), engaged params, steady
+     state): daily 87.5%, every-2-days 90.1%, every-3-days 42.1%, every-4-days
+     83.4%, weekly 18.5%. Versus the fixed-phase first cut, daily barely moved
+     (87.3 -> 87.5, 0.2 points) but every-2-days moved materially (83.5 -> 90.1,
+     6.6 points) and every-3-days moved 51.2 -> 42.1; the direction of the
+     conclusion is unaffected because all three still clear 40%, but the
+     randomised figures are the trustworthy ones and the fixed-phase numbers
+     should not be quoted. The every-3-days case now clears the 40% threshold by
+     about two points rather than eleven, and that dip survives randomisation as
+     a genuine interaction (a 3-day cadence rarely lands the day before a
+     7-multiple review), not a phase artifact. Only a weekly-or-sparser user
+     falls below, and their reviews genuinely are not due "tomorrow", so silence
+     is honest there.
+     STRUCTURAL NOTE (review item 4), recorded so it is not mysterious later:
+     render rate FALLS as accuracy RISES (84.4% at p=0.70 no-skips vs 64.5% at
+     p=0.85), because a correct answer pushes the interval to 7 then 21 days, so
+     the better a user gets the emptier "tomorrow" looks. The strongest, most
+     engaged seniors -- the cohort docs/10 says we cannot afford to bore -- see
+     this feature LEAST. Not a bug and not fixable inside A4 (it is inherent to
+     spaced repetition); flagged for whoever builds the senior-retention work.
+     CONCLUSION: ship the strict window as built, plus the first-day-only
+     fallback (Addendum 5). Widening to a two-day window is NOT taken -- it would
+     lift the weekly cohort but re-open Addendum 2's disjoint rule for everyone;
+     recorded as an available lever for the roadmap owner.
+     PLACEMENT POINTER (added at D-143 review): every render-rate figure above
+     counts IMPRESSIONS-PER-COMPLETED-DAY under the DASHBOARD placement A4
+     shipped with -- i.e. the teaser visible on every dashboard visit of the
+     completed day. D-143(3) then moved the teaser to the session-complete
+     screen EXCLUSIVELY, so under that placement it renders roughly once (the
+     seconds after finishing) rather than on every same-day dashboard visit.
+     These numbers therefore describe render RATE (does anything exist to show
+     on a given day), which is unchanged, NOT impression FREQUENCY, which
+     D-143(3) cut. Do not read them later as describing the shipped placement;
+     the placement itself is under review in D-143 Addendum 1.
+
+D-142 ADDENDUM 2 (review response): THE DISJOINT RULE EXCLUDES THE BACKLOG, ON
+     PURPOSE. Confirmed against sampler build_session_slots
+     (sessions/service.py sampler): due concepts are served most-overdue-first
+     but capped at MAX_NON_BOSS_SLOTS=4 (sampler.py:167-176), and a due concept
+     whose only exercises are out-of-band or recently-seen is skipped, not
+     served. So concepts due TODAY that do not fit into today's 3-5 slots stay
+     overdue (next_review_at <= today's cutoff) and roll into tomorrow's set --
+     and tomorrow's actual set is dominated by exactly this carried-over
+     backlog, which the strict window EXCLUDES. This is deliberate, three
+     reasons. (a) Backlog reads as debt, not curiosity: "tomorrow you finally
+     get to X, which you were already behind on" is the guilt-adjacent tone
+     docs/10 rule 2 forbids; the teaser is a forward hook, not a debt notice.
+     (b) Those overdue concepts are due NOW and already surface in the
+     Dashboard's own "Upcoming reviews" panel (soonest-due first) -- teasing
+     them again as "tomorrow" would double-surface and misdescribe their timing.
+     (c) "Coming up tomorrow" for something due today is simply false; only a
+     concept newly coming due tomorrow is truthfully tomorrow's. So A4 teases
+     "what newly comes due tomorrow", a clean schedule fact, NOT "what will
+     probably be in tomorrow's drawn set" -- which is consistent with D-142(1)
+     teasing the SHAPE, not the SET. Rule unchanged.
+     SKIP-RESCHEDULED CONCEPTS ARE DELIBERATELY IN SCOPE (review item 2). A skip
+     schedules the concept 1 day out (CONCEPT_INTERVAL_SKIPPED_DAYS=1), so a
+     concept the user skipped TODAY lands squarely in tomorrow's window and the
+     teaser can surface it -- and a meaningful share of what renders is exactly
+     this (the cohorts split on skip rate: dev-like skip=0.16 gives 51.8% on
+     day 1, no-skips gives 0.0%). Does that contradict excluding due-today
+     backlog as "debt one day out"? No, and the difference is the schedule, not
+     the mood. Backlog is OVERDUE: its next_review_at is <= today, the system
+     already said "do this now" and the user has not, so re-presenting it is a
+     debt notice and its true timing is "now", not "tomorrow" -- teasing it as
+     tomorrow is both nagging AND false. A skipped concept is SCHEDULED: the
+     system deliberately set its next_review_at to tomorrow, so "coming up for
+     review tomorrow" is literally true, on time, and forward-looking. "I set
+     this aside, it comes back tomorrow" is the healthy version of the loop, not
+     debt. The rule is therefore self-consistent: the teaser shows what is
+     truthfully due tomorrow (which includes today's skips) and hides what is
+     overdue (which a skip is not). Behaviour unchanged.
+
+D-142 ADDENDUM 3 (review response): COPY SOFTENED FROM A PROMISE TO A TEASE.
+     Selection into any given day's set is coverage-weighted with a 14-day
+     recently_seen_ids exclusion (sessions/service.py:152-159, sampler
+     pick()), so a concept that is DUE tomorrow may still not be DRAWN into
+     tomorrow's 3-5 slots. The shipped copy was "Tomorrow: a return to X" /
+     "you come back to X", which promises a set the sampler can break. Changed
+     to schedule language that promises only what is true -- the review being
+     due: "Coming up for review tomorrow: X" and "That's your first day done. X
+     is coming up for review tomorrow." "Coming up for review" is a property of
+     next_review_at (a fact this code owns), not of the sampled set (which it
+     does not). Negative test unchanged (empty case shows nothing); the e2e
+     assertions were updated to the new strings.
+
+D-142 ADDENDUM 4 (review response): first_completed_session IS RECOMPUTED, NOT
+     READ AS A STORED FACT, and that cuts against the D-116/D-137 doctrine that
+     a recorded fact beats a recomputation a timezone change can move. Kept
+     deliberately: it is cosmetic (it only warms one line of copy, never gates
+     behaviour or spends anything), so the doctrine's stakes -- a double-send, a
+     lost streak -- do not apply. The cost is named so it is not a surprise:
+     POST /attempts (D-95) computes the flag once at completion time and caches
+     it in the idempotent response, while the Dashboard recomputes it from the
+     completed_at count on a later request, so the two clients could in
+     principle disagree about whether a session was the user's first-ever
+     finished day (e.g. if a second session completes between the POST and the
+     Dashboard read). For a warm one-time greeting that disagreement is
+     invisible; for anything load-bearing it would not be acceptable and the
+     stored-fact rule would bind.
+
+D-142 ADDENDUM 5 (review response): FIRST-DAY FALLBACK, because the highest-value
+     impression was the emptiest. The warm variant is gated on
+     first_completed_session, which is by definition the user's first day -- and
+     Addendum 1 measured day-1 render at 0-52% (0% for a user who never skips,
+     since every first-correct schedules 7 days out). So the single best moment
+     in the feature, a user's first-ever completed session, was the one most
+     likely to render nothing, and rendered nothing ALWAYS for a no-skip user.
+     FIX: when first_completed_session is true AND the strict tomorrow window is
+     empty, fall back to the weakest-mastery concept across all the user's
+     states and show a warm line. Narrowly scoped on purpose:
+     - first-completed-ONLY. Steady state is untouched: a returning user with an
+       empty window still sees nothing (Addendum 1's empty case), so the fallback
+       cannot leak into the common path. The window is NOT widened and Addendum
+       2's disjoint rule is NOT re-opened.
+     - the copy makes NO date claim. The fallback concept is not scheduled for
+       tomorrow, so "coming up for review tomorrow" would be the exact promise
+       Addendum 3 just removed. A new field `is_fallback` on the teaser drives a
+       separate string, "That's your first day done. Next up: X." -- "Next up"
+       asserts only that it is the next thing worth doing, which the
+       weakest-mastery pick makes true, and no date.
+     - `is_fallback` is only ever set alongside first_completed_session, so the
+       wire shape is {concept, first_completed_session, is_fallback} and the
+       three render states are: plain scheduled, warm scheduled (date), warm
+       fallback (no date).
+     NEGATIVE TESTS (all in test_a4_peek_tomorrow.py): first-completed + empty
+     window renders the fallback flagged is_fallback; NOT-first-completed + empty
+     window still renders nothing; first-completed + NON-empty window uses the
+     real scheduled concept, never the fallback, even when a weaker out-of-window
+     concept exists. COST: one extra weakest-mastery query, run only on a
+     first-completed day with an empty window (once per user, ever). This is the
+     "weakest-mastery fallback" lever Addendum 1 named, taken for the first-day
+     case only rather than for the whole weekly cohort.
+
+D-143 The session-complete screen, and the three homeless things it houses. Built
+     now because three unrelated deferrals all point at one missing surface: A1's
+     "celebrate the return" state was specced for "the dashboard AND
+     session-complete" but only the dashboard half exists (docs/10 A1-as-built);
+     first_completed_session (D-95) has had no session-level home since M6; and
+     A4's teaser was explicitly designed to relocate here (D-142(2)). There is
+     also a test-hygiene reason -- D-119 records session.spec.ts failing 8/8 on a
+     "Session complete" screen that did not exist, and every end-of-session
+     assertion since has had to target the dashboard redirect instead.
+
+     (1) A REAL ROUTE, `/session/complete`, not a terminal phase inside
+     `/session`. The player (Session.tsx) is already a multi-phase machine
+     (answering/submitting/grading/revealed); folding a wrap-up phase into it
+     couples celebration UI to the player and makes the completion state
+     un-deep-linkable. A route separates the concerns and, with a server-state
+     guard (below), makes all three of refresh, deep-link and back-button work
+     rather than blank: refresh re-fetches and re-guards; a deep-link is guarded;
+     the completion redirect from Session.tsx uses `replace`, so Back does not
+     re-enter the finished player. Session.tsx:152 changes from
+     `<Navigate to="/" replace/>` to `<Navigate to="/session/complete" replace/>`.
+
+     (2) THE GUARD IS SERVER STATE, never navigation history. The screen derives
+     completion from GET /session/today `completed === true`; anything else
+     (in-progress, empty pool, a stale deep-link the day after) redirects to "/"
+     (the dashboard, the neutral home that renders every state gracefully). This
+     is the same discipline as the rest of the app: a client cannot talk its way
+     onto the screen by routing to it. NEGATIVE TEST: stub completed=false, assert
+     the screen redirects to the dashboard and shows no completion copy.
+
+     (3) THE A4 TEASER MOVES HERE EXCLUSIVELY; it is REMOVED from the dashboard.
+     The decision (D-142(2) blessed the relocation but left "also, or instead"
+     open): instead. The teaser is a forward hook for the finish moment. Showing
+     it on the completion screen and then AGAIN on the dashboard two seconds later
+     when the user clicks through is the same sentence twice in one flow, which
+     reads as a bug, not a nudge. The completion screen IS the finish moment, so
+     it is the teaser's correct and only home. Cost, stated: a user who returns to
+     the dashboard an hour later sees no teaser -- acceptable, because the hook
+     already fired at the peak moment and the dashboard's "Upcoming reviews" panel
+     still shows the forward schedule. This removes TomorrowPeek from Dashboard.tsx
+     and relocates A4's peek-at-tomorrow.spec.ts assertions onto the new screen;
+     both are recorded here rather than done silently, because it is a behaviour
+     change to A4 (committed but unreleased on this branch, landing together).
+
+     (4) WHAT THE SCREEN CONTAINS, top to bottom: a calm completion heading; the
+     streak state -- A1's welcome-back copy plus the "Restore your N-day streak"
+     repair affordance when repair_restores_to is non-null (this is the half of
+     A1 that was never built), else a plain current-streak line; the A4 teaser
+     relocated UNCHANGED including its warm first-completed and fallback variants;
+     and one clear link back to the dashboard. No guilt copy anywhere (docs/10
+     rule 2). The first_completed_session "warm state" is delivered THROUGH the
+     teaser's existing warm variant rather than as a separate element -- see (5)
+     for why that is always available here.
+
+     (5) DATA: ZERO new endpoints, fields, schema, migration or env. The screen
+     reads only GET /session/today (completed + the tomorrow teaser, which
+     already carries first_completed_session and is_fallback) and GET /me/stats
+     (current_streak, repair_available, repair_restores_to) -- both already
+     fetched elsewhere, so no new call is added to any hot path (the dashboard's
+     4-call mount and the Profile 5-call refresh race, D-121, are untouched). The
+     one subtlety, recorded as a load-bearing invariant: the first-completed warm
+     state has no separate field, it rides on the teaser -- and that is safe
+     ONLY because A4's fallback (D-142 Addendum 5) guarantees a first-completed
+     user always has a non-null teaser (a completed session created concept
+     states, so the weakest-mastery fallback always finds one). If that fallback
+     is ever removed, a no-scheduled first-day user would lose the warm greeting;
+     this coupling is deliberate and is why the screen adds no top-level
+     first_completed_session field. VERIFIED non-changes: `psql -f db/schema.sql`
+     exits 0 and the D-117 drift check stays green (Settings.model_fields
+     unchanged).
+
+     COMPONENT REUSE: the A1 repair state machine is extracted from Dashboard.tsx
+     (WelcomeBack) into a shared, layout-neutral StreakReturn component used by
+     both the dashboard and the screen, copy strings unchanged so
+     streak-welcome-back.spec.ts stays green. TESTS UPDATED, not deleted:
+     session.spec.ts (seeded) and reveal-error-boundary.spec.ts (hermetic) both
+     asserted the dashboard-redirect completion path because it was the only
+     truthful signal available (D-119); they now target the real screen. A new
+     hermetic session-complete.spec.ts covers the guard (both directions), the
+     three streak states, the relocated teaser and the narrow layout. D-136 is
+     NOT touched: no seeded spec is added.
+
+D-143 ADDENDUM 1 (review): THE EXCLUSIVE MOVE RE-FRAMED A4, and the decision is
+     reopened for the roadmap owner. Stated plainly: docs/10 line 90 specs A4 as
+     "a reason to RETURN that the streak cannot supply." Removing the teaser from
+     the dashboard (D-143(3)) converts it from a RETURN HOOK into a
+     SESSION-COMPLETION REWARD -- it now renders in the seconds after a session
+     ends and is absent for the rest of that day, so a user who finishes at 08:00
+     and opens the app at 21:00 (still the same local day, deciding whether
+     tomorrow is worth it) sees nothing. That is the moment A4 was meant to
+     serve.
+     THE MERIT ARGUMENT FOR THE REWARD FRAMING, so it is judged on more than the
+     double-show: ending a finished session on a forward note ("here is what
+     tomorrow holds") is a legitimate habit-loop close -- the completion screen
+     is the peak-affect moment, and a teaser there rewards the finish and plants
+     the next visit while attention is highest. It is defensible. It is simply
+     NOT what docs/10 argued, and D-142's render numbers were measured under the
+     dashboard placement (see the pointer added to D-142 Addendum 1).
+     MIDDLE OPTION EVALUATED (review item 1c), reported not implemented: "keep the
+     teaser on the dashboard but suppress it for the remainder of the local day
+     the screen already showed it." IT DOES NOT DO WHAT IT PROMISES. The
+     dashboard's COMPLETED state exists ONLY on the completion day (an
+     in-progress or fresh day shows the CTA, not the teaser), so "the remainder
+     of the local day" IS the whole window the dashboard teaser would ever have
+     shown in -- suppressing it there collapses exactly to D-143(3)'s exclusive
+     removal and kills the 21:00 impression it was meant to save. Preserving the
+     evening impression while removing ONLY the immediate back-click repeat needs
+     client-side ephemeral state (a "shown-at-completion" timestamp, suppress for
+     N minutes), which is lost on refresh, per-tab, and derived from navigation
+     history -- precisely the client-navigation state D-143(2) refused to trust.
+     Expensive relative to the payoff.
+     RECOMMENDATION (decision deferred, no code changed): put the teaser on the
+     DASHBOARD ONLY and leave it OFF the completion screen. This uniquely meets
+     both of the review's goals -- no double-show ever (the surfaces never carry
+     it at the same time), and the evening impression preserved (the dashboard
+     teaser persists across the completed day like "Upcoming reviews") -- with
+     ZERO new state and full server-derivability. Cost: the screen loses the
+     forward beat (it keeps the completion heading and the A1 streak state), and
+     D-142(2)'s "the teaser can relocate here" becomes "does not". If that
+     forward beat is valued more than cleanliness, the alternative is to accept
+     the mild 5-second repeat and show it on both. Awaiting the owner's call;
+     until then the shipped behaviour (exclusive on screen) stands.
+     DECIDED (D-144): the recommendation was taken -- teaser dashboard-only, and
+     the screen given its own decoupled first-day state. See D-144.
+
+D-143 ADDENDUM 2 (review): THE STREAKRETURN DOUBLE-SHOW IS NOT INCONSISTENT WITH
+     REMOVING THE TEASER, and here is why the same "appears twice" fact is right
+     for one and wrong for the other. StreakReturn renders on BOTH the dashboard
+     (Dashboard.tsx) and the screen (SessionComplete.tsx). That is not an
+     oversight: docs/10 A1 spec section 4 (lines 202-204) EXPLICITLY specs the
+     welcome-back plus the "restore your N-day streak" affordance on "the
+     dashboard AND session-complete reveal". The teaser (A4) has no such
+     both-surfaces spec, so D-143(3) had a placement call to make where A1 did
+     not. Beyond the spec, the two are different KINDS of element: the repair
+     affordance is a rare, high-value, ONE-SHOT recovery ACTION that self-retires
+     the instant it is used (state -> done/gone, and repair_available flips false
+     server-side), so surfacing the same offer wherever a returning user lands is
+     the standard "the action is available here too" pattern, not repetition. The
+     teaser is a PERSISTENT ROUTINE informational line with no action; the same
+     sentence twice within seconds is what reads as a glitch. A one-shot offer
+     and a routine line do not carry the same double-show cost. No behaviour
+     changed; recorded as the reconciliation the review asked for.
+
+D-143 ADDENDUM 3 (review): THE FIRST-DAY WARMTH IS A LOAD-BEARING DEPENDENCY ON
+     A4's FALLBACK, now enforced by a test rather than only noted. D-143(5) has
+     the screen deliver the first_completed_session warm greeting THROUGH the
+     teaser (it carries the warm copy), with no separate top-level field. That is
+     safe ONLY while A4's Addendum 5 fallback guarantees a first-completed user
+     always has a non-null teaser (a completed session created concept states, so
+     the weakest-mastery fallback always finds one). If a future change -- the
+     two-day-window lever, or a fallback revisit -- broke that guarantee, a
+     first-ever completed session would silently lose its celebration. To make
+     that trip a test instead of shipping silently, test_a4_peek_tomorrow.py::
+     test_first_completed_session_always_yields_a_teaser_D143 completes a first
+     session with NOTHING extra seeded (empty strict window) and asserts the
+     teaser is non-null. It fails the moment the fallback stops covering this
+     case, which is the point.
+     SUPERSEDED IN PART by D-144: the coupling this addendum tests is REMOVED
+     (the screen now owns its first-day state; it no longer rides the teaser),
+     so the test is re-scoped to guard A4's fallback as an A4 property in its own
+     right rather than the first-day celebration. See D-144.
+
+D-144 TEASER GOES DASHBOARD-ONLY, and the screen gets its own first-day state.
+     Reverses D-143(3)'s "exclusive on the completion screen" after the D-143
+     review. Two decisions here, and the second is forced by the first.
+
+     (1) PLACEMENT: the teaser moves to the DASHBOARD exclusively and comes OFF
+     the session-complete screen (the exact opposite of D-143(3)). Once the
+     "suppress for the remainder of the day" middle option was shown to collapse
+     into the exclusive removal (D-143 Addendum 1), the real choice was
+     screen-only vs dashboard-only, and dashboard-only nearly dominates: the user
+     lands on the dashboard within seconds of finishing, so the post-completion
+     forward beat survives almost intact, AND the EVENING impression -- the thing
+     docs/10 line 90 actually justified A4 on ("a reason to return") -- survives
+     ONLY under dashboard-only, because the dashboard teaser persists across the
+     completed day like "Upcoming reviews" while the screen is seen once.
+     Screen-only traded a persistent return hook for a five-second head start on
+     the same impression; a bad trade for a feature whose whole purpose is the
+     return. So: restore TomorrowPeek on Dashboard.tsx (all three variants:
+     plain, and the Addendum-5 fallback -- see below on the warm variant),
+     remove it from SessionComplete.tsx.
+
+     (2) THE FORCED CONSEQUENCE: first_completed_session rode the teaser
+     (D-143(5)), so moving the teaser would take the first-day warmth with it and
+     leave a first-ever finisher looking at a heading, one line and a button --
+     the flattest that screen will ever be, on the one occasion it matters most.
+     Not acceptable as a side effect. So the screen gets its OWN first-day state,
+     DECOUPLED from the teaser. This is strictly better than the D-143 Add-3
+     guard: a dependency REMOVED beats a dependency tested, and A4's fallback is
+     no longer load-bearing for the first-day celebration.
+
+     (3) HOIST vs REACH-IN, argued on the code as it is. first_completed_session
+     lives INSIDE TomorrowTeaser (schemas/session.py). The screen now renders NO
+     teaser, so to read the flag it must either (a) have it hoisted to the
+     session top level, or (b) reach into the tomorrow object it does not
+     display. CHOSEN: (a) hoist. (b) is rejected on two counts: it BREAKS when
+     tomorrow is null (a non-first-day completion with nothing due has tomorrow
+     null, and reaching in throws or reads undefined), and it KEEPS exactly the
+     teaser coupling this change exists to remove -- the screen would still
+     depend on A4's fallback guaranteeing a non-null teaser. (a) puts a
+     session-level fact (did this session complete the user's first-ever day) at
+     session level where it belongs, and survives tomorrow being null. COST of
+     (a): a real wire change (SessionResponse gains first_completed_session), a
+     docs/05 update, and test churn -- but it also lets first_completed_session
+     come OUT of TomorrowTeaser entirely, leaving the teaser as {concept,
+     is_fallback}, which is cleaner (the teaser stops carrying a fact it does not
+     describe). Worth it; the churn is bounded and mechanical.
+     CONSEQUENCE FOR THE DASHBOARD TEASER COPY: the "That's your first day done"
+     warm LEAD-IN is removed from the teaser, because that acknowledgement is now
+     the screen's job -- keeping it on the dashboard teaser too would double-show
+     the first-day moment (the very thing D-143(3) tried to avoid, reappearing
+     one layer up). The dashboard teaser is now purely forward: is_fallback ->
+     "Next up: X." (no date, concept not scheduled), else "Coming up for review
+     tomorrow: X." So the teaser no longer needs first_completed_session for copy
+     at all, which is why hoisting-and-removing (not hoisting-and-duplicating) is
+     correct.
+
+     (4) THE SCREEN'S FIRST-DAY COPY, exact strings as shipped, no schedule claim
+     (the teaser is gone, so there is no concept name to carry), no guilt, no
+     hype, no emoji (docs/10 rule 2):
+       - subtitle: "That was your first session."
+       - warm line: "One down. The habit is reading code you didn't write, a
+         little every day."
+     A non-first-day completion keeps the plain subtitle "That's today's reading
+     done." and shows neither first-day line. NEGATIVE TEST: a non-first-day
+     completed session must not render the first-day copy.
+
+     (5) ALLOWLIST: extra="forbid" stays on both SessionResponse and
+     TomorrowTeaser; the leak test asserts EXACT set equality on BOTH the
+     top-level session body {session_date, completed, exercises,
+     first_completed_session, tomorrow} AND the nested teaser {concept,
+     is_fallback} -- neither loosened to a subset. NO migration, schema or env:
+     first_completed_session is a computed RESPONSE field (Settings.model_fields
+     unchanged, so the D-117 drift check stays green; db/schema.sql untouched).
+
+     SUPERSEDES: D-143(3) (placement, reversed) and D-143 Addendum 3 (the
+     first-day-rides-the-teaser coupling, removed; its test re-scoped to guard
+     A4's fallback). D-143 Addendum 1's recommendation is now the taken decision.
+     Pointers added to those addenda; history not rewritten.

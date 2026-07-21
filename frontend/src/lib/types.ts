@@ -151,10 +151,25 @@ export interface SessionExercise {
   payload: SessionExercisePayload;
 }
 
+export interface TomorrowTeaser {
+  concept: string;
+  // D-142 Addendum 5: true only on the first-completed-session fallback, where
+  // the concept is NOT scheduled for tomorrow, so the copy must not claim a date.
+  // (D-144: first_completed_session hoisted to SessionResponse; the teaser is now
+  // purely forward, {concept, is_fallback}.)
+  is_fallback: boolean;
+}
+
 export interface SessionResponse {
   session_date: string;
   completed: boolean;
+  // D-144: hoisted from the teaser. True only on the user's first-ever finished
+  // session; the session-complete screen renders its own first-day state from it.
+  first_completed_session: boolean;
   exercises: SessionExercise[];
+  // A4 "peek at tomorrow" (D-142; Dashboard-only per D-144): present only on the
+  // completed state, null when nothing is due tomorrow. The Dashboard renders it.
+  tomorrow: TomorrowTeaser | null;
 }
 
 export interface ActivityDay {

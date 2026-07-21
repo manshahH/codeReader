@@ -277,6 +277,8 @@ Returns today's session in the user's timezone. First call of the day samples it
 {
   "session_date": "2026-07-06",
   "completed": false,
+  "first_completed_session": false,
+  "tomorrow": null,
   "exercises": [
     {
       "slot": 1,
@@ -308,6 +310,14 @@ Guarantees:
 - `payload` only. `grading` and `explanation` are structurally absent (serializer allowlist + CI leak test).
 - Exact difficulty numbers are internal; clients get `difficulty_band` (`easy|medium|hard|boss`).
 - If the LLM grader is degraded, `summarize` slots are replaced at sampling time; already-issued sessions are unchanged.
+
+`first_completed_session` (top-level; D-95 semantics, hoisted here by D-144) is `true` only on the single completed response that is the user's first-ever finished daily session; `false` on any non-completed or non-first response. It is a SESSION-level fact: the session-complete screen renders its own first-day state from it, decoupled from the teaser. It is gated on `completed`.
+
+`tomorrow` (A4 "peek at tomorrow", D-142; Dashboard-only per D-144) is `null` in every response except a completed session that also has a concept to surface:
+```json
+"tomorrow": { "concept": "dict-mutation-during-iteration", "is_fallback": false }
+```
+It is DERIVED, never a persisted "tomorrow's session" -- tomorrow's set cannot be sampled before today's answers land (D-142). `concept` is the single `user_concept_state` concept whose `next_review_at` falls within the user's local day after today (weakest mastery first, then most overdue, then name); at most one, and `null`/absent when nothing is due tomorrow. `is_fallback` (D-142 Addendum 5) is `true` only on the first-completed-day fallback: when it is the user's first finished day and nothing is scheduled for tomorrow, the teaser falls back to the weakest-mastery concept, and `is_fallback: true` tells the client to use copy that makes NO date claim ("Next up: X", not "coming up for review tomorrow"). It is gated on `completed`, so an in-progress session always carries `tomorrow: null`. No grading/explanation could ever appear under it (the CI leak test walks it).
 
 There is **no** standalone `GET /exercises/{id}` at MVP. The session is the only content channel: fewer scraping surfaces, and the "not in your session" rule below stays enforceable.
 

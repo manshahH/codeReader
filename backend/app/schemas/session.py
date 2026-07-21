@@ -95,12 +95,48 @@ class SessionExercise(BaseModel):
     payload: SessionExercisePayload
 
 
+class TomorrowTeaser(BaseModel):
+    """A4 "peek at tomorrow" (D-142): the forward hook shown on the Dashboard's
+    completed state (D-144: dashboard-only).
+
+    Derived from user_concept_state.next_review_at falling within the user's
+    LOCAL day after today -- real spaced-repetition data already present, never
+    a persisted "tomorrow's session" (which cannot exist before today's answers
+    land; see D-142). At most one concept: a hook, not a chore. No
+    grading/explanation field could ever live here, so invariant 1 stays
+    structurally enforced.
+
+    D-144: `first_completed_session` was hoisted to SessionResponse (a
+    session-level fact the session-complete screen owns), so the teaser is now
+    purely {concept, is_fallback} and its copy is forward-only.
+    """
+
+    model_config = _STRICT
+
+    concept: str
+    # A4 D-142 Addendum 5: on a user's FIRST-EVER completed day the strict
+    # tomorrow window is usually empty (all first-corrects schedule 7 days out),
+    # so the dashboard would show nothing. When that happens we fall back to the
+    # weakest-mastery concept. `is_fallback` is true only then, and it means the
+    # copy must NOT claim a date (the concept is not scheduled for tomorrow).
+    is_fallback: bool = False
+
+
 class SessionResponse(BaseModel):
     model_config = _STRICT
 
     session_date: dt.date
     completed: bool
+    # D-144: hoisted from TomorrowTeaser. True only on the single completed
+    # response that is the user's first-ever finished daily session (D-95
+    # semantics). The session-complete screen renders its own first-day state
+    # from this, decoupled from the teaser (which moved to the Dashboard). False
+    # on any non-completed or non-first response.
+    first_completed_session: bool = False
     exercises: list[SessionExercise]
+    # A4 (D-142) / D-144: null unless `completed` is true AND a concept can be
+    # surfaced. Dashboard-only now; the completion screen no longer reads it.
+    tomorrow: TomorrowTeaser | None = None
 
 
 class SessionReviewExercise(BaseModel):

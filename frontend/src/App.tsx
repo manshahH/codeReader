@@ -9,6 +9,7 @@ import { Profile } from './routes/Profile';
 import { Review } from './routes/Review';
 import { RootGate } from './routes/RootGate';
 import { Session } from './routes/Session';
+import { SessionComplete } from './routes/SessionComplete';
 import { Unsubscribe } from './routes/Unsubscribe';
 import { VerifyEmail } from './routes/VerifyEmail';
 
@@ -52,6 +53,20 @@ function AppRoutes() {
           <RequireAuth>
             <AppLayout>
               <Session />
+            </AppLayout>
+          </RequireAuth>
+        }
+      />
+      {/* D-143: the redirect target of the last exercise. A real route (not a
+          terminal phase inside /session) so refresh, deep-link and back all
+          work; the screen itself derives completion from server state and
+          redirects to the dashboard otherwise. */}
+      <Route
+        path="/session/complete"
+        element={
+          <RequireAuth>
+            <AppLayout>
+              <SessionComplete />
             </AppLayout>
           </RequireAuth>
         }

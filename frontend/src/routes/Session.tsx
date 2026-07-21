@@ -91,9 +91,8 @@ export function Session() {
 
   const applyGraded = useCallback((response: AttemptResponse) => {
     setAttempt(response);
-    // No session-complete screen exists yet (this route redirects to the
-    // Dashboard when the last exercise is done), so there is nowhere to show a
-    // session-level streak summary. Reveal reads attempt.streak directly for
+    // The session-level streak summary lives on the session-complete screen now
+    // (D-143), which reads /me/stats; Reveal reads attempt.streak directly for
     // the per-attempt line. A `latestStreak` state that was only ever written,
     // never read, lived here until A1; see docs/10's deferred list.
     if (response.status === 'graded') {
@@ -149,7 +148,11 @@ export function Session() {
     return <p className="p-6 text-ink-muted">Nothing to read just yet. Check back in a little while.</p>;
   }
   if (currentIndex >= session.exercises.length) {
-    return <Navigate to="/" replace />;
+    // D-143: the last exercise is done. `replace` keeps the finished player out
+    // of history, so Back from the complete screen does not re-enter it. The
+    // screen re-derives completion from the server, so this is a handoff, not a
+    // claim the screen has to trust.
+    return <Navigate to="/session/complete" replace />;
   }
 
   const exercise = session.exercises[currentIndex];
@@ -281,7 +284,7 @@ export function Session() {
     exercise.type === 'spot_the_bug'
       ? selection === null
         ? 'Tap the buggy line, or pick a reason'
-        : `Line ${selection.start.line} selected — pick a reason`
+        : `Line ${selection.start.line} selected, pick a reason`
       : isValid
         ? 'Review your answer'
         : 'Answer';

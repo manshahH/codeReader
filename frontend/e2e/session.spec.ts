@@ -8,16 +8,15 @@ import { localStackIsUp, seedAuthCookie, STACK_REQUIRED } from './_seed';
 // /auth/refresh flow (RootGate) takes it from there. This is the "login (seed)"
 // step from the milestone's success criteria, not a bypass of the auth code.
 
-// ROOT-CAUSED AND FIXED (2026-07-18), closing the second half of D-119.
+// HISTORY (D-119, 2026-07-18): this spec once asserted a "Session complete"
+// screen that did not exist, so the loop walked one iteration past the last
+// exercise, /session had already redirected to the Dashboard, and
+// `span.capitalize` was missing -- it failed on a selector four steps from its
+// actual mistake. It was fixed then to assert the Dashboard redirect, which was
+// the only truthful completion signal available at the time.
 //
-// This spec was never testing a product bug. It asserted a "Session complete"
-// screen, and that screen DOES NOT EXIST anywhere in frontend/src -- its absence
-// is a deliberate, documented decision (HANDOFF, docs/10: Session.tsx redirects
-// to the Dashboard once the last exercise is answered, and building a real
-// session-complete screen is its own piece of work). So the loop's break
-// condition never fired, the run walked one iteration past the last exercise,
-// /session had already redirected to the Dashboard, and `span.capitalize` was
-// missing. The spec failed on a selector four steps from its actual mistake.
+// UPDATE (D-143): that screen now EXISTS at /session/complete, so the assertion
+// at the end targets it directly. The loop still bounds on leaving the player.
 //
 // The "early completion" reading was wrong, and the misreading was mine: the
 // dashboard's "1/5" is correct_count/exercise_count (Dashboard.tsx:203), i.e.
@@ -59,9 +58,9 @@ test('full session: login (seed) -> one of each type -> reveal -> complete', asy
   let skipped = false;
 
   for (let i = 0; i < MAX_EXERCISES; i++) {
-    // There is no session-complete SCREEN to look for (see the header note):
-    // finishing the last exercise redirects to the Dashboard, so leaving
-    // /session IS the completion signal.
+    // Finishing the last exercise redirects to /session/complete (D-143), so
+    // the pathname no longer ending in exactly "/session" is the signal the
+    // player is done. (/session/complete does not match /\/session$/.)
     if (!/\/session$/.test(new URL(page.url()).pathname)) break;
 
     const typeLabel = page.locator('span.capitalize').first();
@@ -123,16 +122,12 @@ test('full session: login (seed) -> one of each type -> reveal -> complete', asy
   // own hermetic spec (predict-the-fix.spec.ts), not in this sampling-driven run.
   expect(seenTypes.size, 'session served no exercises').toBeGreaterThan(0);
 
-  // Completion, as this app actually expresses it: the player redirects to the
-  // Dashboard, which flips to its completed state and offers the review link
-  // instead of the "Enter sandbox" CTA.
-  // baseURL-relative, not a hardcoded :5173. The port is configuration (the
-  // config's baseURL, or E2E_BASE_URL when pointing at an existing server), so
-  // hardcoding it made this assertion fail on any other port -- which is how it
-  // failed while the suite ran against a harness server, and would fail in CI
-  // the moment the dev-server port moved. Playwright resolves a string URL
-  // against baseURL, so "/" means "the app root, wherever that is".
-  await expect(page).toHaveURL('/', { timeout: 15_000 });
-  await expect(page.getByText('Completed', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole('link', { name: "Review today's session" })).toBeVisible();
+  // Completion, as this app now expresses it (D-143): the player redirects to
+  // the real session-complete screen, which shows its heading and a way back to
+  // the dashboard. This replaced the old assertion against the dashboard
+  // redirect, which was only ever the truthful signal BECAUSE this screen did
+  // not exist (D-119).
+  await expect(page).toHaveURL(/\/session\/complete$/, { timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Session complete' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('link', { name: 'Back to dashboard' })).toBeVisible();
 });

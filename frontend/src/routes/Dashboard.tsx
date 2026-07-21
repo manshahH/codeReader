@@ -1,12 +1,18 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { getMeConcepts, getMeSessions, getMeStats, getSessionToday, repairStreak } from '../lib/api';
+import { StreakReturn } from '../components/session/StreakReturn';
+import { getMeConcepts, getMeSessions, getMeStats, getSessionToday } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { formatRelativeDate } from '../lib/format';
 import type { Panel } from '../lib/usePanel';
 import { usePanel } from '../lib/usePanel';
-import type { ConceptMastery, MeSessionSummary, MeStats, SessionResponse } from '../lib/types';
+import type {
+  ConceptMastery,
+  MeSessionSummary,
+  MeStats,
+  SessionResponse,
+  TomorrowTeaser,
+} from '../lib/types';
 
 const UPCOMING_REVIEWS_SHOWN = 5;
 
@@ -40,14 +46,14 @@ export function Dashboard() {
     session.status === 'loading'
       ? 'Loading today’s session…'
       : session.status === 'error'
-        ? 'Couldn’t load today’s status — you can still start your session.'
+        ? 'Couldn’t load today’s status. You can still start your session.'
         : total === 0
           ? 'Nothing to read just yet.'
           : completed
             ? 'Completed'
             : doneCount === 0
               ? 'Not started'
-              : `In progress — ${doneCount} of ${total}`;
+              : `In progress: ${doneCount} of ${total}`;
 
   // The primary CTA renders in every state except a confirmed empty pool, so a
   // failed secondary fetch -- or even a failed session fetch -- never blocks
@@ -67,7 +73,7 @@ export function Dashboard() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr] gap-x-10 gap-y-8 lg:grid-cols-2">
         {stats.status === 'ok' && stats.data.repair_restores_to !== null ? (
-          <WelcomeBack restoresTo={stats.data.repair_restores_to} />
+          <StreakReturn restoresTo={stats.data.repair_restores_to} className="shrink-0 lg:col-span-2" />
         ) : null}
 
         <section className="flex shrink-0 flex-col gap-4 rounded-loose bg-surface-raised p-7 lg:col-span-2">
@@ -84,6 +90,9 @@ export function Dashboard() {
                 <p className="text-sm text-ink-muted">
                   Today covers: <span className="text-ink">{todayConcepts.map(readable).join(' · ')}</span>
                 </p>
+              ) : null}
+              {completed && sessionData?.tomorrow ? (
+                <TomorrowPeek teaser={sessionData.tomorrow} />
               ) : null}
             </>
           ) : (
@@ -110,58 +119,29 @@ export function Dashboard() {
 }
 
 /**
- * A1 "celebrate the return" (docs/10). Renders only while a repair is actually
- * available, so it appears at most once per reset and disappears the moment it
- * is used. Deliberately quieter than the primary CTA: a bordered panel rather
- * than a raised one, so returning reads as an offer and never outranks today's
- * session. One affordance, no countdown, no reminder to come back, no guilt.
+ * A4 "peek at tomorrow" (D-142), Dashboard-only (D-144). A single-concept
+ * forward hook on the completed state -- a reason to return that the streak
+ * cannot supply, persisting across the completed day so it is there in the
+ * evening when the user is deciding whether tomorrow is worth it (which is the
+ * impression docs/10 justified A4 on). It reuses the muted/ink pair the "Today
+ * covers" line uses, no new colour or border.
+ *
+ * FORWARD-ONLY copy (D-144): the "first day done" warmth moved to the
+ * session-complete screen, so the teaser no longer reads first_completed_session
+ * and never claims the first day here. `is_fallback` picks "Next up" (no date,
+ * the concept is not scheduled) over the schedule tease; neither over-promises,
+ * per D-142 Addendum 3.
  */
-function WelcomeBack({ restoresTo }: { restoresTo: number }) {
-  const [state, setState] = useState<'offer' | 'working' | 'done' | 'gone'>('offer');
-  const [restored, setRestored] = useState(0);
-
-  if (state === 'gone') return null;
-
-  async function repair() {
-    setState('working');
-    try {
-      const result = await repairStreak(crypto.randomUUID());
-      setRestored(result.current_streak);
-      setState('done');
-    } catch {
-      // A 409 means the offer expired or was already used. Nothing was lost
-      // and there is nothing for the reader to fix, so retire it quietly.
-      setState('gone');
-    }
-  }
-
+function TomorrowPeek({ teaser }: { teaser: TomorrowTeaser }) {
+  const concept = <span className="text-ink">{readable(teaser.concept)}</span>;
   return (
-    <section className="flex shrink-0 flex-col items-start gap-3 rounded-loose border border-border p-6 lg:col-span-2">
-      {state === 'done' ? (
-        <p className="text-sm text-ink">
-          Restored. Your streak is back at{' '}
-          <span className="font-code">{restored}</span> {restored === 1 ? 'day' : 'days'}.
-        </p>
+    <p className="text-sm text-ink-muted">
+      {teaser.is_fallback ? (
+        <>Next up: {concept}.</>
       ) : (
-        <>
-          <p className="text-sm text-ink">Good to see you again.</p>
-          <p className="text-sm text-ink-muted">
-            You can pick your previous streak back up, or just start a new one today. Either way
-            works.
-          </p>
-          <button
-            type="button"
-            onClick={repair}
-            disabled={state === 'working'}
-            className="rounded-soft border border-border px-4 py-2 font-ui text-sm text-ink transition-colors duration-fast hover:bg-surface-raised disabled:opacity-60"
-          >
-            {state === 'working'
-              ? 'Restoring…'
-              : `Restore your ${restoresTo}-day streak`}
-          </button>
-        </>
+        <>Coming up for review tomorrow: {concept}.</>
       )}
-    </section>
+    </p>
   );
 }
 
