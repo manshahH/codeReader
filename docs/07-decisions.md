@@ -4614,3 +4614,233 @@ D-137 ADDENDUM 3, appended here rather than edited into the entry above because
      digit integer from the provider, never anything a user wrote. httpx can
      put the request body into an exception message, and that body is somebody's
      mail (D-120), so the message is still discarded.
+
+D-142 A4 "peek at tomorrow". A teaser of what greets the user tomorrow, shown
+     on the Dashboard's completed state, derived from real spaced-repetition
+     data and committing to NOTHING it cannot honour. Four settled points.
+
+     (1) TEASE THE SHAPE, NOT THE SET, and this is a correctness decision, not a
+     product preference. "Tomorrow's session" cannot be built or persisted
+     today. First-of-day sampling reads three inputs that TODAY's attempts are
+     still writing right up to the last answer -- due concepts from
+     user_concept_state.next_review_at, concept_mastery, and the 14-day
+     recently_seen_ids set (sessions/service.py::_build_and_persist_session,
+     verified: the due query at ~135-143, mastery at ~145-150, recently-seen at
+     ~152-159; attempts/service.py::_update_streak_and_attempt_count and
+     update_concept_state mutate exactly those rows on every submission).
+     Persisting tomorrow's session now would freeze it against a snapshot taken
+     BEFORE today's answers land, so spaced repetition would systematically
+     re-serve concepts the user just practised or just mastered -- the core loop
+     degraded to decorate its edge. Building without persisting is worse: the
+     teaser would promise a set the user then does not get. VERIFIED STILL TRUE
+     against master before building. So the teaser is derived at request time
+     from user_concept_state.next_review_at falling within the user's LOCAL day
+     after today: real data, already present, no sampling, no schema change, no
+     commitment to any exercise id. It is honest precisely because it is a
+     property of the schedule ("this concept is due tomorrow"), not a promise
+     about a set that does not exist yet.
+
+     (2) IT SHIPS ON THE DASHBOARD, and the session-complete screen stays a
+     separate unbuilt task. VERIFIED: Session.tsx redirects to the Dashboard
+     (`<Navigate to="/" replace />` at Session.tsx:152) the instant the last
+     exercise is done, and the Dashboard renders a distinct completed state
+     (todayState "Completed", the "Review today's session" CTA). The user
+     arrives there at exactly the moment a session-complete screen would have
+     appeared. docs/10's A4 bullet and its line 274 have been read at least once
+     as putting A4 on a session-complete screen; settling it here plainly: A4
+     ships on the Dashboard completed state. The session-complete screen does
+     NOT exist (deferred in A1, still deferred, HANDOFF and docs/10 line 272-279
+     both say so) and building it remains its own UI task. When it is built the
+     same teaser payload can move onto it unchanged.
+
+     (3) THE THREE CONSTRAINTS.
+     - AT MOST ONE NAMED CONCEPT. A hook, not a list. "Tomorrow: a return to
+       dict-mutation-during-iteration" reads as curiosity; three identifiers
+       read as a chore (and a to-do list is the anxiety tone docs/10 rule 2
+       forbids). When several concepts are due tomorrow the pick is
+       DETERMINISTIC: weakest mastery first, tie-broken by most overdue within
+       the window (earliest next_review_at), then concept name. Weakest-mastery
+       over most-overdue on purpose: the whole window is "due tomorrow", so
+       ordering by due-time alone is a scheduling artifact, whereas the concept
+       the user is least solid on is the meaningful reason to return and is what
+       docs/10's mastery/curiosity/meaning engine points at. Recorded so it is
+       not arbitrary later.
+     - THE WINDOW IS TOMORROW ONLY, strictly [start of tomorrow local, start of
+       the day after local), computed as local_day_end_utc(tz, today) to
+       local_day_end_utc(tz, tomorrow). This is disjoint from "due today"
+       (next_review_at < local_day_end_utc(tz, today), the sampler's own
+       cutoff), so the teaser never surfaces a concept that is already today's
+       problem and already shown in the Dashboard's "Upcoming reviews" panel.
+       Overdue-today items are deliberately NOT pulled forward: they belong to
+       today. A concept the user just practised today has its next_review_at
+       pushed out by days, so it falls outside tomorrow's window and is
+       naturally excluded -- which is point (1) paying off.
+     - THE EMPTY CASE SHOWS NOTHING. Some days nothing is due tomorrow. The
+       teaser field is then null and the client renders nothing. A bare "N
+       concepts due" count is not a reason to return (it is the volume metric
+       docs/10 rule 2 bans), and a weak promise is worse than silence.
+       Negative-tested: completed session, no rows in the window -> tomorrow is
+       null.
+
+     (4) first_completed_session IS USED, not gated on. The field already
+     exists on the POST /attempts response (D-95) and is unused by the client
+     (docs/10 line 274/278 flagged it for exactly this). It is a LIFETIME-once
+     signal -- true only on the single attempt that completes a user's
+     first-ever daily session -- so it CANNOT gate whether the teaser appears:
+     A4 is a recurring reason to return and must show on every completed day
+     with something due. Instead it selects a one-time warmer lead-in on the
+     first finish ("That's your first day done. Tomorrow you come back to X."),
+     the habit-forming moment docs/10 line 278 reserved it for; every day after
+     it is the plain hook. Because A4 renders on the Dashboard (GET
+     /session/today) and not on the POST response, the flag is RECOMPUTED there
+     from the same rule as attempts/service.py: exactly one daily_sessions row
+     with completed_at set. Recomputing a lifetime-once count only when the day
+     is already completed is cheap (the hot, not-yet-completed path never runs
+     it) and keeps the two call sites reading the identical ledger fact rather
+     than threading a boolean through a client redirect that a refresh would
+     drop.
+
+     WHERE IT LIVES ON THE WIRE: GET /session/today gains a nullable `tomorrow`
+     object ({concept, first_completed_session}), populated only when
+     `completed` is true. It carries no grading/explanation (invariant 1/2 hold
+     structurally, same allowlist as the rest of SessionResponse; the CI leak
+     test walks it). NO SCHEMA CHANGE and NO NEW ENV: A4 is a read over
+     user_concept_state, so there is no migration to reverse and nothing to add
+     to either .env.example (the D-117 drift check stays green because
+     Settings.model_fields is unchanged). docs/04 records the read-only use;
+     docs/05 documents the field. Deferred, deliberately: moving the teaser onto
+     a real session-complete screen (that screen does not exist yet), and any
+     "peek" that names exercise ids or difficulty (would recreate the
+     persistence trap in (1)).
+
+D-142 ADDENDUM 1 (review response): RENDER RATE MEASURED. The concern was that a
+     strict tomorrow-only window disjoint from due-today could be so narrow the
+     feature almost never shows. Measured with a throwaway simulation grounded
+     in the real intervals (attempts/service.py:86-92: wrong=2, right-first=7,
+     right-again=21, skip=1) and the real dev corpus (31 concepts, 1
+     concept/exercise, session 3-5 concepts/day). On a COMPLETED day, "renders"
+     means some concept has next_review at exactly tomorrow.
+     RESULT: high for the target audience. Daily practice: ~0-52% on the user's
+     literal first day (nothing is scheduled for tomorrow yet -- addressed by the
+     fallback in Addendum 5), then ~99% by day 7 and 64-99% steady-state at
+     day 90 across accuracy assumptions from p=0.34 (dev-like) to p=0.85.
+     CADENCE, with RANDOMISED per-user start phase (the first cut fixed every
+     user's sessions to days k, 2k, 3k... which biases against the 7/21-day
+     cycles; re-run with a random offset in [0,k), engaged params, steady
+     state): daily 87.5%, every-2-days 90.1%, every-3-days 42.1%, every-4-days
+     83.4%, weekly 18.5%. The randomisation moved the headline daily/every-2
+     figures by under 3 points, so they are trustworthy; the every-3-days dip to
+     ~42% survives randomisation and is a genuine interaction (a 3-day cadence
+     rarely lands the day before a 7-multiple review), not a phase artifact, and
+     still clears 40%. Only a weekly-or-sparser user falls below, and their
+     reviews genuinely are not due "tomorrow", so silence is honest there.
+     STRUCTURAL NOTE (review item 4), recorded so it is not mysterious later:
+     render rate FALLS as accuracy RISES (84.4% at p=0.70 no-skips vs 64.5% at
+     p=0.85), because a correct answer pushes the interval to 7 then 21 days, so
+     the better a user gets the emptier "tomorrow" looks. The strongest, most
+     engaged seniors -- the cohort docs/10 says we cannot afford to bore -- see
+     this feature LEAST. Not a bug and not fixable inside A4 (it is inherent to
+     spaced repetition); flagged for whoever builds the senior-retention work.
+     CONCLUSION: ship the strict window as built, plus the first-day-only
+     fallback (Addendum 5). Widening to a two-day window is NOT taken -- it would
+     lift the weekly cohort but re-open Addendum 2's disjoint rule for everyone;
+     recorded as an available lever for the roadmap owner.
+
+D-142 ADDENDUM 2 (review response): THE DISJOINT RULE EXCLUDES THE BACKLOG, ON
+     PURPOSE. Confirmed against sampler build_session_slots
+     (sessions/service.py sampler): due concepts are served most-overdue-first
+     but capped at MAX_NON_BOSS_SLOTS=4 (sampler.py:167-176), and a due concept
+     whose only exercises are out-of-band or recently-seen is skipped, not
+     served. So concepts due TODAY that do not fit into today's 3-5 slots stay
+     overdue (next_review_at <= today's cutoff) and roll into tomorrow's set --
+     and tomorrow's actual set is dominated by exactly this carried-over
+     backlog, which the strict window EXCLUDES. This is deliberate, three
+     reasons. (a) Backlog reads as debt, not curiosity: "tomorrow you finally
+     get to X, which you were already behind on" is the guilt-adjacent tone
+     docs/10 rule 2 forbids; the teaser is a forward hook, not a debt notice.
+     (b) Those overdue concepts are due NOW and already surface in the
+     Dashboard's own "Upcoming reviews" panel (soonest-due first) -- teasing
+     them again as "tomorrow" would double-surface and misdescribe their timing.
+     (c) "Coming up tomorrow" for something due today is simply false; only a
+     concept newly coming due tomorrow is truthfully tomorrow's. So A4 teases
+     "what newly comes due tomorrow", a clean schedule fact, NOT "what will
+     probably be in tomorrow's drawn set" -- which is consistent with D-142(1)
+     teasing the SHAPE, not the SET. Rule unchanged.
+     SKIP-RESCHEDULED CONCEPTS ARE DELIBERATELY IN SCOPE (review item 2). A skip
+     schedules the concept 1 day out (CONCEPT_INTERVAL_SKIPPED_DAYS=1), so a
+     concept the user skipped TODAY lands squarely in tomorrow's window and the
+     teaser can surface it -- and a meaningful share of what renders is exactly
+     this (the cohorts split on skip rate: dev-like skip=0.16 gives 51.8% on
+     day 1, no-skips gives 0.0%). Does that contradict excluding due-today
+     backlog as "debt one day out"? No, and the difference is the schedule, not
+     the mood. Backlog is OVERDUE: its next_review_at is <= today, the system
+     already said "do this now" and the user has not, so re-presenting it is a
+     debt notice and its true timing is "now", not "tomorrow" -- teasing it as
+     tomorrow is both nagging AND false. A skipped concept is SCHEDULED: the
+     system deliberately set its next_review_at to tomorrow, so "coming up for
+     review tomorrow" is literally true, on time, and forward-looking. "I set
+     this aside, it comes back tomorrow" is the healthy version of the loop, not
+     debt. The rule is therefore self-consistent: the teaser shows what is
+     truthfully due tomorrow (which includes today's skips) and hides what is
+     overdue (which a skip is not). Behaviour unchanged.
+
+D-142 ADDENDUM 3 (review response): COPY SOFTENED FROM A PROMISE TO A TEASE.
+     Selection into any given day's set is coverage-weighted with a 14-day
+     recently_seen_ids exclusion (sessions/service.py:152-159, sampler
+     pick()), so a concept that is DUE tomorrow may still not be DRAWN into
+     tomorrow's 3-5 slots. The shipped copy was "Tomorrow: a return to X" /
+     "you come back to X", which promises a set the sampler can break. Changed
+     to schedule language that promises only what is true -- the review being
+     due: "Coming up for review tomorrow: X" and "That's your first day done. X
+     is coming up for review tomorrow." "Coming up for review" is a property of
+     next_review_at (a fact this code owns), not of the sampled set (which it
+     does not). Negative test unchanged (empty case shows nothing); the e2e
+     assertions were updated to the new strings.
+
+D-142 ADDENDUM 4 (review response): first_completed_session IS RECOMPUTED, NOT
+     READ AS A STORED FACT, and that cuts against the D-116/D-137 doctrine that
+     a recorded fact beats a recomputation a timezone change can move. Kept
+     deliberately: it is cosmetic (it only warms one line of copy, never gates
+     behaviour or spends anything), so the doctrine's stakes -- a double-send, a
+     lost streak -- do not apply. The cost is named so it is not a surprise:
+     POST /attempts (D-95) computes the flag once at completion time and caches
+     it in the idempotent response, while the Dashboard recomputes it from the
+     completed_at count on a later request, so the two clients could in
+     principle disagree about whether a session was the user's first-ever
+     finished day (e.g. if a second session completes between the POST and the
+     Dashboard read). For a warm one-time greeting that disagreement is
+     invisible; for anything load-bearing it would not be acceptable and the
+     stored-fact rule would bind.
+
+D-142 ADDENDUM 5 (review response): FIRST-DAY FALLBACK, because the highest-value
+     impression was the emptiest. The warm variant is gated on
+     first_completed_session, which is by definition the user's first day -- and
+     Addendum 1 measured day-1 render at 0-52% (0% for a user who never skips,
+     since every first-correct schedules 7 days out). So the single best moment
+     in the feature, a user's first-ever completed session, was the one most
+     likely to render nothing, and rendered nothing ALWAYS for a no-skip user.
+     FIX: when first_completed_session is true AND the strict tomorrow window is
+     empty, fall back to the weakest-mastery concept across all the user's
+     states and show a warm line. Narrowly scoped on purpose:
+     - first-completed-ONLY. Steady state is untouched: a returning user with an
+       empty window still sees nothing (Addendum 1's empty case), so the fallback
+       cannot leak into the common path. The window is NOT widened and Addendum
+       2's disjoint rule is NOT re-opened.
+     - the copy makes NO date claim. The fallback concept is not scheduled for
+       tomorrow, so "coming up for review tomorrow" would be the exact promise
+       Addendum 3 just removed. A new field `is_fallback` on the teaser drives a
+       separate string, "That's your first day done. Next up: X." -- "Next up"
+       asserts only that it is the next thing worth doing, which the
+       weakest-mastery pick makes true, and no date.
+     - `is_fallback` is only ever set alongside first_completed_session, so the
+       wire shape is {concept, first_completed_session, is_fallback} and the
+       three render states are: plain scheduled, warm scheduled (date), warm
+       fallback (no date).
+     NEGATIVE TESTS (all in test_a4_peek_tomorrow.py): first-completed + empty
+     window renders the fallback flagged is_fallback; NOT-first-completed + empty
+     window still renders nothing; first-completed + NON-empty window uses the
+     real scheduled concept, never the fallback, even when a weaker out-of-window
+     concept exists. COST: one extra weakest-mastery query, run only on a
+     first-completed day with an empty window (once per user, ever). This is the
+     "weakest-mastery fallback" lever Addendum 1 named, taken for the first-day
+     case only rather than for the whole weekly cohort.

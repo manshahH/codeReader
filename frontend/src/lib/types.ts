@@ -151,10 +151,21 @@ export interface SessionExercise {
   payload: SessionExercisePayload;
 }
 
+export interface TomorrowTeaser {
+  concept: string;
+  first_completed_session: boolean;
+  // D-142 Addendum 5: true only on the first-completed-session fallback, where
+  // the concept is NOT scheduled for tomorrow, so the copy must not claim a date.
+  is_fallback: boolean;
+}
+
 export interface SessionResponse {
   session_date: string;
   completed: boolean;
   exercises: SessionExercise[];
+  // A4 "peek at tomorrow" (D-142): present only on the completed state, and null
+  // when nothing is due tomorrow. The Dashboard renders it; nothing else reads it.
+  tomorrow: TomorrowTeaser | null;
 }
 
 export interface ActivityDay {

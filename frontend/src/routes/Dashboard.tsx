@@ -6,7 +6,13 @@ import { useAuth } from '../lib/auth-context';
 import { formatRelativeDate } from '../lib/format';
 import type { Panel } from '../lib/usePanel';
 import { usePanel } from '../lib/usePanel';
-import type { ConceptMastery, MeSessionSummary, MeStats, SessionResponse } from '../lib/types';
+import type {
+  ConceptMastery,
+  MeSessionSummary,
+  MeStats,
+  SessionResponse,
+  TomorrowTeaser,
+} from '../lib/types';
 
 const UPCOMING_REVIEWS_SHOWN = 5;
 
@@ -40,14 +46,14 @@ export function Dashboard() {
     session.status === 'loading'
       ? 'Loading today’s session…'
       : session.status === 'error'
-        ? 'Couldn’t load today’s status — you can still start your session.'
+        ? 'Couldn’t load today’s status. You can still start your session.'
         : total === 0
           ? 'Nothing to read just yet.'
           : completed
             ? 'Completed'
             : doneCount === 0
               ? 'Not started'
-              : `In progress — ${doneCount} of ${total}`;
+              : `In progress: ${doneCount} of ${total}`;
 
   // The primary CTA renders in every state except a confirmed empty pool, so a
   // failed secondary fetch -- or even a failed session fetch -- never blocks
@@ -84,6 +90,9 @@ export function Dashboard() {
                 <p className="text-sm text-ink-muted">
                   Today covers: <span className="text-ink">{todayConcepts.map(readable).join(' · ')}</span>
                 </p>
+              ) : null}
+              {completed && sessionData?.tomorrow ? (
+                <TomorrowPeek teaser={sessionData.tomorrow} />
               ) : null}
             </>
           ) : (
@@ -162,6 +171,38 @@ function WelcomeBack({ restoresTo }: { restoresTo: number }) {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * A4 "peek at tomorrow" (D-142). A single-concept hook on the completed state:
+ * a reason to return that the streak cannot supply, with no guilt and no
+ * to-do-list count. It reuses the muted/ink pair the "Today covers" line above
+ * uses -- no new colour, border, or card -- so it reads as one more quiet line
+ * of the completed panel, not a banner. The warm lead-in fires exactly once,
+ * on the user's first-ever finished day (`first_completed_session`), then the
+ * plain hook every day after.
+ *
+ * Copy is a TEASE, not a promise (D-142 review addendum 3). The concept is due
+ * for review tomorrow -- a schedule fact -- but the sampler (coverage-weighted,
+ * with a 14-day recently-seen exclusion) does not guarantee it lands in
+ * tomorrow's drawn set. "Coming up" states the schedule without promising the
+ * set; "a return to X" would have promised a set the sampler can break.
+ */
+function TomorrowPeek({ teaser }: { teaser: TomorrowTeaser }) {
+  const concept = <span className="text-ink">{readable(teaser.concept)}</span>;
+  return (
+    <p className="text-sm text-ink-muted">
+      {teaser.is_fallback ? (
+        // First-completed-session fallback (D-142 Addendum 5): the concept is
+        // NOT scheduled for tomorrow, so no date claim -- just "Next up".
+        <>That’s your first day done. Next up: {concept}.</>
+      ) : teaser.first_completed_session ? (
+        <>That’s your first day done. {concept} is coming up for review tomorrow.</>
+      ) : (
+        <>Coming up for review tomorrow: {concept}.</>
+      )}
+    </p>
   );
 }
 

@@ -95,12 +95,42 @@ class SessionExercise(BaseModel):
     payload: SessionExercisePayload
 
 
+class TomorrowTeaser(BaseModel):
+    """A4 "peek at tomorrow" (D-142): the hook shown on the Dashboard's
+    completed state.
+
+    Derived from user_concept_state.next_review_at falling within the user's
+    LOCAL day after today -- real spaced-repetition data already present, never
+    a persisted "tomorrow's session" (which cannot exist before today's answers
+    land; see D-142). At most one concept: a hook, not a chore.
+    `first_completed_session` mirrors POST /attempts' field (D-95), recomputed
+    here because A4 renders on the Dashboard, so the client can warm the copy on
+    the user's first-ever finished day. No grading/explanation field could ever
+    live here, so invariant 1 stays structurally enforced.
+    """
+
+    model_config = _STRICT
+
+    concept: str
+    first_completed_session: bool = False
+    # A4 D-142 Addendum 5: on a user's FIRST-EVER completed day the strict
+    # tomorrow window is usually empty (all first-corrects schedule 7 days out),
+    # so the highest-value impression would render nothing. When that happens we
+    # fall back to the weakest-mastery concept. `is_fallback` is true only then,
+    # and it means the copy must NOT claim a date (the concept is not scheduled
+    # for tomorrow). It is only ever set alongside first_completed_session.
+    is_fallback: bool = False
+
+
 class SessionResponse(BaseModel):
     model_config = _STRICT
 
     session_date: dt.date
     completed: bool
     exercises: list[SessionExercise]
+    # A4 (D-142): null unless `completed` is true AND a concept is due tomorrow.
+    # The Dashboard's completed state renders it; every other state ignores it.
+    tomorrow: TomorrowTeaser | None = None
 
 
 class SessionReviewExercise(BaseModel):

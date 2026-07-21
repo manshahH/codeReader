@@ -12,7 +12,7 @@ import json
 import uuid
 
 from redis.asyncio import Redis
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +30,7 @@ from app.schemas.session import (
     SessionResponse,
     SessionReviewExercise,
     SessionReviewResponse,
+    TomorrowTeaser,
 )
 from app.sessions.sampler import (
     ALL_CANDIDATE_TYPES,
@@ -377,6 +378,94 @@ def _payload_documents(exercise: Exercise, payload: dict, fields: dict) -> list[
     return documents
 
 
+async def _tomorrow_teaser(
+    db: AsyncSession,
+    user: User,
+    today: dt.date,
+) -> TomorrowTeaser | None:
+    """A4 "peek at tomorrow" (D-142). Callers gate on `completed` before calling:
+    the teaser is only meaningful once the day is done, and it ships on the
+    Dashboard's completed state.
+
+    Derived, never persisted. The concept comes from user_concept_state rows
+    whose next_review_at falls strictly inside the user's LOCAL day after today
+    -- disjoint from "due today" (the sampler's `next_review_at < today's
+    cutoff`), so this never surfaces a concept that is already today's problem,
+    and a concept the user just practised has been pushed out of the window. No
+    sampling, no exercise ids, no schema change: tomorrow's SET cannot exist
+    before today's answers land (D-142(1)), so this teases only the SHAPE.
+    """
+    tomorrow = today + dt.timedelta(days=1)
+    window_start = local_day_end_utc(user.timezone, today)  # start of tomorrow, local
+    window_end = local_day_end_utc(user.timezone, tomorrow)  # start of day-after, local
+
+    # Selection rule (D-142(3)): weakest mastery first (the concept the user is
+    # least solid on -- the meaningful reason to return, per docs/10's mastery
+    # engine), tie-broken by most overdue within the window, then concept name
+    # for a fully deterministic single pick.
+    scheduled = await db.scalar(
+        select(UserConceptState.concept)
+        .where(
+            UserConceptState.user_id == user.id,
+            UserConceptState.next_review_at >= window_start,
+            UserConceptState.next_review_at < window_end,
+        )
+        .order_by(
+            UserConceptState.mastery.asc(),
+            UserConceptState.next_review_at.asc(),
+            UserConceptState.concept.asc(),
+        )
+        .limit(1),
+    )
+
+    # first_completed_session (D-95 semantics, recomputed here because A4 ships
+    # on the Dashboard, not on the POST /attempts response where the flag is
+    # emitted): true iff today's completed session is the only one this user has
+    # ever finished -- the habit-forming moment docs/10 line 278 reserves it
+    # for. Same ledger fact as attempts/service.py: count completed_at rows.
+    completed_count = await db.scalar(
+        select(func.count())
+        .select_from(DailySession)
+        .where(
+            DailySession.user_id == user.id,
+            DailySession.completed_at.isnot(None),
+        ),
+    )
+    first_completed = completed_count == 1
+
+    if scheduled is not None:
+        return TomorrowTeaser(concept=scheduled, first_completed_session=first_completed)
+
+    # Strict window empty.
+    if not first_completed:
+        # Empty case (D-142(3)): nothing due tomorrow -> no teaser. A bare count
+        # is not a reason to return, and a weak promise is worse than silence,
+        # so the field stays null and the client renders nothing.
+        return None
+
+    # D-142 Addendum 5: the ONE exception. On a user's first-ever completed day
+    # the strict window is almost always empty (every first-correct schedules 7
+    # days out; measured day-1 render was 0-52%, and 0% for a user who never
+    # skips), yet this is the single highest-value impression in the feature.
+    # Fall back to the weakest-mastery concept so the warm copy still lands. This
+    # does NOT widen the window or re-open the disjoint rule (Addendum 2): it is
+    # first-completed-only, and its copy makes no date claim (is_fallback drives
+    # a "Next up" string, not "coming up for review tomorrow").
+    fallback = await db.scalar(
+        select(UserConceptState.concept)
+        .where(UserConceptState.user_id == user.id)
+        .order_by(
+            UserConceptState.mastery.asc(),
+            UserConceptState.next_review_at.asc(),
+            UserConceptState.concept.asc(),
+        )
+        .limit(1),
+    )
+    if fallback is None:
+        return None
+    return TomorrowTeaser(concept=fallback, first_completed_session=True, is_fallback=True)
+
+
 async def get_today_session(db: AsyncSession, redis: Redis, user: User) -> dict:
     today, slots = await get_today_slots(db, redis, user)
     if not slots:
@@ -423,10 +512,15 @@ async def get_today_session(db: AsyncSession, redis: Redis, user: User) -> dict:
 
     completed = len(slots) > 0 and attempted_ids.issuperset(s.exercise_id for s in slots)
 
+    # A4 (D-142): the teaser is a property of the completed state only. Gating
+    # here keeps the extra query off every in-progress fetch (the hot path).
+    tomorrow = await _tomorrow_teaser(db, user, today) if completed else None
+
     return SessionResponse(
         session_date=today,
         completed=completed,
         exercises=exercises,
+        tomorrow=tomorrow,
     ).model_dump(mode="json")
 
 

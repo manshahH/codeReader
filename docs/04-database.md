@@ -88,6 +88,13 @@ fails.
 user-facing ever aggregates attempts at request time, even at MVP.
 user_concept_state keys the spaced repetition (next_review_at) and skill
 graph; concept strings validated app-side against the versioned taxonomy.
+A4 "peek at tomorrow" (D-142) adds a READ-ONLY use with no schema change:
+`GET /session/today` reads the single `next_review_at` falling within the
+user's local day after today to tease one concept on the Dashboard's completed
+state. It writes nothing and persists no "tomorrow's session" -- tomorrow's set
+depends on inputs (next_review_at, mastery, recently-seen) that today's attempts
+are still mutating, so it can only be honestly derived at request time, never
+frozen ahead.
 
 **streak_events**: every streak transition audited. Streaks are the retention
 crown jewel; "my streak vanished" must be answerable in one query.
