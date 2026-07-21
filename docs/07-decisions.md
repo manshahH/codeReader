@@ -4728,12 +4728,17 @@ D-142 ADDENDUM 1 (review response): RENDER RATE MEASURED. The concern was that a
      user's sessions to days k, 2k, 3k... which biases against the 7/21-day
      cycles; re-run with a random offset in [0,k), engaged params, steady
      state): daily 87.5%, every-2-days 90.1%, every-3-days 42.1%, every-4-days
-     83.4%, weekly 18.5%. The randomisation moved the headline daily/every-2
-     figures by under 3 points, so they are trustworthy; the every-3-days dip to
-     ~42% survives randomisation and is a genuine interaction (a 3-day cadence
-     rarely lands the day before a 7-multiple review), not a phase artifact, and
-     still clears 40%. Only a weekly-or-sparser user falls below, and their
-     reviews genuinely are not due "tomorrow", so silence is honest there.
+     83.4%, weekly 18.5%. Versus the fixed-phase first cut, daily barely moved
+     (87.3 -> 87.5, 0.2 points) but every-2-days moved materially (83.5 -> 90.1,
+     6.6 points) and every-3-days moved 51.2 -> 42.1; the direction of the
+     conclusion is unaffected because all three still clear 40%, but the
+     randomised figures are the trustworthy ones and the fixed-phase numbers
+     should not be quoted. The every-3-days case now clears the 40% threshold by
+     about two points rather than eleven, and that dip survives randomisation as
+     a genuine interaction (a 3-day cadence rarely lands the day before a
+     7-multiple review), not a phase artifact. Only a weekly-or-sparser user
+     falls below, and their reviews genuinely are not due "tomorrow", so silence
+     is honest there.
      STRUCTURAL NOTE (review item 4), recorded so it is not mysterious later:
      render rate FALLS as accuracy RISES (84.4% at p=0.70 no-skips vs 64.5% at
      p=0.85), because a correct answer pushes the interval to 7 then 21 days, so
