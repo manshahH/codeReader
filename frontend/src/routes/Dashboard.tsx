@@ -1,18 +1,12 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { getMeConcepts, getMeSessions, getMeStats, getSessionToday, repairStreak } from '../lib/api';
+import { StreakReturn } from '../components/session/StreakReturn';
+import { getMeConcepts, getMeSessions, getMeStats, getSessionToday } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { formatRelativeDate } from '../lib/format';
 import type { Panel } from '../lib/usePanel';
 import { usePanel } from '../lib/usePanel';
-import type {
-  ConceptMastery,
-  MeSessionSummary,
-  MeStats,
-  SessionResponse,
-  TomorrowTeaser,
-} from '../lib/types';
+import type { ConceptMastery, MeSessionSummary, MeStats, SessionResponse } from '../lib/types';
 
 const UPCOMING_REVIEWS_SHOWN = 5;
 
@@ -73,7 +67,7 @@ export function Dashboard() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr] gap-x-10 gap-y-8 lg:grid-cols-2">
         {stats.status === 'ok' && stats.data.repair_restores_to !== null ? (
-          <WelcomeBack restoresTo={stats.data.repair_restores_to} />
+          <StreakReturn restoresTo={stats.data.repair_restores_to} className="shrink-0 lg:col-span-2" />
         ) : null}
 
         <section className="flex shrink-0 flex-col gap-4 rounded-loose bg-surface-raised p-7 lg:col-span-2">
@@ -91,9 +85,11 @@ export function Dashboard() {
                   Today covers: <span className="text-ink">{todayConcepts.map(readable).join(' · ')}</span>
                 </p>
               ) : null}
-              {completed && sessionData?.tomorrow ? (
-                <TomorrowPeek teaser={sessionData.tomorrow} />
-              ) : null}
+              {/* A4's "peek at tomorrow" teaser moved to the session-complete
+                  screen exclusively (D-143(3)): the finish moment is its home,
+                  and showing it here too would repeat the same line seconds
+                  later. The dashboard's "Upcoming reviews" panel still carries
+                  the forward schedule. */}
             </>
           ) : (
             <p className="text-sm text-ink-muted">Check back in a little while.</p>
@@ -115,94 +111,6 @@ export function Dashboard() {
         </section>
       </div>
     </div>
-  );
-}
-
-/**
- * A1 "celebrate the return" (docs/10). Renders only while a repair is actually
- * available, so it appears at most once per reset and disappears the moment it
- * is used. Deliberately quieter than the primary CTA: a bordered panel rather
- * than a raised one, so returning reads as an offer and never outranks today's
- * session. One affordance, no countdown, no reminder to come back, no guilt.
- */
-function WelcomeBack({ restoresTo }: { restoresTo: number }) {
-  const [state, setState] = useState<'offer' | 'working' | 'done' | 'gone'>('offer');
-  const [restored, setRestored] = useState(0);
-
-  if (state === 'gone') return null;
-
-  async function repair() {
-    setState('working');
-    try {
-      const result = await repairStreak(crypto.randomUUID());
-      setRestored(result.current_streak);
-      setState('done');
-    } catch {
-      // A 409 means the offer expired or was already used. Nothing was lost
-      // and there is nothing for the reader to fix, so retire it quietly.
-      setState('gone');
-    }
-  }
-
-  return (
-    <section className="flex shrink-0 flex-col items-start gap-3 rounded-loose border border-border p-6 lg:col-span-2">
-      {state === 'done' ? (
-        <p className="text-sm text-ink">
-          Restored. Your streak is back at{' '}
-          <span className="font-code">{restored}</span> {restored === 1 ? 'day' : 'days'}.
-        </p>
-      ) : (
-        <>
-          <p className="text-sm text-ink">Good to see you again.</p>
-          <p className="text-sm text-ink-muted">
-            You can pick your previous streak back up, or just start a new one today. Either way
-            works.
-          </p>
-          <button
-            type="button"
-            onClick={repair}
-            disabled={state === 'working'}
-            className="rounded-soft border border-border px-4 py-2 font-ui text-sm text-ink transition-colors duration-fast hover:bg-surface-raised disabled:opacity-60"
-          >
-            {state === 'working'
-              ? 'Restoring…'
-              : `Restore your ${restoresTo}-day streak`}
-          </button>
-        </>
-      )}
-    </section>
-  );
-}
-
-/**
- * A4 "peek at tomorrow" (D-142). A single-concept hook on the completed state:
- * a reason to return that the streak cannot supply, with no guilt and no
- * to-do-list count. It reuses the muted/ink pair the "Today covers" line above
- * uses -- no new colour, border, or card -- so it reads as one more quiet line
- * of the completed panel, not a banner. The warm lead-in fires exactly once,
- * on the user's first-ever finished day (`first_completed_session`), then the
- * plain hook every day after.
- *
- * Copy is a TEASE, not a promise (D-142 review addendum 3). The concept is due
- * for review tomorrow -- a schedule fact -- but the sampler (coverage-weighted,
- * with a 14-day recently-seen exclusion) does not guarantee it lands in
- * tomorrow's drawn set. "Coming up" states the schedule without promising the
- * set; "a return to X" would have promised a set the sampler can break.
- */
-function TomorrowPeek({ teaser }: { teaser: TomorrowTeaser }) {
-  const concept = <span className="text-ink">{readable(teaser.concept)}</span>;
-  return (
-    <p className="text-sm text-ink-muted">
-      {teaser.is_fallback ? (
-        // First-completed-session fallback (D-142 Addendum 5): the concept is
-        // NOT scheduled for tomorrow, so no date claim -- just "Next up".
-        <>That’s your first day done. Next up: {concept}.</>
-      ) : teaser.first_completed_session ? (
-        <>That’s your first day done. {concept} is coming up for review tomorrow.</>
-      ) : (
-        <>Coming up for review tomorrow: {concept}.</>
-      )}
-    </p>
   );
 }
 

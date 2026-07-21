@@ -4849,3 +4849,84 @@ D-142 ADDENDUM 5 (review response): FIRST-DAY FALLBACK, because the highest-valu
      first-completed day with an empty window (once per user, ever). This is the
      "weakest-mastery fallback" lever Addendum 1 named, taken for the first-day
      case only rather than for the whole weekly cohort.
+
+D-143 The session-complete screen, and the three homeless things it houses. Built
+     now because three unrelated deferrals all point at one missing surface: A1's
+     "celebrate the return" state was specced for "the dashboard AND
+     session-complete" but only the dashboard half exists (docs/10 A1-as-built);
+     first_completed_session (D-95) has had no session-level home since M6; and
+     A4's teaser was explicitly designed to relocate here (D-142(2)). There is
+     also a test-hygiene reason -- D-119 records session.spec.ts failing 8/8 on a
+     "Session complete" screen that did not exist, and every end-of-session
+     assertion since has had to target the dashboard redirect instead.
+
+     (1) A REAL ROUTE, `/session/complete`, not a terminal phase inside
+     `/session`. The player (Session.tsx) is already a multi-phase machine
+     (answering/submitting/grading/revealed); folding a wrap-up phase into it
+     couples celebration UI to the player and makes the completion state
+     un-deep-linkable. A route separates the concerns and, with a server-state
+     guard (below), makes all three of refresh, deep-link and back-button work
+     rather than blank: refresh re-fetches and re-guards; a deep-link is guarded;
+     the completion redirect from Session.tsx uses `replace`, so Back does not
+     re-enter the finished player. Session.tsx:152 changes from
+     `<Navigate to="/" replace/>` to `<Navigate to="/session/complete" replace/>`.
+
+     (2) THE GUARD IS SERVER STATE, never navigation history. The screen derives
+     completion from GET /session/today `completed === true`; anything else
+     (in-progress, empty pool, a stale deep-link the day after) redirects to "/"
+     (the dashboard, the neutral home that renders every state gracefully). This
+     is the same discipline as the rest of the app: a client cannot talk its way
+     onto the screen by routing to it. NEGATIVE TEST: stub completed=false, assert
+     the screen redirects to the dashboard and shows no completion copy.
+
+     (3) THE A4 TEASER MOVES HERE EXCLUSIVELY; it is REMOVED from the dashboard.
+     The decision (D-142(2) blessed the relocation but left "also, or instead"
+     open): instead. The teaser is a forward hook for the finish moment. Showing
+     it on the completion screen and then AGAIN on the dashboard two seconds later
+     when the user clicks through is the same sentence twice in one flow, which
+     reads as a bug, not a nudge. The completion screen IS the finish moment, so
+     it is the teaser's correct and only home. Cost, stated: a user who returns to
+     the dashboard an hour later sees no teaser -- acceptable, because the hook
+     already fired at the peak moment and the dashboard's "Upcoming reviews" panel
+     still shows the forward schedule. This removes TomorrowPeek from Dashboard.tsx
+     and relocates A4's peek-at-tomorrow.spec.ts assertions onto the new screen;
+     both are recorded here rather than done silently, because it is a behaviour
+     change to A4 (committed but unreleased on this branch, landing together).
+
+     (4) WHAT THE SCREEN CONTAINS, top to bottom: a calm completion heading; the
+     streak state -- A1's welcome-back copy plus the "Restore your N-day streak"
+     repair affordance when repair_restores_to is non-null (this is the half of
+     A1 that was never built), else a plain current-streak line; the A4 teaser
+     relocated UNCHANGED including its warm first-completed and fallback variants;
+     and one clear link back to the dashboard. No guilt copy anywhere (docs/10
+     rule 2). The first_completed_session "warm state" is delivered THROUGH the
+     teaser's existing warm variant rather than as a separate element -- see (5)
+     for why that is always available here.
+
+     (5) DATA: ZERO new endpoints, fields, schema, migration or env. The screen
+     reads only GET /session/today (completed + the tomorrow teaser, which
+     already carries first_completed_session and is_fallback) and GET /me/stats
+     (current_streak, repair_available, repair_restores_to) -- both already
+     fetched elsewhere, so no new call is added to any hot path (the dashboard's
+     4-call mount and the Profile 5-call refresh race, D-121, are untouched). The
+     one subtlety, recorded as a load-bearing invariant: the first-completed warm
+     state has no separate field, it rides on the teaser -- and that is safe
+     ONLY because A4's fallback (D-142 Addendum 5) guarantees a first-completed
+     user always has a non-null teaser (a completed session created concept
+     states, so the weakest-mastery fallback always finds one). If that fallback
+     is ever removed, a no-scheduled first-day user would lose the warm greeting;
+     this coupling is deliberate and is why the screen adds no top-level
+     first_completed_session field. VERIFIED non-changes: `psql -f db/schema.sql`
+     exits 0 and the D-117 drift check stays green (Settings.model_fields
+     unchanged).
+
+     COMPONENT REUSE: the A1 repair state machine is extracted from Dashboard.tsx
+     (WelcomeBack) into a shared, layout-neutral StreakReturn component used by
+     both the dashboard and the screen, copy strings unchanged so
+     streak-welcome-back.spec.ts stays green. TESTS UPDATED, not deleted:
+     session.spec.ts (seeded) and reveal-error-boundary.spec.ts (hermetic) both
+     asserted the dashboard-redirect completion path because it was the only
+     truthful signal available (D-119); they now target the real screen. A new
+     hermetic session-complete.spec.ts covers the guard (both directions), the
+     three streak states, the relocated teaser and the narrow layout. D-136 is
+     NOT touched: no seeded spec is added.
