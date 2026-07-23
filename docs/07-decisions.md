@@ -5577,3 +5577,21 @@ D-147 THE BACKEND TEST SUITE IS NOT SAFE TO RUN CONCURRENTLY AGAINST THE SHARED
      D-136 STAYS OPEN AND IS NOT THIS. D-136 is scoped to intermittently-flaky
      seeded Playwright specs; this is backend pytest concurrency. They are not
      the same problem and this must not be filed under it.
+
+D-146 ADDENDUM: IMPLEMENTED. The default is flipped.
+     test_healthz now runs IN-PROCESS by default via ASGITransport, like every
+     other HTTP test, so a bare `pytest` is green on any dev machine with the
+     documented Postgres/Redis up. NOT a weakening: /healthz's body runs
+     _check_postgres and _check_redis against the configured services either
+     way, and a new NEGATIVE test (test_healthz_reports_a_down_dependency)
+     points REDIS_URL at a dead port and asserts 503 with redis named, proving
+     the in-process path actually fires the probes rather than returning a
+     hollow 200. VERIFIED: `pytest tests/test_healthz.py` with NO env set ->
+     2 passed, 1 skipped.
+     THE LIVE-SERVER PROBE IS NOT DELETED. It asserts something real (a uvicorn
+     process is up and serving) and now lives as
+     test_healthz_against_a_live_server, skipped unless HEALTHZ_TEST_AGAINST_
+     SERVER=1 is set with a server on :8000. Its homes are the deploy path and
+     the Playwright CI job, both of which already start a real server. CI
+     dropped HEALTHZ_TEST_IN_PROCESS from ci.yml (the in-process path is the
+     default now, so no special-casing is needed to keep the suite green).

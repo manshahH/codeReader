@@ -47,7 +47,8 @@ jobs:
       GITHUB_CLIENT_SECRET: test-github-client-secret
       TOKEN_ENC_KEY: test-token-encryption-key-32b
       ANTHROPIC_API_KEY: test-anthropic-key
-      HEALTHZ_TEST_IN_PROCESS: '1'
+      # HEALTHZ_TEST_IN_PROCESS removed (D-146): in-process is now the default
+      # healthz path, so CI needs no special-casing to keep test_healthz green.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
