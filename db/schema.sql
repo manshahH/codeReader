@@ -142,6 +142,23 @@ CREATE TABLE email_suppressions (
   PRIMARY KEY (user_id, kind)
 );
 
+-- Per-feature usage tracking (D-145(g)). ONE row per (user, feature, local day)
+-- FIRST use. The PRIMARY KEY IS the once-per-day ceiling, inserted ON CONFLICT
+-- DO NOTHING -- same construction as email_deliveries: a recorded fact with a
+-- uniqueness constraint, never a recomputation. `feature` is a registry key
+-- (app.core.entitlements.Feature) stored as its text value, not an FK: the
+-- registry is code and a key is stable forever by convention (D-145(b)) so
+-- these rows never orphan. No new PII (D-120): user_id + a date is already the
+-- shape of streak_events/daily_sessions/attempts. Deleted with the account by
+-- ON DELETE CASCADE. Added by migration 0012.
+CREATE TABLE feature_usage (
+  user_id    uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  feature    text        NOT NULL,                  -- a registry key (entitlements.Feature)
+  local_date date        NOT NULL,                  -- the user's LOCAL day
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, feature, local_date)
+);
+
 -- Provider-agnostic identities. MVP has exactly one row per user
 -- (provider = 'github') but the shape is multi-provider from day one.
 CREATE TABLE auth_identities (

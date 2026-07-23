@@ -5098,3 +5098,394 @@ D-144 TEASER GOES DASHBOARD-ONLY, and the screen gets its own first-day state.
      first-day-rides-the-teaser coupling, removed; its test re-scoped to guard
      A4's fallback). D-143 Addendum 1's recommendation is now the taken decision.
      Pointers added to those addenda; history not rewritten.
+
+D-145 ENTITLEMENTS GROUNDWORK, recorded BEFORE A5 is specced and before any
+     billing exists. This entry settles the SHAPE of paid tiers, not the tiers.
+     Nothing here is built: it is a decision plus a design, and the parts marked
+     PROPOSED await approval. Two of these choices determine A5's API surface
+     and one determines what A5's UI copy is allowed to say, which is why they
+     are settled now rather than during the build.
+
+     THE SIX DECISIONS (product owner, recorded as given):
+     (1) Everything is free NOW, not free FOREVER. There will be multiple paid
+     tiers offering different features, and any feature must be flippable to a
+     paid tier at any time WITHOUT a refactor.
+     (2) No billing and no plan storage yet. No payment provider, no paid tier.
+     (3) No grandfathering. When a feature moves to a paid tier, existing free
+     users do NOT keep it.
+     (4) Export is the mitigation. Before any feature moves to a paid tier,
+     users must be able to export the data they created in it. Applies first to
+     the A5 cheat sheet.
+     (5) No user-facing mention of future paid tiers. Nothing in the UI
+     announces or hints at pricing.
+     (6) Per-feature usage tracking is approved, so the eventual decision about
+     what goes paid is made on evidence.
+
+     (a) ONE GATE, ONE PLACE. PROPOSED, not built.
+     Module: backend/app/core/entitlements.py. core/ rather than a new domain
+     package because this is cross-cutting infrastructure with no models and no
+     router, exactly like core/ratelimit.py and core/idempotency.py, and because
+     the module law (routers -> services -> models, cross-domain via services
+     only) would otherwise force every domain service to import another domain's
+     service to ask a yes/no question. core/ is the layer every domain may
+     already import.
+     Surface, complete:
+       class Plan(str, Enum):        FREE = "free"
+       class Feature(str, Enum):     CHEAT_SHEET = "cheat_sheet"  (etc)
+       PLAN_FEATURES: dict[Plan, frozenset[Feature]]
+       def resolve_plan(user: User) -> Plan
+       def is_entitled(user: User, feature: Feature) -> bool
+       def require_entitled(user: User, feature: Feature) -> None
+     require_entitled raises ApiError(403, "feature_not_entitled", ...). It is
+     the only thing call sites use; is_entitled exists for the rare branch that
+     shapes a response rather than refusing it.
+     SYNCHRONOUS, deliberately, and it takes the already-loaded User row. A
+     check that CAN do I/O eventually WILL, once per request in a loop. When
+     billing arrives the plan is resolved ONCE per request where the User row is
+     loaded, never per call site. Taking User (not user_id) is also what keeps
+     the signature stable when (c)'s column eventually lands.
+     THE FAILURE MODE THIS IS DESIGNED AGAINST is `if user.is_pro` scattered
+     across routers: flipping a feature then means finding every site, and
+     missing one is a silent leak rather than a loud error. One function, one
+     module, one grep.
+
+     (b) THE PLAN-TO-FEATURE MAP IS DATA. PROPOSED, not built.
+     PLAN_FEATURES lives in entitlements.py and is the ONLY place that knows
+     which tier a feature belongs to. Today it is literally
+     {Plan.FREE: frozenset(Feature)}: free gets every registered feature, so
+     the gate answers yes for everything and decision (2) holds with no
+     special-casing. Flipping the cheat sheet to paid is then removing one key
+     from the free set and putting it in a paid set: a change to that dict, with
+     ZERO edits to cheat-sheet code. If the feature's own module ever contains
+     the knowledge that it is paid, the design has failed, and (d)'s third test
+     is what proves it has not.
+     The Feature enum IS the registry. A key must be declared there before it
+     can be gated, which is what makes the CI coverage check in (d) possible at
+     all.
+     NAMING CONVENTION: lowercase snake_case, `<domain>_<noun>`, no verb, and
+     three rules.
+       (i) A key NEVER contains a tier name. `pro_cheat_sheet` is banned: the
+       name goes stale the instant the map moves it, and a stale name is how the
+       knowledge leaks back out of the map.
+       (ii) A key is stable forever. It will appear in usage-tracking rows (g)
+       and in any future billing configuration, so renaming one orphans history.
+       (iii) ONE KEY PER INDEPENDENTLY FLIPPABLE UNIT. This is forced by
+       decision (4) rather than aesthetic: export must stay free when the sheet
+       goes paid, so `cheat_sheet` and `cheat_sheet_export` are two keys from
+       day one, not one key with a special case.
+
+     (c) THE GATE READS A HARDCODED FREE. NO COLUMN, NO MIGRATION. PROPOSED.
+       def resolve_plan(user: User) -> Plan:
+           return Plan.FREE   # the single billing seam; see D-145(c)
+     Argued, because the obvious alternative is a `users.plan` column now:
+       - A column nothing can write anything but its default into is not data,
+         it is a default with a storage cost and a drift risk. Every reader
+         still has to ask "is this actually maintained?", and the answer for the
+         entire pre-billing period is no.
+       - The schema is ALREADY three migrations ahead of production (production
+         0008, master 0011). A fourth unapplied migration, for a column with
+         exactly one possible value, adds cutover risk for zero present benefit.
+       - When billing arrives the payment provider is the source of truth for
+         subscription state, and the column becomes a PROJECTION of webhook
+         events with its own sync, backfill and reconciliation semantics.
+         Designing that before the provider is chosen means designing it twice.
+       - The reverse cost is one migration later, landing in the same change as
+         the billing code that writes it, which is the only change that can
+         actually test it.
+     THE JWT `plan` CLAIM IS NOT THE SOURCE AND MUST NOT BECOME IT. There is
+     already a `plan` claim, hardcoded "free" (auth/tokens.py:69), asserted in
+     ACCESS_CLAIMS, and verify_access_token REJECTS any token whose plan is not
+     "free" (tokens.py:96). docs/05 section 1 documents it. That is a
+     token-shape check and it stays. What must NOT happen when billing arrives
+     is minting per-user plan claims: the access token lives 15 minutes, so a
+     downgrade, a failed payment or a refund would take up to 15 minutes to bite
+     and could not be revoked without the denylist D-4 deliberately declined to
+     build. Entitlement is resolved server-side, per request, from the row.
+     CurrentUser.plan (deps.py:36,53) is set once and READ NOWHERE (verified by
+     grep across backend and frontend). It is a legacy claim, not a seam.
+     PROPOSED follow-up, not done here: delete CurrentUser.plan so nobody
+     mistakes it for the entitlement source. The claim itself stays, because
+     removing it changes ACCESS_CLAIMS and invalidates every live token.
+
+     (d) ENFORCEMENT RIDES THE ALLOWLIST INVARIANT, AND THE TEST RULE IS
+     MECHANIZED. PROPOSED.
+     Invariant 2 (CLAUDE.md, docs/05 section 9) says response schemas are
+     allowlists enforced by a CI test. Entitlement gating lives in that same
+     machinery, SERVER-SIDE. A frontend that hides a feature while the API still
+     returns the data is not a gate, it is a decoration.
+     TWO ENFORCEMENT SHAPES, and the choice is not free:
+       1. WHOLE RESOURCE (preferred): require_entitled() as the first statement
+          of the SERVICE function, not a router dependency. A router dependency
+          protects one path; the module law makes the service the shared choke
+          point that every present and future caller passes through.
+       2. FIELD WITHIN AN EXISTING RESPONSE: the field is absent from the
+          allowlist model. Because the models are extra="forbid" and constructed
+          explicitly, this means a different response model, never popping a key
+          out of a dict. Prefer shape 1: a field that appears and disappears is
+          precisely where leak bugs live.
+     REQUIRED TEST PATTERN, three tests per feature at the moment it flips:
+       - test_<feature>_entitled_user_gets_the_data          (positive)
+       - test_<feature>_unentitled_user_is_refused_by_the_api (negative, and it
+         is the important one). It calls the HTTP route directly with a valid
+         access token for an unentitled user and asserts BOTH the 403
+         feature_not_entitled AND that the response body contains none of the
+         gated data. A refusal that still leaks in the body is the exact failure
+         invariant 2 exists for, so asserting the status alone is insufficient.
+       - test_<feature>_map_change_alone_flips_it (the DESIGN test). Monkeypatch
+         PLAN_FEATURES and nothing else, then prove behaviour changed. If the
+         feature module contains the paid knowledge, this test cannot pass. It
+         is what turns (b) from an intention into a property.
+     THE CI CHECK, so the house rule is mechanized rather than remembered:
+     backend/tests/test_entitlements_registry.py introspects the Feature enum
+     and, for every key NOT in PLAN_FEATURES[Plan.FREE], asserts that a test
+     function matching each mandatory name pattern exists in the collected
+     suite. A feature that is still free has nothing to prove and is not
+     required to have the pair. CI already runs `pytest backend/tests`, so a
+     pytest test IS the CI check; no workflow change.
+     Deliberately crude name matching, matching the house style of
+     test_api_contract_documented.py: it UNDER-catches and NEVER false-fails,
+     which is the correct failure direction for a guard, because a check that
+     cries wolf gets disabled. Its own negative test injects a sentinel gated
+     feature key with no tests and asserts the check reports it.
+     HONEST LIMITATION, stated rather than discovered later: name matching
+     proves a test EXISTS, not that it asserts anything. It mechanizes the
+     checklist, it does not replace review.
+
+     (e) EXPORT IS A PRECONDITION, NOT A FOLLOW-UP.
+     SEQUENCE, and it is an ordering with no permitted exception:
+       (i)   the feature ships free;
+       (ii)  export ships, as its own registered feature key, and that key stays
+             in the free set permanently;
+       (iii) only then may the map move the feature to a paid tier.
+     A user must never discover a feature is paid and only then be told they can
+     export. Under decision (3) there is no grandfathering, so export is the
+     ONLY thing standing between a flip and a user losing work they invested
+     while it was free. Shipping it after the flip inverts the whole mitigation.
+     PROPOSED mechanization: an EXPORT_OF: dict[Feature, Feature] beside
+     PLAN_FEATURES, plus a test asserting that every gated feature's export key
+     exists and is in the free set. A flip that forgets export then fails CI
+     rather than shipping.
+     WHAT A5 MUST GUARANTEE, which is the part that constrains A5's data model
+     and is why this is recorded before A5 is specced:
+       1. ONE authenticated server-side call returns the user's COMPLETE cheat
+          sheet, unpaginated, with no client-side assembly. If the UI needs
+          pagination, pagination is a second read path over the same query; the
+          complete read is the primitive, not a special case bolted on later.
+          A cheat sheet that exists only as a paginated view, or only as
+          something the client assembles from several calls, makes export a
+          rebuild, and a rebuild is what does not get done before the flip.
+       2. EVERY field the UI renders is stored server-side and reachable from
+          that one call. Nothing a user typed may live only in localStorage.
+          Concretely: a saved item stores its OWN snapshot of what was saved
+          (the explanation text or snippet as saved), not merely a foreign key
+          to (exercise_id, version). D-5 immutability makes the version pin
+          necessary but not sufficient: exercises get pulled and retired, and an
+          export full of dangling references is a user's work evaporating.
+       3. The export path is gated on Feature.CHEAT_SHEET_EXPORT, NEVER on
+          Feature.CHEAT_SHEET. After a flip, a user with data and no entitlement
+          must still be able to read their data out. This is an API-shape
+          requirement, not a copy requirement.
+       4. Ordering and grouping are server-side and deterministic, so an export
+          is stable and reproducible across calls.
+     The export FORMAT is deliberately not designed here.
+
+     (f) COPY AUDIT: THE APP IS CLEAN, THE DOCS ARE NOT, AND THE REAL RISK IS
+     FORWARD.
+     No user-facing string, email template or page in the product makes an
+     unqualified "free" claim. Verified: the only matches for the word in
+     frontend/src and backend/app/email are two CODE COMMENTS
+     (components/ReminderSection.tsx:37 "for free" about keyboard behaviour,
+     email/deliveries.py:160 "free of duplicates"), and nothing matches
+     "forever", "always free", "unlimited", "no cost" or "pricing" in any
+     rendered string. Login.tsx, index.html's meta description and the A2/A3
+     email bodies carry no pricing claim of any kind.
+     DOCS, with the verdict on each:
+       - docs/00-product.md:52-56, the business model paragraph ("Free: 1 daily
+         session, streaks. Pro ($6-9/mo): unlimited sessions, all languages,
+         rubric-graded free text, spaced repetition, ..."). NOT a user-facing
+         promise, so not a broken one. It IS a real constraint on planning, on
+         two counts: it names a SINGLE Pro tier at a specific price, which
+         decision (1) supersedes; and it puts SPACED REPETITION behind that
+         tier. Spaced repetition is shipped, free, and docs/10 line 57 calls it
+         "the real engine" of retention. Under decision (3) flipping it would
+         strip a core shipped mechanic from every existing user. That line
+         predates all of this and must not be read as a tier decision.
+       - docs/03-mvp-scope.md:16 ("free tier only, no payments"). Harmless and
+         historical: it is a scope statement about the MVP and it agrees with
+         decision (2).
+       - docs/10-roadmap-retention.md:97 and :328. See CONFLICTS below.
+     THE AUDIT IS CLEAN LARGELY BECAUSE THERE IS NOTHING TO BE CLEAN. There is
+     no landing page, no marketing site, no terms of service and no pricing
+     page in this repo. So the constraint binds FORWARD, and this is the durable
+     output of (f): whoever writes the launch landing page, the app-store style
+     blurb or the first announcement must not write "free" without a
+     qualification, and per decision (5) the fix is NOT to announce pricing. It
+     is to avoid making the promise. "Free while in beta" is also a promise;
+     say what the product does and leave price out.
+     NOTICED, OUT OF SCOPE, NOT A PRICING ISSUE: Login.tsx:18 still renders
+     "Code Reader" rather than the D-139 public name, and Login.tsx:9 carries
+     beta-list copy while BETA_GATE_ENABLED defaults false (D-92). Recorded so
+     the next copy pass has them; neither is affected by this entry.
+
+     (g) PER-FEATURE USAGE TRACKING. PROPOSED AND STOPPED, because it needs a
+     table, exactly as the brief requires.
+     THE QUESTION IT MUST ANSWER LATER: which features do people use, and which
+     correlate with returning. Returning is measured in DAYS, so the minimal
+     grain that answers it is one record per (user, feature, local day) FIRST
+     use. An event firehose adds volume and privacy exposure and answers nothing
+     extra.
+     WHAT IS RECORDED: user_id, feature (a registry key from (b)), local_date
+     (the user's local day, the same day notion streaks and daily_sessions
+     already use). NOTHING ELSE. No free text, no content of what was saved, no
+     IP, no user agent, no referrer. This adds NO new PII: user_id plus a date
+     is already the shape of streak_events, daily_sessions and attempts. It is
+     consistent with the D-120 posture, where email was recorded as the FIRST
+     PII in the system and each field was justified individually rather than
+     collected because it was available.
+     WHERE IT GOES, and the obvious cheap answer is wrong:
+       - REUSING core/events.py's JSONL sink (append_attempt_event) costs zero
+         schema and is the tempting option. REJECTED: it writes to
+         EVENTS_LOCAL_DIR (config.py:65, default `data/events`), a LOCAL DISK
+         path, and its S3 upload is still a TODO (events.py:62). On a host that
+         scales to zero with an ephemeral filesystem those lines are lost at the
+         next cold start. A retention metric that silently loses most of its
+         data is worse than no metric, because it will be believed.
+       - REDIS COUNTERS (core/metrics.py) are also rejected: aggregate,
+         deliberately disposable, and impossible to join against returning
+         behaviour, which IS the question.
+       - RECOMMENDED: a table `feature_usage(user_id, feature, local_date)`,
+         PRIMARY KEY (user_id, feature, local_date), inserted ON CONFLICT DO
+         NOTHING. The primary key IS the once-per-day ceiling, the same
+         construction D-137 used for email_deliveries: a recorded fact with a
+         uniqueness constraint, never a recomputation. One small row per user
+         per feature per day is bounded and needs no partitioning at this scale.
+         Migration 0012.
+     CONSISTENCY AND LIFECYCLE: the insert rides the request's own transaction
+     (it is one small write and the row is never user-visible), and any failure
+     is caught and logged, never raised: an analytics gap must not fail a user
+     action. Rows are deleted with the user account, following the D-120
+     principle that consent which cannot be withdrawn in-product is not consent.
+     They carry no content, so they need no export of their own under (e).
+     SEQUENCING: tracking should land BEFORE or WITH A5, so there is evidence
+     before any flip decision. Decision (6) approves the principle; the table is
+     what this entry is asking approval for.
+
+     CONFLICTS FOUND, reported rather than written around:
+     (C1) docs/10 line 97 specs A5 as "a natural Pro gate", and docs/10 line 328
+     lists "Free vs Pro split for the cheat sheet, extra sessions, and
+     languages" as an OPEN decision. So docs/10's A5 section does assume a
+     free-versus-Pro split might ship with A5, and decisions (1), (2) and (5)
+     settle it in a way that CHANGES A5's SCOPE. A5 ships FULLY FREE, with no
+     gating UI, no upsell surface and no tier copy. It GAINS the (e) export
+     requirement and two feature keys; it LOSES any paywall work. Separately,
+     "Pro" as a singular tier name is superseded by decision (1)'s multiple
+     tiers, so line 328 needs rewording when A5 is specced. The roadmap owner
+     should see this as a scope change rather than absorb it.
+     (C2) docs/00-product.md:52 as detailed in (f): a single named Pro tier at a
+     fixed price, including spaced repetition, which is shipped free and is the
+     retention engine. Superseded by decision (1) and dangerous under decision
+     (3). Not rewritten here.
+     (C3) The pre-existing JWT `plan` claim and CurrentUser.plan, as detailed in
+     (c). Not a contradiction with any of the six decisions, but it is a seam
+     pointing the wrong way, and it is the most likely thing a future
+     implementer would reach for.
+     Nothing in the code, docs/05 or the existing D-entries contradicts
+     decisions (4) or (6).
+
+     WHAT THIS ENTRY CHANGED: docs/07 (this entry) and two pointers in docs/10.
+     NO code, NO schema, NO migration, NO env, NO test. (a), (b), (c), (d), (e)
+     mechanization and (g) are PROPOSALS awaiting approval. D-136 is untouched
+     and remains open. Nothing is deployed.
+
+D-145 ADDENDUM (review round: six items answered, then built). The six items
+     were reviewed. Items 1 and 5 refined proposals; items 2, 3, 4, 6 were
+     fixes; (a), (b), (d), (e) and (g) were approved and are now BUILT (still
+     not deployed). Recorded here so the reasoning that changed lives with the
+     decision.
+
+     ITEM 1 -- resolve_plan does NOT add a per-request query. The auth
+     dependency (auth/deps.py:require_access_token) only DECODES the token; it
+     never loads the User row. But the ROUTERS do: every endpoint that would
+     gate a resource already calls `session.get(User, current_user.id)` before
+     its service (sessions, users activity/accuracy, reviews, disputes,
+     attempts, streak). MEASURED with a SQLAlchemy statement recorder over the
+     real ASGI request: GET /v1/session/today issues exactly ONE
+     `SELECT ... FROM users` for the whole request. resolve_plan(User) takes
+     that already-loaded row and reads no attribute today, so placed after the
+     existing load it adds ZERO queries on those endpoints (and even when it
+     later reads a `plan` column, the row is already in the session identity
+     map, so no reload). The only endpoints that today do NOT load the
+     row (me/stats, me/concepts, me/sessions, the email routes, which pass
+     user_id straight to a service) would gain exactly one primary-key read IF
+     they were ever gated -- a single indexed PK lookup, well inside docs/03's
+     p95 300ms session-fetch floor. RECOMMENDATION, taken: keep resolve_plan
+     taking the already-loaded User; callers holding only a CurrentUser load the
+     row explicitly, as almost all already do. The per-request query is thus a
+     planned, measured cost on not-yet-gated endpoints, never a silent side
+     effect. No column, no migration (c) stands.
+
+     ITEM 2 -- CurrentUser.plan is DELETED; the claim STAYS, now annotated. The
+     dataclass field is gone (auth/deps.py) so nothing can mistake it for the
+     entitlement source; claims.plan still exists on AccessClaims for the
+     token-shape check. The STRONGEST argument for keeping the claim itself is
+     recorded, and it is better than churn: removing it changes ACCESS_CLAIMS,
+     which invalidates every live token and forces a mass refresh that would
+     exercise the known token-refresh race in production. Vestigial-claim notes
+     now sit at BOTH auth/tokens.py (where "plan": "free" is minted) and
+     docs/05 section 1 (where it is documented), each pointing at D-145(c).
+
+     ITEM 3 -- docs/00 business model paragraph MARKED SUPERSEDED (not
+     rewritten, not deleted). It named a single "Pro" tier at a fixed price and
+     put spaced repetition behind it; spaced repetition is shipped, free, and
+     the retention engine, so under decision (3) flipping it would strip a core
+     mechanic from every existing user. A blockquote at docs/00:51 marks the
+     paragraph historical and points here, in the same convention docs/03 uses
+     for its D-115 staleness note. No price and no tier structure invented.
+
+     ITEM 4 -- migration 0012 RELEASE SEQUENCING is a launch-plan decision, not
+     settled here. Production is on 0008 with 0009-0011 unreleased; 0012 makes
+     four. Risk is low (new table, no dependencies, no backfill) and first-weeks
+     usage data is the most valuable this product will collect, which argues for
+     shipping 0012 WITH the cutover. Added to HANDOFF's outstanding launch
+     mechanics (item 6) so the cutover does not discover a fourth migration.
+
+     ITEM 5 -- the A5 snapshot requirement does NOT engage invariant 2, by
+     construction, and this is the cleaner answer than a carve-out. The
+     collision: each saved cheat-sheet item must store its OWN snapshot (e(2)),
+     so the export becomes the first response that legitimately serializes
+     content a user saved from an explanation. Resolution, and it is (c) of the
+     three options asked:
+       (a) The allowlist leak test (test_m4_sessions, test_a4_peek_tomorrow)
+       greps for the KEYS `grading` and `explanation` in the serialized body via
+       _walk_keys. It distinguishes "explanation leaked before a graded attempt"
+       from "content the user saved and owns" by KEY NAME: the first appears
+       under a `grading`/`explanation` key on a session/attempt body; the second
+       must appear under cheat-sheet field names (`note`, `snippet`, `saved_at`,
+       ...) on a distinct response model.
+       (b) Enforced WITHOUT weakening the existing check by NOT reusing the raw
+       JSONB shape. The saved row stores a RENDERED, user-facing subset written
+       at save time -- the specific text the user chose to keep -- NOT a copy of
+       the grading or explanation JSONB. There is therefore no `grading`/
+       `explanation` KEY anywhere in the cheat-sheet response for the grep to
+       match, and the session-scoped leak tests are untouched. A5's cheat-sheet
+       response gets its OWN exact-key allowlist test (the D-144 pattern:
+       set-equality on the response model), so a stray field fails there.
+       (c) RECOMMENDED and it is the whole point: because the saved row never
+       contains the raw grading/explanation JSONB shape, invariant 2 is NOT
+       ENGAGED at all. This is NOT a carve-out that exempts a response model
+       from the check; it is a data model in which the forbidden shape is never
+       present. A carve-out would be the dangerous version and is explicitly
+       rejected. (A5's data model itself is NOT designed here; this only fixes
+       the shape it must take so the invariant stays intact.)
+
+     WHAT THE ADDENDUM CHANGED: this addendum (docs/07); vestigial-claim notes
+     in auth/tokens.py and docs/05; the superseded marker in docs/00; the new
+     HANDOFF launch-mechanics line. BUILT under the approvals: entitlements.py
+     (Plan, Feature, PLAN_FEATURES, EXPORT_OF, resolve_plan, is_entitled,
+     require_entitled), core/usage.py (record_feature_usage, savepoint-guarded,
+     never raises), models/usage.py + migration 0012 + db/schema.sql
+     (feature_usage), and tests test_entitlements.py,
+     test_entitlements_registry.py, test_feature_usage.py. CurrentUser.plan
+     deleted. Item 6 (Login copy) is a SEPARATE commit. NOT built and not to be
+     built: any tier assignment beyond everything-free, billing, export
+     implementation, any A5 data model, any UI. Still nothing deployed.

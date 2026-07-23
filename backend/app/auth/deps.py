@@ -32,8 +32,14 @@ async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
 
 @dataclass(frozen=True)
 class CurrentUser:
+    # No `plan` here on purpose (D-145(c)). The access token carries a `plan`
+    # claim, but it is VESTIGIAL: entitlement is resolved server-side per
+    # request from the User row via app.core.entitlements.resolve_plan, never
+    # from the token. A 15-minute token would delay a downgrade or refund, and
+    # there is no denylist to revoke one (D-4). The claim itself stays a
+    # token-SHAPE check (see auth/tokens.py); it is simply not surfaced here, so
+    # nothing can mistake it for the entitlement source.
     id: uuid.UUID
-    plan: str
     jti: str
 
 
@@ -50,7 +56,7 @@ async def require_access_token(request: Request) -> CurrentUser:
     except TokenError as exc:
         raise ApiError(401, exc.code, exc.message) from exc
 
-    return CurrentUser(id=claims.sub, plan=claims.plan, jti=claims.jti)
+    return CurrentUser(id=claims.sub, jti=claims.jti)
 
 
 CurrentUserDep = Depends(require_access_token)

@@ -94,7 +94,18 @@ Do these first. They move retention in weeks and answer real user feedback direc
 - A5 Personal cheat sheet: let a user save an explanation or snippet, tagged by
   topic, and revisit it. Why: this is the habit-loop "investment" step and the
   ownership drive; it turns 5-minute sessions into a durable personal reference.
-  Strong retention feature and a natural Pro gate. (Requested by a beta user.)
+  Strong retention feature and a natural paid-tier candidate later. (Requested
+  by a beta user.)
+  **SCOPE SETTLED BY D-145, read it before speccing A5.** A5 ships FULLY FREE:
+  no gating UI, no upsell surface, no tier copy anywhere (D-145 decision 5).
+  The "Pro gate" framing above is a forward note about the plan-to-feature map,
+  not A5 scope. Two consequences A5 must absorb: (i) export is a PRECONDITION
+  of any future flip, never a follow-up, so A5's data model must let the full
+  cheat sheet be read server-side in ONE unpaginated call, with every saved
+  item storing its own snapshot rather than only a reference to
+  (exercise_id, version); (ii) `cheat_sheet` and `cheat_sheet_export` are two
+  separate feature keys from day one, because export must stay free when the
+  sheet does not.
 - A6 Soft language / stack focus: a preference (Python / TS / ...), NOT a hard
   filter, so it never starves the adaptive path or spaced repetition.
 
@@ -326,7 +337,12 @@ correct AGAIN, but for a decided reason, not by default.
 ## Open decisions (to resolve before building the relevant phase)
 
 - Which 2-3 tracks launch first (depends on where content is deepest today).
-- Free vs Pro split for the cheat sheet, extra sessions, and languages.
+- Which features sit in which paid tier (cheat sheet, extra sessions,
+  languages). PARTLY SETTLED by D-145: everything is free now, there will be
+  MULTIPLE paid tiers rather than one "Pro", the split itself is deferred until
+  per-feature usage data exists, and the mechanism for making it (a data-only
+  plan-to-feature map plus one server-side gate) is designed there. What stays
+  open is the split, not the shape.
 - Whether XP is visible to the user at all, or only the competence framing.
 - The exact adaptive-difficulty target success rate (Duolingo's "Birdbrain" band).
 - Assessment mode as a separate product surface vs a mode inside the app.

@@ -22,6 +22,7 @@ from app.models.notifications import (
 )
 from app.models.reviews import Review, ReviewHistory
 from app.models.sessions import DailySession
+from app.models.usage import FeatureUsage
 from app.models.user_state import StreakEvent, UserConceptState, UserStats
 
 metadata = Base.metadata
@@ -42,6 +43,7 @@ __all__ = [
     "EmailVerificationToken",
     "Exercise",
     "ExerciseStat",
+    "FeatureUsage",
     "RefreshToken",
     "Review",
     "ReviewHistory",

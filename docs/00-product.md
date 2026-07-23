@@ -49,6 +49,17 @@ time with a teaser, weekly recap email, leagues and a public "Reader Rank"
 post-MVP.
 
 ## Business model
+
+> SUPERSEDED BY D-145. The paragraph below is the ORIGINAL plan and is kept for
+> history; do not read it as a current tier decision. Two specifics are now
+> wrong and dangerous if acted on: (1) it names a SINGLE "Pro" tier at a fixed
+> price, but D-145 decision 1 says there will be MULTIPLE paid tiers and the
+> split is deferred until per-feature usage data exists; (2) it puts SPACED
+> REPETITION behind that tier, but spaced repetition is SHIPPED and FREE and is
+> the retention engine, so moving it would strip a core mechanic from every
+> existing user under D-145 decision 3 (no grandfathering). Everything is free
+> today. See D-145 for the settled shape.
+
 Free: 1 daily session, streaks. Pro ($6-9/mo): unlimited sessions, all
 languages, rubric-graded free text, spaced repetition, AI-verification track,
 interview mode. Teams ($8-12/user/mo, the real revenue): dashboards, onboarding

@@ -66,6 +66,14 @@ def issue_access_token(
     iat = int(issued.timestamp())
     payload = {
         "sub": str(user_id),
+        # VESTIGIAL, and NOT authoritative for entitlement (D-145(c)). This is a
+        # token-SHAPE constant: verify_access_token rejects any token whose plan
+        # is not "free", and ACCESS_CLAIMS asserts the key is present. It is kept
+        # only because removing it would change ACCESS_CLAIMS and invalidate
+        # every live token. Entitlement is resolved server-side per request from
+        # the User row (app.core.entitlements.resolve_plan); never mint a
+        # per-user plan claim here, because a 15-minute token would delay a
+        # downgrade or refund and cannot be revoked (D-4 declined a denylist).
         "plan": "free",
         "exp": iat + ttl_seconds,
         "iat": iat,

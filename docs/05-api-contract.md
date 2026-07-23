@@ -9,7 +9,7 @@ All responses are JSON. All timestamps are ISO 8601 UTC.
 
 ### Authentication
 - `Authorization: Bearer <access_jwt>` on every endpoint except auth and health.
-- Access JWT lifetime 15 min. Claims: `sub` (user id), `plan` (always `free` at MVP), `exp`, `iat`, `jti`. Nothing else.
+- Access JWT lifetime 15 min. Claims: `sub` (user id), `plan` (always `free` at MVP), `exp`, `iat`, `jti`. Nothing else. NOTE (D-145): the `plan` claim is VESTIGIAL and is NOT authoritative for entitlement. It is a token-shape constant (the server rejects any token whose `plan` is not `free`); entitlement is resolved server-side per request from the user row, never from the token. Do not mint per-user `plan` claims when billing lands.
 - Refresh token: opaque, `HttpOnly; Secure; SameSite=Lax` cookie named `rt`, path-scoped to `/v1/auth/refresh`. Rotated on every refresh.
 
 ### Errors (uniform shape)

@@ -115,6 +115,13 @@ A3 sections, which are the detail rather than a second opinion.
 5. **Make the repo private.** It is PUBLIC today, so GitHub disables scheduled
    workflows after 60 days of no repository activity, and a quiet repo is the
    normal post-launch state. Private exempts the rule outright.
+6. **Migration 0012 release sequencing (D-145(g), item 4).** Production is on
+   0008 with 0009-0011 already unreleased; `feature_usage` (0012) makes FOUR
+   unapplied migrations at cutover. The migration itself is low risk (new table,
+   no dependencies, no backfill), but usage data from the first weeks is the
+   most valuable this product will collect, which argues for shipping 0012 WITH
+   the cutover rather than after. Decide this with the cutover plan so it does
+   not discover it is carrying a fourth migration.
 
 A1 (streak safety net) added freeze accrual and consumption, repair / earn-back,
 an ops outage freeze, and a "welcome back" state in place of guilt copy. The
