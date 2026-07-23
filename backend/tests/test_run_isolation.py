@@ -10,15 +10,19 @@ from __future__ import annotations
 import pytest
 from _db_guard import assert_disposable_test_database, is_declared_test_database
 from _run_isolation import (
+    MAX_CONCURRENT_RUNS,
     REDIS_REGISTRY_DB,
+    REDIS_RUN_DBS,
     RunIsolationError,
     claim_redis_db,
     drop_database,
     isolation_enabled,
+    orphan_candidates,
     personalize_db_url,
     redis_url_with_db,
     release_redis_db,
     run_token,
+    token_from_db_name,
 )
 from redis.asyncio import Redis
 
@@ -149,3 +153,78 @@ async def test_release_does_not_free_a_slot_reclaimed_by_another_run() -> None:
     finally:
         await registry.delete(f"codereader:test:redis_slot:{index}")
         await registry.aclose()
+
+
+# --- Redis slot exhaustion (D-147 follow-up item 2) ------------------------
+
+
+@pytest.mark.asyncio
+async def test_claim_fails_loudly_when_every_slot_is_taken() -> None:
+    """Negative (house rule): with all MAX_CONCURRENT_RUNS slots occupied, the
+    16th claim must raise IMMEDIATELY with a message that names the ceiling and
+    says what to do -- never hang, never silently collide onto an occupied slot
+    (which would reintroduce the D-147 bug)."""
+    from app.config import get_settings
+
+    base = get_settings().REDIS_URL
+    registry = Redis.from_url(redis_url_with_db(base, REDIS_REGISTRY_DB), decode_responses=True)
+    filled = [f"codereader:test:redis_slot:{i}" for i in REDIS_RUN_DBS]
+    try:
+        for key in filled:
+            await registry.set(key, "occupied-by-a-concurrent-run", ex=60)
+        with pytest.raises(RunIsolationError) as caught:
+            await claim_redis_db(base, "the-16th-run")
+        message = str(caught.value)
+        assert str(MAX_CONCURRENT_RUNS) in message  # names the ceiling
+        assert "pytest -n" in message  # says what to do
+    finally:
+        for key in filled:
+            await registry.delete(key)
+        await registry.aclose()
+
+
+# --- orphan sweep decision (D-147 follow-up item 3) ------------------------
+
+_STEM = "codereader"
+
+
+def test_token_from_db_name_recognises_only_per_run_shapes() -> None:
+    assert token_from_db_name("codereader_p123_test", stem=_STEM) == "p123"
+    assert token_from_db_name("codereader_gw0_test", stem=_STEM) == "gw0"
+    # NOT per-run: the base test DB, the dev DB, an unrelated DB.
+    assert token_from_db_name("codereader_test", stem=_STEM) is None
+    assert token_from_db_name("codereader", stem=_STEM) is None
+    assert token_from_db_name("something_else_test", stem=_STEM) is None
+
+
+def test_sweep_refuses_live_base_dev_and_unrecognised_databases() -> None:
+    """THE required negative: the sweep decision must leave alone every database
+    it should not drop -- a live run's DB, the base test DB, the dev DB, this
+    run's own DB, and anything not shaped like a per-run database -- and select
+    ONLY a genuine orphan (per-run shape, token not live)."""
+    names = [
+        "codereader",  # dev database
+        "codereader_test",  # base test database
+        "codereader_p111_test",  # LIVE run (token p111 is held)
+        "codereader_p999_test",  # this run's own database
+        "codereader_pDEAD_test",  # genuine orphan: per-run shape, token not live
+        "unrelated_prod_test",  # not our stem
+        "customer_db",  # nothing to do with tests
+    ]
+    candidates = orphan_candidates(
+        names,
+        stem=_STEM,
+        live_tokens={"p111"},
+        protect={"codereader", "codereader_test", "codereader_p999_test"},
+    )
+    assert candidates == ["codereader_pDEAD_test"]
+    # Every protected / live / unrecognised name is untouched.
+    for safe in (
+        "codereader",
+        "codereader_test",
+        "codereader_p111_test",
+        "codereader_p999_test",
+        "unrelated_prod_test",
+        "customer_db",
+    ):
+        assert safe not in candidates

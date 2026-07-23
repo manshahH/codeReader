@@ -5669,3 +5669,51 @@ D-136 AMENDMENT: the old evidence was contaminated by D-147, and the trio is not
      since a full-suite pass does not exercise that grouping the same way. Until
      then D-136 narrows to "one hermetic Playwright spec, cross-spec timing,
      unreproduced since the D-147 fix" and STAYS OPEN.
+
+D-147 FOLLOW-UP: the slot ceiling, and the Postgres-orphan asymmetry. Two gaps
+     in the first D-147 implementation, both closed here, both proven by
+     execution.
+     (2) SLOT-POOL EXHAUSTION IS NOW A DESIGNED FAILURE. DB 0 is the registry, so
+     the usable Redis slots are 1..15: MAX_CONCURRENT_RUNS = 15. Each run or each
+     xdist worker claims one, so 15 is the hard ceiling on concurrent test
+     processes -- `pytest -n 16` exhausts it alone, two runs at `-n 8` reach 16
+     claims. FORCED EMPTY BY EXECUTION (all 15 slots occupied, 16th claim
+     attempted): claim_redis_db raises RunIsolationError immediately, and a real
+     `pytest` invocation fails at conftest load in ~3s (exit 4) with a message
+     that NAMES the ceiling and says what to do (`pytest -n 15` or fewer, wait,
+     or clear stale slots). It never hangs and never collides onto an occupied
+     slot -- a silent collision would reintroduce the very bug D-147 fixed. A
+     negative test (test_claim_fails_loudly_when_every_slot_is_taken) pins it.
+     The ceiling is recorded here so whoever adopts `-n` knows the worker limit
+     before hitting it; raising it means configuring Redis with more logical
+     `databases` and widening REDIS_RUN_DBS.
+     (3) POSTGRES ORPHANS NOW SELF-HEAL, like Redis slots already did. A crashed
+     run's Redis slot self-frees on its TTL, but its database was only dropped at
+     pytest_sessionfinish, which a killed process never reaches -- so Redis
+     recovered and Postgres accumulated orphans forever. Closed two ways:
+       - REORDER: claim the Redis slot BEFORE creating the database. The slot is
+         the exhaustible resource, so a claim failure now leaks NO database (it
+         was previously created first); and claiming records this run's token as
+         live before its DB exists, which the sweep below relies on. (Found by
+         execution: the exhaustion test above had leaked two databases because
+         the old order created the DB, then failed the claim.)
+       - SWEEP AT SESSION START, keyed on the Redis registry as the liveness
+         authority. A slot's VALUE is its run's token, and a per-run database is
+         `<stem>_<token>_test`, so the set of live tokens (values of the slot
+         keys) says exactly which per-run databases belong to a running suite.
+         The sweep drops a database ONLY if it is shaped like a per-run database,
+         its token is not among the live tokens, it is not protected (base test
+         DB, dev DB, own DB), AND it has zero active backend connections at the
+         moment of the drop. Any doubt -- a live token, any active connection --
+         and it leaves the database alone (safety over thoroughness, as
+         required). Reusing the slot registry means NO new bookkeeping: a
+         crashed run's token leaves the live set exactly when its slot TTL
+         lapses, which is already the crash signal.
+     PROVEN: a planted orphan `codereader_pfake_test` is dropped by the next
+     `pytest`'s startup sweep while the base `codereader_test` survives; the
+     required negative (test_sweep_refuses_live_base_dev_and_unrecognised_
+     databases) proves the decision leaves alone a live run's DB, the base, the
+     dev DB, the own DB, and any unrecognised name, selecting only the genuine
+     orphan. The two concurrent full suites were re-run after both changes and
+     still pass (see the report), confirming the reorder and the sweep did not
+     regress isolation.

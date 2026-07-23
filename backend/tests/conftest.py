@@ -23,6 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from _db_guard import (  # noqa: E402 -- must follow the sys.path fix above
     assert_disposable_test_database,
+    db_name_from_url,
     ensure_database_exists,
     resolve_test_database_url,
 )
@@ -35,6 +36,7 @@ from _run_isolation import (  # noqa: E402 -- must follow the sys.path fix above
     redis_url_with_db,
     release_redis_db,
     run_token,
+    sweep_orphan_databases,
 )
 
 # Module-level, not a fixture: pydantic-settings resolves Settings' env_file
@@ -106,12 +108,41 @@ _run_database_url = (
 _redis_slot: int | None = None
 
 assert_disposable_test_database(_run_database_url, env=os.environ)
-asyncio.run(ensure_database_exists(_run_database_url))
-os.environ["DATABASE_URL"] = _run_database_url
 
 if _ISOLATE:
+    # Claim the Redis slot FIRST, then create the database. Two reasons
+    # (D-147 follow-up): the slot is the resource that can be exhausted, so a
+    # claim failure here must leak NO database (it is the last thing before the
+    # DB is created, not the first thing after); and claiming records this run's
+    # token as live, so the orphan sweep below can never target our own DB.
     _redis_slot = asyncio.run(claim_redis_db(_base_redis_url, _RUN_TOKEN))
     os.environ["REDIS_URL"] = redis_url_with_db(_base_redis_url, _redis_slot)
+
+    # Drop databases left behind by runs that crashed before pytest_sessionfinish
+    # could drop them (D-147 follow-up item 3): their Redis slot has since
+    # expired, so their token is not live. The sweep never touches the base test
+    # DB, the dev DB, this run's own DB, or any DB with an active connection.
+    _base_test_db_name = db_name_from_url(_base_test_database_url)
+    _stem = (
+        _base_test_db_name[: -len("_test")]
+        if _base_test_db_name.endswith("_test")
+        else _base_test_db_name
+    )
+    asyncio.run(
+        sweep_orphan_databases(
+            _run_database_url,
+            _base_redis_url,
+            stem=_stem,
+            protect={
+                _base_test_db_name,
+                db_name_from_url(_base_database_url),
+                db_name_from_url(_run_database_url),
+            },
+        )
+    )
+
+asyncio.run(ensure_database_exists(_run_database_url))
+os.environ["DATABASE_URL"] = _run_database_url
 
 _get_settings.cache_clear()
 
