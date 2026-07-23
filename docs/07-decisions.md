@@ -5717,3 +5717,27 @@ D-147 FOLLOW-UP: the slot ceiling, and the Postgres-orphan asymmetry. Two gaps
      orphan. The two concurrent full suites were re-run after both changes and
      still pass (see the report), confirming the reorder and the sweep did not
      regress isolation.
+
+D-148 THE NOTIFICATION-JOBS CRON IS GATED OFF UNTIL LAUNCH, so it stops failing
+     every ten minutes. Behaviour change to .github/workflows/jobs.yml.
+     THE PROBLEM: jobs.yml (D-138) runs on a `3,13,23,...` cron and, by explicit
+     design, FAILS LOUDLY when API_BASE_URL / ADMIN_METRICS_TOKEN are unset
+     rather than silently sending nothing. Those secrets are a launch-mechanics
+     item (HANDOFF) and are not set, because nothing is deployed. So every ten
+     minutes, around the clock, the workflow fails and emails a failure -- the
+     bulk of the "CI fails all the time" noise, and noise that trains the owner
+     to ignore failure mail, which is the precondition for missing a real one.
+     THE FIX, minimal and reversible: gate the job on
+     `github.event_name == 'workflow_dispatch' || vars.NOTIFICATIONS_ENABLED ==
+     'true'`. With the variable unset (the pre-launch state), SCHEDULED runs skip
+     -- a skipped run is not a failed run, so no mail -- while a MANUAL
+     workflow_dispatch still runs and still fails loudly on missing secrets, so
+     the D-138 fail-loud contract is preserved for anyone actually testing it.
+     The cron trigger stays in the file (it is not deleted), so re-enabling is a
+     one-line launch step, not a code change: set the two secrets and
+     `gh variable set NOTIFICATIONS_ENABLED --body true`. Added to HANDOFF's
+     outstanding launch mechanics so the cutover turns it back on.
+     This does NOT weaken D-138 or D-140: the fail-loud behaviour is intact when
+     the job runs, and a deliberately-off pre-launch cron is the correct state
+     for a system whose target does not exist yet. It is off because it CANNOT
+     succeed, not to hide a failure that matters.

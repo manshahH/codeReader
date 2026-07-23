@@ -50,6 +50,14 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    # D-148: gated OFF until launch. With NOTIFICATIONS_ENABLED unset (the
+    # pre-launch state), SCHEDULED runs skip -- a skipped run is not a failed
+    # run, so no failure mail -- because the required secrets are not set and
+    # the step below fails loudly by design (D-138). A manual workflow_dispatch
+    # still runs, so the fail-loud contract is preserved for anyone testing it.
+    # Re-enable at launch: set the secrets, then
+    # `gh variable set NOTIFICATIONS_ENABLED --body true`.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.NOTIFICATIONS_ENABLED == 'true' }}
     # Generous: the request is synchronous by design (a fire-and-forget 202
     # would let the platform suspend the instance mid-sweep) and it may pay a
     # cold start on top of a capped, paced sweep.

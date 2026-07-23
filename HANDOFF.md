@@ -108,7 +108,11 @@ A3 sections, which are the detail rather than a second opinion.
    breaks that on an ordinary day, 200 on any Monday. Pro is $20/mo for 50,000.
    The domain itself is done: `reedkode.com` verified, sending enabled.
 3. **GitHub repo secrets for the D-138 cron**: `API_BASE_URL`,
-   `ADMIN_METRICS_TOKEN` (matching FastAPI Cloud), `HEARTBEAT_URL`.
+   `ADMIN_METRICS_TOKEN` (matching FastAPI Cloud), `HEARTBEAT_URL`. Then RE-ENABLE
+   the cron, which D-148 gated off pre-launch so it stopped failing every ten
+   minutes: `gh variable set NOTIFICATIONS_ENABLED --body true`. Until that
+   variable is set, scheduled runs skip (a manual `workflow_dispatch` still runs
+   for testing).
 4. **healthchecks.io heartbeat.** The workflow pings it only on success and the
    monitor alerts when pings STOP. Nothing else watches this layer; a flat
    `reminders.run_count` is only evidence if something is reading it.
