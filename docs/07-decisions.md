@@ -5878,3 +5878,33 @@ D-152 POST-MORTEM: the pytest and schema CI jobs NEVER RAN, for the entire life
      under xdist workers, which see only a shard. PROVEN by execution: 5 tests
      passing with the floor at 600 exits 1 with a named message; the same run
      without the floor exits 0. Negative test test_ci_guard covers the decision.
+
+D-153 THE cryptography BUMP DOES OPEN PRODUCTION-SEALED TOKENS. The item that
+     could have broken the cutover, checked properly.
+     THE RISK (D-149 raised cryptography from 43.x-45.x to >=48.0.1): auth_
+     identities.access_token_enc holds each user's GitHub OAuth token, AES-GCM
+     sealed by core/security.py. D-149 validated only a same-version round-trip,
+     which cannot tell whether rows sealed by the OLD library still open under
+     the NEW one. If they did not, every user with a stored identity would be
+     locked out at cutover -- and the cutover is already a four-migration
+     big-bang.
+     THE TEST, cross-version and against the REAL code path: an isolated venv on
+     cryptography 43.0.1, and another on 45.0.7, each sealed a known token by
+     importing the actual encrypt_token from security.py; the current env
+     (48.0.1) opened both with the actual decrypt_token. RESULT: PASS -- both
+     old-version ciphertexts decrypt to the exact plaintext. The framing
+     (nonce(12) || AESGCM ciphertext, no AAD) is version-independent, which is
+     why it works, but that is now PROVEN rather than assumed.
+     MADE PERMANENT: test_security_token_sealing.py hardcodes the two
+     old-version golden ciphertexts and asserts the installed cryptography opens
+     them, so a future bump that broke stored credentials fails here instead of
+     in production. Two negatives (wrong key, one-byte tamper) both raise
+     InvalidTag, proving the vectors are genuinely authenticated rather than
+     merely decoded.
+     EVERYTHING ELSE AT REST IN THE BUMPS, checked: cryptography is imported in
+     exactly one place (core/security.py, verified by grep), so access_token_enc
+     is the only at-rest ciphertext that depends on it. refresh_tokens.token_hash
+     is a one-way sha256 (hashlib), the JWT is HS256 and the unsubscribe token is
+     HMAC (both hmac/hashlib) -- none touch cryptography, and none are
+     reversible, so a cryptography version has no bearing on them. The pytest and
+     pytest-asyncio bumps (D-151) are test tooling and touch no data at rest.
