@@ -5791,3 +5791,21 @@ D-150 THE PYTEST AND SCHEMA CI JOBS NEVER RAN: a health-cmd quoting bug, not
      claimed Redis slots as exactly this user hundreds of times. So the
      CREATEDB-privilege and slot-claim questions were answerable even while the
      CI container-init bug blocked the real run.
+
+D-151 pytest floor raised past PYSEC-2026-1845, clearing the LAST dependency-audit
+     advisory. After D-149 fixed cryptography, pip-audit was left red on ONE
+     finding: pytest 8.4.2 / PYSEC-2026-1845, fixed in 9.0.3, with the pin's
+     `<9.0` ceiling blocking it -- the same ceiling-blocks-the-fix shape as
+     D-149. pytest 9 requires pytest-asyncio >=1.0, so both bumped together:
+     `pytest>=9.0.3,<10.0`, `pytest-asyncio>=1.0,<2.0`.
+     NOT WEAKENING THE AUDIT: the alternative was to scope `pip-audit --strict`
+     off dev tools so a pytest advisory would not fail it. That was rejected --
+     narrowing a security check to make it pass is the D-103 decay move, and the
+     honest fix is to take the upgrade. `--strict` stays strict.
+     LOW RISK, verified by execution: the full suite is green on the pair (649
+     passed, 1 skipped, ~459s), asyncio_mode='auto' unchanged, no code touched.
+     pytest 9 is a major version, so this is recorded rather than silent; it is
+     a test-tooling bump with no product-behaviour change. With this, the CI
+     pytest, schema, ruff, playwright AND dependency-audit jobs are all green
+     (see the report) -- the first fully-green CI on this repo in the window this
+     work covers.

@@ -28,8 +28,12 @@ dependencies = [
     'openai>=1.50,<2.0',
     'sentry-sdk[fastapi]>=2.0,<3.0',
     'tzdata>=2024.1',
-    'pytest>=8.3,<9.0',
-    'pytest-asyncio>=0.25,<1.0',
+    # pytest floor raised past PYSEC-2026-1845 (fixed in 9.0.3); the old <9.0
+    # ceiling blocked it, and pytest 9 needs pytest-asyncio >=1.0, so both move
+    # together (D-151). Full suite green on the pair; asyncio_mode='auto' below
+    # is unchanged.
+    'pytest>=9.0.3,<10.0',
+    'pytest-asyncio>=1.0,<2.0',
     'ruff>=0.8,<1.0',
 ]
 
