@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 from _db_guard import (
@@ -26,6 +27,8 @@ from _db_guard import (
 )
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.config import get_settings
 
 _REAL_LOOKING_URL = "postgresql://codereader:codereader@localhost:5433/codereader"
 _TEST_SUFFIXED_URL = "postgresql://codereader:codereader@localhost:5433/codereader_test"
@@ -119,8 +122,16 @@ def test_resolve_test_database_url_never_reads_database_url_from_env_directly() 
 
 async def test_ensure_database_exists_creates_and_is_idempotent() -> None:
     scratch_name = f"codereader_guard_probe_{uuid.uuid4().hex[:10]}_test"
-    scratch_url = f"postgresql://codereader:codereader@localhost:5433/{scratch_name}"
-    admin_url = "postgresql+asyncpg://codereader:codereader@localhost:5433/postgres"
+    # Host/port/user/password come from the ACTUALLY-CONFIGURED database, never a
+    # hardcoded port: conftest points DATABASE_URL at this run's Postgres (5432
+    # in CI, 5433 in local compose), so a literal 5433 here failed in CI the
+    # moment the pytest job could finally run (D-150). Only the database NAME is
+    # swapped -- to a fresh scratch name for this probe.
+    _base = urlsplit(get_settings().DATABASE_URL)
+    scratch_url = urlunsplit(_base._replace(path=f"/{scratch_name}"))
+    admin_url = urlunsplit(
+        _base._replace(scheme="postgresql+asyncpg", path="/postgres")
+    )
     admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
     try:
         async with admin_engine.connect() as conn:
