@@ -1,11 +1,15 @@
 // D-136 TEMPORARY tolerance -- NOT a fix. See docs/07-decisions.md D-136.
 //
 // Two continuation-row specs are intermittently flaky in CI: they pass on some
-// runs and fail on others with a transient `[pageerror] Cannot use 'in'
-// operator ... 'explanation'`, never deterministically (playwright was green on
-// commit 121fe4b, red on the next two with the SAME frontend code). Fixing them
-// needs the D-136 campaign (25-30 clean runs plus the continuation-row
-// group-ordering work) and is out of scope for now.
+// runs and fail on others, never deterministically (playwright was green on
+// commit 121fe4b, red on the next two with the SAME frontend code). The failures
+// are CI-only rendering/timing on layout assertions -- a sub-pixel line-target
+// overlap in viewer-narrow, and a tap that lands before the wrapped layout
+// settles in viewer-rendering (D-136 Amendment 3). NOTE: the nearby
+// `[pageerror] ... 'explanation' in 1` in the CI log is NOT this flake -- it is
+// reveal-error-boundary.spec.ts deliberately injecting a malformed reveal to
+// test the ErrorBoundary, caught and passing. Removing this tolerance early
+// means hardening those two assertions and confirming clean across CI runs.
 //
 // Until then, ONLY the two tagged tests run in a dedicated Playwright project
 // WITH retries, so a FLAKE is tolerated (green, reported as flaky) while a

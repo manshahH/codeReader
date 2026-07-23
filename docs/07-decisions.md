@@ -6004,3 +6004,56 @@ D-136 AMENDMENT 2: a temporary, scoped, EXPIRING retry tolerance so the
      run and pass locally (they are hermetic, so deterministic locally -- the
      flake is CI-environment-specific). This is a deliberate, temporary tolerance
      recorded so nobody mistakes it for a fix. D-136 is NOT closed.
+
+D-136 AMENDMENT 3: the `[pageerror] ... 'explanation' in 1` is NOT the flake. It
+     is a DELIBERATE, CAUGHT test fixture; my Amendment 2 mis-cited it, and the
+     real residual is narrower and more tractable than "a mysterious crash".
+     THE CORRECTION, investigated from the exact error text. `'x' in y` throws
+     when y is a primitive, and the operand here is the number 1. The only code
+     that does `'explanation' in reveal` is Reveal.tsx:102 (and :114,
+     Review.tsx:41). It is reached with reveal === 1 by exactly ONE thing:
+     reveal-error-boundary.spec.ts DELIBERATELY intercepts POST /v1/attempts to
+     return `reveal: 1` (its own comment: "a non-object, so `'explanation' in
+     attempt.reveal` throws ... the exact class of failure the boundary must
+     contain"), to prove the session ErrorBoundary (the C2 fix) turns that throw
+     into a "Skip this exercise" state instead of a white screen. THAT TEST
+     PASSES (CI: green, test 44). The pageerror is logged by that spec's own
+     `page.on('pageerror')` listener and only appears in CI because the spec
+     `test.skip`s without the local stack. session.spec.ts, which drives a REAL
+     backend with real reveals, also passed and did NOT emit it. So the
+     pageerror is expected, contained, and unrelated to production.
+     PROVED it is not a production path: reveal:1 is never a real response --
+     invariant 2 withholds reveal until a graded attempt, and the graded
+     response carries reveal as a structured object (docs/05); Reveal only
+     renders under an `attempt && userAnswer` guard, so it never sees a
+     half-resolved reveal. A defensive `typeof` guard on line 102 would be the
+     WRONG fix: reveal:1 is a corruption SYMPTOM, not a legitimate state, and C2
+     deliberately chose to CONTAIN any such render crash with the ErrorBoundary
+     (-> skip) rather than special-case every malformed shape. So there is no bug
+     to fix here, and none is invented.
+     WHAT THE FLAKE ACTUALLY IS, from the failing assertions (not the pageerror):
+       - viewer-narrow.spec.ts "adjacent line targets do not overlap":
+         `expect(first.y + first.height).toBeLessThanOrEqual(second.y + 0.5)`
+         failed at 276.1875, i.e. two line-select buttons overlapped by UNDER a
+         pixel. A 0.5px tolerance against CI headless sub-pixel rounding.
+       - viewer-rendering.spec.ts "tapping a continuation row selects...": a tap
+         did not register `aria-pressed=true` -- interaction timing before the
+         wrapped layout settled.
+     Both are CI-environment rendering/timing, NOT a crash and NOT a null guard.
+     REPRODUCTION: the pageerror reproduces trivially (it is a passing test).
+     The real flake does NOT reproduce locally: the two specs ran 30x each,
+     60/60 passed. So per the "do not guess a fix you cannot demonstrate" rule,
+     no fix is applied and no negative-test-that-fails-without-it is possible;
+     stated plainly rather than papered over.
+     ITEM 5, removing the tolerance early. This re-scopes D-136 from "mysterious
+     continuation-row crash" to "two specific, understood, CI-only flaky
+     assertions" -- far more tractable than the 25-30-run campaign feared. The
+     evidence that would let the @d136-flaky tags come off BEFORE the 2026-09-15
+     expiry: harden those two assertions to be CI-robust (widen the sub-pixel
+     overlap tolerance to a value that still catches a real mistap-sized overlap
+     of a few px but not <1px rounding; make the continuation-row tap wait for a
+     settled layout), then confirm across a handful of CI runs that they hold at
+     retries 0. That hardening is not done here because it cannot be DEMONSTRATED
+     locally (the flake will not reproduce), and validating it needs CI runs, not
+     assertion. D-136 STAYS OPEN; the tolerance stays until that hardening lands
+     and runs clean without it.
