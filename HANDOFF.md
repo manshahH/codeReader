@@ -633,6 +633,15 @@ passed / 0 failed / 0 skipped**. One clean run does not close an
 intermittent-failure entry, so D-136 stays open, but it is the first
 whole-suite green since the entry was written.
 
+**More evidence, 2026-07-24:** the CI playwright job (now the first time the
+rest of CI actually runs, D-150) flaked on two consecutive runs, each on a
+DIFFERENT set of seeded specs (dashboard-resilience / a3-reminders / email-
+capture, then the `viewer-rendering`/`viewer-narrow` continuation-row family).
+Different-specs-each-run is exactly D-136's fingerprint, and it is independent
+of the D-147 concurrency bug (CI jobs are isolated). D-136 STILL OPEN; closing
+it wants ~25-30 clean runs plus a repro of the continuation-row group ordering
+(D-136 amendment in docs/07).
+
 **The CORS parenthetical was WRONG about the mechanism and is corrected here.**
 It blamed a :5174 harness port. The actual cause was that the local override
 sets a COMMA-SEPARATED `APP_ORIGIN` ("localhost plus a LAN address"), which
@@ -662,13 +671,29 @@ gone, and it was never flakiness.
   job layer: D-140's healthchecks.io dead man's switch pages when the
   reminder cron stops, once `HEARTBEAT_URL` is set (an outstanding launch
   item, not yet done).
-- ⚠️ **CORRECTED: the CI dependency-audit job DOES run against live feeds now,
-  and it FAILS.** The old text said it "has never run" -- that was true when
-  written and D-128 fixed the job. Run on 2026-07-21 it reports real
-  advisories: `cryptography 45.0.7` (PYSEC-2026-35, PYSEC-2026-2141,
-  GHSA-537c-gmf6-5ccf) and `pytest 8.4.2` (PYSEC-2026-1845). So this is no
-  longer "unproven tooling", it is a **red CI job with a real upgrade
-  backlog**. A3 added no dependencies; this predates it.
+- ⚠️ **dependency-audit: Python side CLEARED, npm side still red (needs a
+  breaking vite bump).** The `cryptography` (D-149, ->48.0.1) and `pytest`
+  (D-151, ->9.0.3 with pytest-asyncio ->1.x) advisories are FIXED and
+  `pip-audit --strict` now passes; the cryptography bump is proven safe for
+  data at rest (D-153, cross-version unseal of production-sealed tokens). What
+  remains red is `npm audit --audit-level=high`: a **HIGH in `vite`**
+  (GHSA in the esbuild dev-server chain) whose only fix is a **breaking
+  vite 6 -> 8 major bump**, plus a moderate esbuild in the same chain. That is
+  a frontend migration on its own; NOT attempted here. Until it lands, the
+  dependency-audit job stays red on the frontend side only.
+- ⚠️ **The pytest and schema CI jobs never ran until 2026-07-24 (D-150/D-152).**
+  A single-quoted health-cmd meant the Postgres service container never
+  created, so the pytest job failed at init on EVERY run from CI's first day
+  (2026-07-06). Fixed; the pytest job now runs and is green. A vacuous-green
+  guard (CODEREADER_MIN_TESTS floor, D-152) now fails a run that passes with
+  too few tests. During that ~18-day window the docs/05 section 9 / CLAUDE.md
+  "CI-enforced" invariants were held only by LOCAL runs; they are enforced
+  again now.
+- ⚠️ **`pytest -n` is now possible but not adopted (D-147).** Per-run isolation
+  supports parallel workers; the ceiling is **15 concurrent runs/workers**
+  (Redis DB 0 is the slot registry, 1..15 are the slots), and adopting it means
+  adding pytest-xdist and skipping the module-block work in the xdist
+  controller. Until then the full suite is ~6.5 min single-process.
 
 **Polish — two of these are DONE and were still listed as deferred:**
 - ✅ **"1 days" pluralization.** Fixed: `lib/format.ts` and `Dashboard.tsx`

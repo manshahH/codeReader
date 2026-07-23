@@ -48,7 +48,9 @@ current state.
 1. No LLM claim is ever ground truth. Exercise answers come from sandbox
    execution (twin-snippet rule, captured stdout, double-run determinism).
 2. grading and explanation JSONB never serialize to a client before a graded
-   attempt exists. Response schemas are allowlists. A CI test enforces this.
+   attempt exists. Response schemas are allowlists. A CI test enforces this
+   (enforcement RESTORED 2026-07-24: the pytest CI job had never actually run
+   until then; D-150/D-152).
 3. Exercises are immutable per (id, version). Fixes bump version.
 4. POST /attempts is idempotent per Idempotency-Key; replays byte-identical.
 5. Every streak transition writes a streak_events row.

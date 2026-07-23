@@ -5806,6 +5806,75 @@ D-151 pytest floor raised past PYSEC-2026-1845, clearing the LAST dependency-aud
      passed, 1 skipped, ~459s), asyncio_mode='auto' unchanged, no code touched.
      pytest 9 is a major version, so this is recorded rather than silent; it is
      a test-tooling bump with no product-behaviour change. With this, the CI
-     pytest, schema, ruff, playwright AND dependency-audit jobs are all green
-     (see the report) -- the first fully-green CI on this repo in the window this
-     work covers.
+     pytest, schema and ruff are green -- the first time the pytest job has ever
+     run in CI (D-152). CORRECTION, recorded rather than left standing: this
+     entry first claimed dependency-audit and playwright were also green. They
+     were not, and the CI run after this commit proved it -- dependency-audit is
+     red on an npm `vite` HIGH needing a breaking vite 6->8 bump (the Python side
+     IS clear after D-149/D-151), and playwright flaked on the D-136 specs. The
+     "all green" claim was premature; the accurate state is three green jobs and
+     two knowingly-open reds.
+
+D-152 POST-MORTEM: the pytest and schema CI jobs NEVER RAN, for the entire life
+     of CI, and a guard against the inverse failure.
+     HOW LONG, and it is worse than "a while": the single-quoted health-cmd
+     (D-150) was introduced in the FIRST commit that added CI (878402b,
+     2026-07-06) and fixed on 2026-07-24. Checked by execution against the run
+     history: EVERY CI run from the earliest (2026-07-06) to the fix failed the
+     pytest and schema jobs at "Initialize containers" with the same
+     `unknown shorthand flag: 'U'`. The pytest job never once ran a test in CI.
+     That is ~18 days, and it is the whole history of the repo's CI, not a
+     regression window.
+     DID THE CHECK LIE? NO, and this matters. The jobs went RED (job conclusion
+     = failure), so no green check mark was ever false. The failure was an
+     ATTENTION failure, not a lying-green one: the OVERALL CI was already
+     chronically red on dependency-audit (D-128, red on real advisories the pins
+     blocked), so a NEW red -- pytest never running -- changed nothing visible.
+     A permanently-red CI is one nobody reads, which is how a job that executed
+     zero tests sat unnoticed for the project's entire life. The lesson is the
+     same as D-103/D-127/D-128: red has to be rare to mean anything.
+     WHICH CLAIMS WERE FALSE, AND FOR HOW LONG, stated plainly and not softened.
+     For the whole 2026-07-06..2026-07-24 window these were false for the backend
+     invariants, which were protected ONLY by whoever ran the suite locally:
+       - CLAUDE.md invariant 2: "Response schemas are allowlists. A CI test
+         enforces this." No CI test enforced it; the pytest job never ran.
+       - CLAUDE.md read-order note: "docs/05 ... section 9 = CI-enforced
+         invariants." Not CI-enforced.
+       - docs/05 section 9 title "Contract-level invariants (CI-enforced)" and
+         all six items under it. Not CI-enforced.
+       - docs/03-mvp-scope.md: "CI test that serializes a session and asserts no
+         grading/explanation keys." That test existed and passed locally, but
+         did not run in CI.
+     ruff DID run and was enforced (no service container). playwright ran once it
+     was added (e071273), though it is D-136-flaky. The invariants themselves DID
+     hold throughout, because the suite passed locally -- the failure was of
+     enforcement, not of the invariants. They are CI-enforced again as of
+     2026-07-24; the first real CI pytest run was green (649 passed, 1 skipped).
+     CONFIRMED BY NAME (not by trusting the count): each docs/05 section 9
+     invariant has a test that ran and passed in the green run --
+       1 leak: test_m4_sessions::test_answer_key_leak_session_response_has_no_
+         grading_or_explanation_keys
+       2 immutable-per-version: test_m1_database::test_live_exercise_update_guard_
+         blocks_content_but_permits_status_transitions
+       3 idempotent attempts: test_m4_attempts::test_idempotent_replay_returns_
+         byte_identical_body
+       4 JWT required / cookie scope: test_m2_auth::test_cookie_scope_does_not_
+         authenticate_me_and_access_jwt_cannot_refresh
+       5 streak_events row: test_m4_streaks::test_streak_audit_invariant_every_
+         transition_writes_a_streak_event_row
+       6 email once per period: test_a3_reminders_recap::test_claim_period_is_
+         atomic_and_single_winner
+     All six pass by name (6 passed), and all six are in the `pytest backend/tests`
+     set the green run ran with 0 failures.
+     THE GUARD against the INVERSE failure (a green that ran nothing). pytest
+     already exits 5 (failure) on ZERO collected tests -- proven: a filter
+     matching nothing gives "655 deselected", exit 5. The uncovered path is
+     all-SKIPPED: if a whole class silently skipped (a pytest-asyncio misconfig,
+     say -- live risk after the D-151 bump to pytest-asyncio 1.x), pytest exits 0
+     and the job is a vacuous green. FIX (_ci_guard.py + conftest
+     pytest_sessionfinish): count passed tests and, when CODEREADER_MIN_TESTS is
+     set (CI only, floor 600 against ~659 passing), force a non-zero exit if
+     fewer passed. Opt-in via env so a local subset run is never failed; skipped
+     under xdist workers, which see only a shard. PROVEN by execution: 5 tests
+     passing with the floor at 600 exits 1 with a named message; the same run
+     without the floor exits 0. Negative test test_ci_guard covers the decision.

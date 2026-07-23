@@ -47,6 +47,11 @@ jobs:
       GITHUB_CLIENT_SECRET: test-github-client-secret
       TOKEN_ENC_KEY: test-token-encryption-key-32b
       ANTHROPIC_API_KEY: test-anthropic-key
+      # D-152: refuse a vacuous green. The full suite is ~649 passing; this floor
+      # is well below that (so it survives ordinary churn) and far above any
+      # partial or all-skipped run, which would otherwise pass with exit 0. Bump
+      # it if the suite legitimately shrinks below the floor.
+      CODEREADER_MIN_TESTS: '600'
       # HEALTHZ_TEST_IN_PROCESS removed (D-146): in-process is now the default
       # healthz path, so CI needs no special-casing to keep test_healthz green.
     steps:

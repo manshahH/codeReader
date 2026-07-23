@@ -21,6 +21,11 @@ if str(_REPO_ROOT) not in sys.path:
     # outside the `app` package this pyproject.toml installs.
     sys.path.insert(0, str(_REPO_ROOT))
 
+from _ci_guard import (  # noqa: E402 -- must follow the sys.path fix above
+    MIN_TESTS_ENV,
+    is_vacuous_run,
+    required_minimum,
+)
 from _db_guard import (  # noqa: E402 -- must follow the sys.path fix above
     assert_disposable_test_database,
     db_name_from_url,
@@ -193,20 +198,46 @@ async def db_session() -> AsyncIterator[AsyncSession]:
     await engine.dispose()
 
 
+_passed_count = 0
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Count tests that actually PASSED their call phase, for the vacuous-green
+    guard below. Skips and errors do not count -- that is the whole point."""
+    global _passed_count
+    if report.when == "call" and report.passed:
+        _passed_count += 1
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """D-147 teardown: drop THIS run's database and release its Redis slot so
-    concurrent-safe runs never accumulate junk. Only runs under isolation; with
-    the opt-out the base is shared and must not be dropped. Never raises -- a
-    teardown failure must not turn a green run red (the Redis TTL and pid reuse
-    self-heal a skipped teardown anyway)."""
-    if not _ISOLATE:
-        return
-    try:
-        asyncio.run(drop_database(_run_database_url))
-    except Exception as exc:  # noqa: BLE001 -- teardown is best-effort by design
-        print(f"D-147 teardown: could not drop {_run_database_url!r}: {exc}", file=sys.stderr)
-    if _redis_slot is not None:
+    """D-147 teardown (drop this run's DB, release its Redis slot) plus the D-152
+    vacuous-green guard. Teardown never raises -- a teardown failure must not
+    turn a green run red (the Redis TTL and pid reuse self-heal a skipped
+    teardown anyway)."""
+    if _ISOLATE:
         try:
-            asyncio.run(release_redis_db(_base_redis_url, _redis_slot, _RUN_TOKEN))
-        except Exception as exc:  # noqa: BLE001 -- best-effort; TTL frees it anyway
-            print(f"D-147 teardown: could not release redis slot: {exc}", file=sys.stderr)
+            asyncio.run(drop_database(_run_database_url))
+        except Exception as exc:  # noqa: BLE001 -- teardown is best-effort by design
+            print(f"D-147 teardown: could not drop {_run_database_url!r}: {exc}", file=sys.stderr)
+        if _redis_slot is not None:
+            try:
+                asyncio.run(release_redis_db(_base_redis_url, _redis_slot, _RUN_TOKEN))
+            except Exception as exc:  # noqa: BLE001 -- best-effort; TTL frees it anyway
+                print(f"D-147 teardown: could not release redis slot: {exc}", file=sys.stderr)
+
+    # D-152: refuse a green that ran too few tests to mean anything (e.g. a whole
+    # class silently skipped). Opt-in via CODEREADER_MIN_TESTS, set only where the
+    # FULL suite runs (CI), so a local subset run is never affected. Skipped under
+    # xdist, where each worker sees only its shard of the count.
+    if os.environ.get(XDIST_WORKER_ENV):
+        return
+    minimum = required_minimum(os.environ)
+    if exitstatus == 0 and is_vacuous_run(_passed_count, minimum):
+        print(
+            f"D-152 GUARD: only {_passed_count} tests passed, below the "
+            f"{MIN_TESTS_ENV}={minimum} floor -- refusing a vacuous green. A whole "
+            f"class of tests likely did not run (all skipped, a collection filter, "
+            f"a plugin misconfig). Investigate before trusting this run.",
+            file=sys.stderr,
+        )
+        session.exitstatus = 1

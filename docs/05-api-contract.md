@@ -470,6 +470,12 @@ who have since spent their freezes. Run once after deploy. Returns
 
 ## 9. Contract-level invariants (CI-enforced)
 
+> NOTE (D-152): these were NOT actually CI-enforced from 2026-07-06 to
+> 2026-07-24 -- the pytest CI job never ran (a health-cmd quoting bug, D-150),
+> so for that window they were held only by local suite runs. CI enforcement is
+> restored, and each item below is confirmed by name to run in the green CI run
+> (D-152).
+
 1. No response serializes `grading` or `explanation` before a graded attempt exists (leak test greps serialized session bundles).
 2. Exercises are immutable per version; any reveal content is tied to `(exercise_id, version)`.
 3. `POST /attempts` is idempotent per key; identical replays are byte-identical responses.
