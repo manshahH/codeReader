@@ -5489,3 +5489,91 @@ D-145 ADDENDUM (review round: six items answered, then built). The six items
      deleted. Item 6 (Login copy) is a SEPARATE commit. NOT built and not to be
      built: any tier assignment beyond everything-free, billing, export
      implementation, any A5 data model, any UI. Still nothing deployed.
+
+D-146 test_healthz DEFAULTS TO A LIVE-SERVER PROBE AND SO FAILS ON A NORMAL DEV
+     MACHINE. Recorded as a decision, NOT fixed here (the fix is a separate
+     change).
+     THE SYMPTOM: `pytest backend/tests` on a dev machine reports one failure,
+     test_healthz_returns_ok_against_services, with httpx.ConnectError. Every
+     other number in the suite is green. A single always-red test in an
+     otherwise-green suite is the exact thing developers learn to ignore, and
+     this project depends on red meaning something (D-128, the D-103 decay).
+     WHY IT FAILS, from reading tests/test_healthz.py: the test has two modes.
+     With HEALTHZ_TEST_IN_PROCESS=1 it hits /healthz IN-PROCESS via
+     ASGITransport (the same shape every other HTTP test in the suite uses); CI
+     sets that env var (.github/workflows/ci.yml:50), so CI is green. WITHOUT it
+     the DEFAULT path (`_get_compose_healthz`) makes a real socket connection to
+     http://127.0.0.1:8000, a running API server process. A dev who has the
+     compose Postgres/Redis up but no server on :8000 -- the normal state for
+     running the unit suite -- gets a ConnectError that has nothing to do with
+     their change.
+     WHY THIS IS THE ONLY TEST THAT DOES THIS: every other HTTP test constructs
+     the app in-process (ASGITransport) or talks to Postgres/Redis directly. Only
+     healthz reaches for a separate live server on :8000. The in-process path is
+     not a lesser check: /healthz's body runs `_check_postgres` and `_check_redis`
+     against the configured DATABASE_URL/REDIS_URL either way, so in-process
+     still exercises the real dependency probes. The ONLY thing the :8000 path
+     adds is "a real uvicorn process is up and serving", which is a deploy/serving
+     concern, not app behaviour. VERIFIED: `HEALTHZ_TEST_IN_PROCESS=1 pytest
+     tests/test_healthz.py` passes in 2.62s on this machine; the default fails.
+     RECOMMENDATION (not applied): FLIP THE DEFAULT. Make the in-process path the
+     default a bare `pytest` takes -- it needs only the Postgres/Redis the rest of
+     the suite already needs -- and gate the live-server probe behind an EXPLICIT
+     opt-in (e.g. HEALTHZ_TEST_AGAINST_COMPOSE=1, or a marker deselected by
+     default), because that probe is a deploy smoke test, not a unit. CI then
+     just runs the default and drops the HEALTHZ_TEST_IN_PROCESS line. A
+     skip-when-:8000-absent variant also works but is weaker: flipping the
+     default gives a real, always-run check on every machine, where a skip hides
+     it. Either way the rule the suite must keep is "green on a normal dev
+     machine with only the documented services up".
+     NOT the same class as D-147: this is a single test reaching for the wrong
+     default dependency, deterministic, not a shared-state race.
+
+D-147 THE BACKEND TEST SUITE IS NOT SAFE TO RUN CONCURRENTLY AGAINST THE SHARED
+     codereader_test DATABASE + REDIS, AND NOTHING GUARDS AGAINST IT. Diagnosed,
+     NOT fixed here. This is the real cause of what earlier rounds called
+     "intermittent m4 flakiness"; it is NOT an ordering bug and NOT D-136.
+     WHAT WAS OBSERVED: across several full and partial runs, a moving set of
+     HTTP-based tests failed -- sometimes two test_m4_sessions specs, once seven
+     test_m4_streaks with 401, once sixteen tests spread over m4/m5/m7/m8, and
+     runs that took 8x longer than normal (a GET session at ~8s vs ~180ms). The
+     failing set changed run to run, which is the signature of shared-state
+     contention rather than a bug in any one test.
+     THE PROOF, by construction: run alone, the suite is deterministic and green
+     -- a clean isolated `pytest backend/tests` gives 1 failed (only D-146's
+     healthz), 631 passed. Every failure ever seen coincided with a SECOND pytest
+     process running against the same database at the same time (in the earlier
+     rounds, a scratch measurement test run while a full suite was in the
+     background). A controlled experiment -- two pytest processes on
+     codereader_test at once -- reproduces it immediately: one process fails at
+     fixture setup with `asyncpg.exceptions.UniqueViolationError: duplicate key
+     value violates unique constraint "pg_type_typname_nsp_index"` (two
+     migrated_db fixtures running schema DDL -- DROP SCHEMA / CREATE TYPE -- on
+     the one database at once), while the other passes.
+     THE 401s, precisely: clean_m4_tables does `TRUNCATE users ... CASCADE`
+     before each m4 test. When a second process truncates `users` between the
+     moment a test creates its user and the moment its GET runs, the handler's
+     `session.get(User, current_user.id)` returns None and sessions/router.py
+     raises 401 invalid_token (auth passed; the row simply vanished under it).
+     So a "401 on a freshly issued token" was never a token bug; it was another
+     process deleting the row mid-request.
+     ROOT CAUSE: the destructive operations are global singletons against one
+     shared database and one shared Redis -- migrated_db's DROP SCHEMA CASCADE,
+     clean_m4_tables' TRUNCATE, clean_redis' FLUSHDB. D-88 isolated pytest from
+     the DEV database (codereader vs codereader_test); it did NOT make two test
+     RUNS safe against each other on the test database. There is no guard: two
+     `pytest` invocations, or a dev plus CI pointed at the same DB, corrupt each
+     other silently.
+     RECOMMENDATION (not applied): isolate per RUN, not just per project. Options,
+     in rough order of preference -- (1) derive a unique database name per test
+     process (append the pid or an xdist worker id to codereader_test), which is
+     also the prerequisite for ever running the suite under `pytest -n`; (2) a
+     Postgres advisory lock taken by migrated_db that makes a second concurrent
+     run fail loudly with "another test run holds codereader_test" instead of
+     racing; (3) at minimum a per-run Redis DB index so FLUSHDB cannot cross
+     runs. Whatever the mechanism, the property to add is: a second concurrent
+     run must be impossible or must fail with a named error, never silently
+     corrupt the first.
+     D-136 STAYS OPEN AND IS NOT THIS. D-136 is scoped to intermittently-flaky
+     seeded Playwright specs; this is backend pytest concurrency. They are not
+     the same problem and this must not be filed under it.
