@@ -5595,3 +5595,77 @@ D-146 ADDENDUM: IMPLEMENTED. The default is flipped.
      the Playwright CI job, both of which already start a real server. CI
      dropped HEALTHZ_TEST_IN_PROCESS from ci.yml (the in-process path is the
      default now, so no special-casing is needed to keep the suite green).
+
+D-147 ADDENDUM: IMPLEMENTED. Per-run isolation, and why the advisory lock lost.
+     CHOSEN: a per-RUN database plus a per-RUN Redis logical DB, layered on top
+     of D-88 WITHOUT touching its functions (whose exact contract is pinned by
+     test_m7_db_isolation_guard). New backend/tests/_run_isolation.py; conftest
+     wires it; backend/tests/test_run_isolation.py covers it.
+       - Postgres: `<base>_<token>_test`, token = the xdist worker id under
+         `pytest -n`, else `p<pid>`. Unique per OS process, so two separate
+         invocations AND two xdist workers all differ. Still ends in `_test`, so
+         D-88's guard still accepts it with no flag (the load-bearing tie-in
+         test asserts exactly this). Created on demand, DROPPED at
+         pytest_sessionfinish; pid reuse is self-healing (migrated_db
+         DROP SCHEMAs on reuse), so runs never accumulate.
+       - Redis (the FLUSHDB hole D-147 named, now closed): a logical DB claimed
+         atomically from 1..15 via SET NX on a registry key in DB 0, which no
+         run ever selects and so no FLUSHDB ever clears. The claim carries a
+         3h TTL so a crashed run self-frees; release is compare-and-delete so a
+         stale release cannot free a slot a later run reclaimed.
+     ON BY DEFAULT: a developer running `pytest` the obvious way gets isolation
+     with no env var. CODEREADER_TEST_NO_ISOLATION=1 opts OUT (shared base), for
+     inspecting a DB after a single-process run; it is never needed for safety,
+     which is the point -- the safe state is the default one.
+     WHY THE ADVISORY LOCK LOST. The recorded alternative was a pg advisory lock
+     in migrated_db that makes a second concurrent run fail loudly. It satisfies
+     "second fails legibly", but it CANNOT satisfy "two full suites both pass":
+     it serializes runs on one shared database, so the second waits or dies. It
+     also does nothing for Redis, and above all it does NOT enable `pytest -n` --
+     every xdist worker would contend on the one database, which is useless for
+     parallelism. With a 440s suite about to be run many times during the
+     four-migration cutover, the per-run database (which both isolates AND is
+     the prerequisite for `-n`) is strictly the better fit. The lock bought less
+     and foreclosed the speedup.
+     PROVED BY THE EXACT D-147 SCENARIO: two full `pytest backend/tests` at
+     once, both green -- `646 passed, 1 skipped` each, exit 0, in ~561s. Before
+     this change that scenario produced the pg_type UniqueViolation and the
+     TRUNCATE-driven 401s. Teardown verified clean afterward: zero leftover
+     `codereader_*_test` databases and zero leftover Redis slot claims.
+     XDIST-READY, NOT YET RUN UNDER IT: pytest-xdist is not a dependency today,
+     so `-n` is enabled by this design but not yet exercised; adopting it is a
+     separate change (add the dep, and skip the module-block work in the xdist
+     controller process, which would otherwise create one unused DB per session).
+
+D-136 AMENDMENT: the old evidence was contaminated by D-147, and the trio is not
+     one bug. Re-examined once D-147 was understood; NOT closed.
+     D-136's evidence was gathered "over roughly five full-suite or group runs
+     during the D-129..D-135 work" -- exactly the window of heavy simultaneous
+     backend and frontend work, where a backend `pytest` run against the shared
+     database would TRUNCATE/DROP SCHEMA under a seeded Playwright spec and
+     produce precisely D-136's fingerprint (one spec fails, never twice, passes
+     in isolation). D-147 is now a proven mechanism for that, so the seeded
+     members of the trio -- session.spec.ts and scroll-reachability.spec.ts,
+     both of which drive real backend content -- have a more likely cause than a
+     Playwright-side race, and their old evidence cannot be trusted because
+     nothing in that window ruled out a concurrent backend suite.
+     THE HERMETIC MEMBER IS THE GENUINE RESIDUAL, AND CANNOT BE D-147.
+     viewer-narrow.spec.ts stubs every route and touches no backend, so no
+     database state -- contaminated or not -- can explain its one failure
+     ("continuation row selects it", when grouped with narrow-two-state.spec.ts).
+     That leaves a real cross-spec ordering/timing question inside Playwright
+     itself (fullyParallel false, single worker), independent of D-147.
+     NEW EVIDENCE, CLEAN CONDITIONS: with D-147's fix in place and NOTHING else
+     touching the database, the full Playwright suite was run five times back to
+     back: 134 passed every run (1.8m, 1.8m, 2.0m, 1.9m, 1.8m), zero failures,
+     zero flaky, including the hermetic viewer-narrow spec.
+     NOT CLOSED ON FIVE RUNS, deliberately. Five clean runs cannot retire a
+     roughly-one-in-five-or-rarer flake: at a 1-in-5 rate the chance of five
+     clean runs by luck is ~33%, and the hermetic member failed rarer than that.
+     To close it I would want on the order of 25-30 consecutive clean runs under
+     these controlled conditions, and -- more valuable than raw count -- several
+     runs that deliberately reproduce the exact group ordering
+     (viewer-narrow + narrow-two-state) that triggered the one hermetic failure,
+     since a full-suite pass does not exercise that grouping the same way. Until
+     then D-136 narrows to "one hermetic Playwright spec, cross-spec timing,
+     unreproduced since the D-147 fix" and STAYS OPEN.

@@ -26,6 +26,16 @@ from _db_guard import (  # noqa: E402 -- must follow the sys.path fix above
     ensure_database_exists,
     resolve_test_database_url,
 )
+from _run_isolation import (  # noqa: E402 -- must follow the sys.path fix above
+    XDIST_WORKER_ENV,
+    claim_redis_db,
+    drop_database,
+    isolation_enabled,
+    personalize_db_url,
+    redis_url_with_db,
+    release_redis_db,
+    run_token,
+)
 
 # Module-level, not a fixture: pydantic-settings resolves Settings' env_file
 # (".env") relative to cwd, and pytest runs from the repo root, where the
@@ -68,15 +78,41 @@ os.environ.setdefault("SENTRY_DSN", "")
 # Settings from the now-overridden env var rather than a stale cached one.
 from app.config import get_settings as _get_settings  # noqa: E402
 
-_base_database_url = _get_settings().DATABASE_URL
+_settings = _get_settings()
+_base_database_url = _settings.DATABASE_URL
+_base_redis_url = _settings.REDIS_URL
 _get_settings.cache_clear()
 
-_test_database_url = resolve_test_database_url(
+# D-88: resolve the disposable BASE test database (codereader_test, or an
+# explicit TEST_DATABASE_URL). This is per-PROJECT isolation from the dev DB.
+_base_test_database_url = resolve_test_database_url(
     env=os.environ, default_database_url=_base_database_url,
 )
-assert_disposable_test_database(_test_database_url, env=os.environ)
-asyncio.run(ensure_database_exists(_test_database_url))
-os.environ["DATABASE_URL"] = _test_database_url
+
+# D-147: give THIS run its own database and Redis logical DB, so two concurrent
+# runs (a dev plus CI, two devs, or future `pytest -n` workers) cannot corrupt
+# each other via DROP SCHEMA / TRUNCATE / FLUSHDB against a shared target. On by
+# default; CODEREADER_TEST_NO_ISOLATION=1 opts out to the shared base. The token
+# is the xdist worker id under `-n`, else this process's pid -- unique per OS
+# process either way. The personalized name still ends in `_test`, so D-88's
+# guard still accepts it (asserted below, belt and suspenders).
+_ISOLATE = isolation_enabled(env=os.environ)
+_RUN_TOKEN = run_token(worker=os.environ.get(XDIST_WORKER_ENV), pid=os.getpid())
+_run_database_url = (
+    personalize_db_url(_base_test_database_url, _RUN_TOKEN)
+    if _ISOLATE
+    else _base_test_database_url
+)
+_redis_slot: int | None = None
+
+assert_disposable_test_database(_run_database_url, env=os.environ)
+asyncio.run(ensure_database_exists(_run_database_url))
+os.environ["DATABASE_URL"] = _run_database_url
+
+if _ISOLATE:
+    _redis_slot = asyncio.run(claim_redis_db(_base_redis_url, _RUN_TOKEN))
+    os.environ["REDIS_URL"] = redis_url_with_db(_base_redis_url, _redis_slot)
+
 _get_settings.cache_clear()
 
 
@@ -124,3 +160,22 @@ async def db_session() -> AsyncIterator[AsyncSession]:
         finally:
             await session.rollback()
     await engine.dispose()
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """D-147 teardown: drop THIS run's database and release its Redis slot so
+    concurrent-safe runs never accumulate junk. Only runs under isolation; with
+    the opt-out the base is shared and must not be dropped. Never raises -- a
+    teardown failure must not turn a green run red (the Redis TTL and pid reuse
+    self-heal a skipped teardown anyway)."""
+    if not _ISOLATE:
+        return
+    try:
+        asyncio.run(drop_database(_run_database_url))
+    except Exception as exc:  # noqa: BLE001 -- teardown is best-effort by design
+        print(f"D-147 teardown: could not drop {_run_database_url!r}: {exc}", file=sys.stderr)
+    if _redis_slot is not None:
+        try:
+            asyncio.run(release_redis_db(_base_redis_url, _redis_slot, _RUN_TOKEN))
+        except Exception as exc:  # noqa: BLE001 -- best-effort; TTL frees it anyway
+            print(f"D-147 teardown: could not release redis slot: {exc}", file=sys.stderr)
