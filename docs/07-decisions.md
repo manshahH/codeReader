@@ -5756,3 +5756,38 @@ D-149 cryptography floor raised past 7 security advisories. The dependency-audit
      plus the full suite that already exercises token sealing. This is a
      dependency-security bump, recorded because it moves a deliberate ceiling;
      it is not a design change.
+
+D-150 THE PYTEST AND SCHEMA CI JOBS NEVER RAN: a health-cmd quoting bug, not
+     infrastructure. This is why "CI never runs" and a source of the constant
+     failure mail.
+     SYMPTOM: the `pytest` and `schema` jobs failed at "Initialize containers"
+     with `Exit code 125` from `docker create ... postgres:16`, across every run
+     including a clean re-run, in ~10s, before a single test executed. It read
+     like flaky GitHub infrastructure, especially since the `playwright` job --
+     same `postgres:16` and `redis:7` services -- initialised fine on the same
+     runs.
+     ROOT CAUSE, from the daemon's own stderr (not the exit code): `unknown
+     shorthand flag: 'U' in -U`. The service `options` string had
+     `--health-cmd 'pg_isready -U codereader -d codereader'` in SINGLE quotes.
+     GitHub's runner tokenises the options string honouring DOUBLE quotes but
+     treating single quotes as literal characters, so the value was split and
+     `-U` reached `docker create` as a bare flag. The playwright job worked for
+     exactly one reason: its identical health-cmd used DOUBLE quotes. So the
+     difference that looked like infra was a one-character quoting difference in
+     ci.yml.
+     FIX: switch the pytest and schema jobs' postgres/redis health-cmds to
+     double quotes, matching the working playwright job (ci.yml lines 30, 39,
+     120). VERIFY BY EXECUTION: the point of this change is that the pytest job
+     now gets past container init and actually RUNS the suite in CI -- see the
+     report for the post-fix CI result, which is the first time the D-147
+     per-run isolation (CREATEDB, the Redis slot claim) is exercised on the CI
+     runners rather than only in a faithful local reproduction.
+     WHY A FAITHFUL LOCAL REPRODUCTION WAS ALSO USED (D-147 item 1): the CI
+     Postgres service is `postgres:16` with `POSTGRES_USER=codereader`, which the
+     official image makes a SUPERUSER (`rolsuper=t, rolcreatedb=t`), and the CI
+     Redis service is `redis:7` with the default 16 logical databases. The local
+     compose is byte-identical on both (same images, same user, same db count),
+     and the whole D-147 session created and dropped per-run databases and
+     claimed Redis slots as exactly this user hundreds of times. So the
+     CREATEDB-privilege and slot-claim questions were answerable even while the
+     CI container-init bug blocked the real run.
