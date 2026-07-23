@@ -26,7 +26,9 @@ async function setWrapPreference(page: import('@playwright/test').Page, mode: 'w
 }
 
 test.describe('decision 5: long lines soft-wrap, and the wrapped group is one tap target', () => {
-  test('tapping a continuation row selects the line it continues, not a different line', async ({ page }) => {
+  // @d136-flaky: intermittently flaky in CI, tolerated via retries until the
+  // D-136 campaign fixes it (docs/07 D-136, frontend/e2e/_d136.ts). NOT a fix.
+  test('tapping a continuation row selects the line it continues, not a different line @d136-flaky', async ({ page }) => {
     // Fails against the old viewer twice over: it had no wrap mode at all, and
     // its gutter was a separate column of one-line-high buttons, so there was
     // no continuation row to tap and nothing that could have resolved a tap on

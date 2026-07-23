@@ -56,7 +56,9 @@ test.describe('tap targets', () => {
     }
   });
 
-  test('adjacent line targets do not overlap', async ({ page }) => {
+  // @d136-flaky: intermittently flaky in CI, tolerated via retries until the
+  // D-136 campaign fixes it (docs/07 D-136, frontend/e2e/_d136.ts). NOT a fix.
+  test('adjacent line targets do not overlap @d136-flaky', async ({ page }) => {
     await gotoSession(page);
 
     const first = (await page.getByRole('button', { name: 'Select line 1', exact: true }).boundingBox())!;

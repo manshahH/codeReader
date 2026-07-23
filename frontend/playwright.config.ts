@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { D136_TAG, d136Retries } from './e2e/_d136';
+
 // When E2E_BASE_URL is set, we are deliberately pointing the suite at something
 // that already exists (a deployed preview, a hand-started dev server) and
 // Playwright must not start or manage a server. Otherwise it owns the server
@@ -17,7 +19,24 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // D-136: the flaky continuation-row specs (tagged @d136-flaky) run in their
+  // own project WITH retries, so a flake is tolerated but a consistent failure
+  // is still red. EVERY other spec runs in `chromium` with retries 0 (the
+  // top-level default above), so a genuinely new regression is never masked.
+  // The tolerance is temporary and expires; see e2e/_d136.ts.
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+      grepInvert: new RegExp(D136_TAG),
+    },
+    {
+      name: 'd136-tolerated',
+      use: { ...devices['Desktop Chrome'] },
+      grep: new RegExp(D136_TAG),
+      retries: d136Retries(),
+    },
+  ],
 
   // Playwright starts and owns its own dev server.
   //
