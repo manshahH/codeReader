@@ -10,7 +10,7 @@ export function NavBar() {
           get this -- padding them to 44px would break the reading measure that
           is the product. */}
       <Link to="/" className="inline-flex min-h-tap items-center font-explanation text-lg italic text-ink lg:min-h-0">
-        Code Reader
+        Reedkode
       </Link>
       <div className="flex items-center gap-4">
         <Link

@@ -86,7 +86,7 @@ export function ReviewPromptModal({ onClose, onSubmitted, initialRating = 0, ini
               </button>
             </div>
             <p className="text-sm text-ink-muted">
-              This app is in beta. Your review helps us improve it — reviewers get a discount when paid tiers launch.
+              Your review helps us improve it.
             </p>
             <RatingPicker value={rating} onChange={setRating} />
             <textarea

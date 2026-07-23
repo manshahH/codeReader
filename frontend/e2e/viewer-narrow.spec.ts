@@ -74,7 +74,7 @@ test.describe('navigation touch targets (D-131)', () => {
     await gotoSession(page);
 
     // Navigation: chrome the reader taps to go somewhere.
-    for (const name of ['Code Reader', 'Profile']) {
+    for (const name of ['Reedkode', 'Profile']) {
       const box = (await page.getByRole('link', { name, exact: true }).boundingBox())!;
       expect(box.height, `${name} nav link height`).toBeGreaterThanOrEqual(44);
     }

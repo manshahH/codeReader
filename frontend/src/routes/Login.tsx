@@ -5,7 +5,11 @@ import { githubLoginUrl } from '../lib/api';
 const ERROR_COPY: Record<string, string> = {
   oauth_state: 'That sign-in link expired. Try again.',
   oauth_denied: 'GitHub sign-in was cancelled.',
-  beta_required: "You're not on the beta list yet. Ask for an invite and try again.",
+  // No `beta_required` entry while BETA_GATE_ENABLED is off (D-92, D-145 item 6):
+  // the backend only emits ?error=beta_required when the gate is ON, so with it
+  // off this beta-list copy is unreachable except by hand-typed URL. It falls
+  // back to the generic message below. If the beta gate is re-enabled, restore a
+  // specific entry here in the same change that flips the flag.
 };
 
 export function Login() {
@@ -15,7 +19,7 @@ export function Login() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-6">
       <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="font-explanation text-3xl italic text-ink">Code Reader</h1>
+        <h1 className="font-explanation text-3xl italic text-ink">Reedkode</h1>
         <p className="max-w-sm text-base text-ink-muted">
           A daily 5–10 minute session: read, trace, and judge real-looking code.
         </p>

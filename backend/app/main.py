@@ -237,7 +237,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     init_sentry(settings)
 
-    app = FastAPI(title="Code Reader API", lifespan=lifespan)
+    app = FastAPI(title="Reedkode API", lifespan=lifespan)
 
     # D-121. REGISTERED FIRST ON PURPOSE, WHICH MAKES IT THE INNERMOST USER
     # MIDDLEWARE: Starlette's add_middleware prepends, so the last thing added
