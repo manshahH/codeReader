@@ -1,0 +1,8 @@
+{
+  "expires": "2026-09-15",
+  "why": "Both are build-tool advisories that do NOT reach the static output served to users (D-154, D-149-style analysis). The vite fix is a breaking 5->8 major bump, deferred to a post-launch branch. This acknowledgement expires so the deferral cannot be forgotten; a NEW advisory still fails the gate.",
+  "advisories": {
+    "GHSA-fx2h-pf6j-xcff": "vite dev-server `server.fs.deny` bypass on Windows alternate paths. Affects `vite dev`/`vite preview` only, never the built static assets. Fix is vite@8 (breaking). Deferred; dev-machine/pipeline risk only.",
+    "GHSA-v2hh-gcrm-f6hx": "fast-uri host confusion. Build-time transitive: vite-plugin-pwa -> workbox-build -> ajv -> fast-uri, used to validate our OWN workbox config during `vite build`. Not in the shipped runtime bundle."
+  }
+}

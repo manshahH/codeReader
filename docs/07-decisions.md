@@ -5908,3 +5908,60 @@ D-153 THE cryptography BUMP DOES OPEN PRODUCTION-SEALED TOKENS. The item that
      HMAC (both hmac/hashlib) -- none touch cryptography, and none are
      reversible, so a cryptography version has no bearing on them. The pytest and
      pytest-asyncio bumps (D-151) are test tooling and touch no data at rest.
+
+D-154 THE npm audit RED IS BUILD-TOOL ONLY: defer the vite bump, but stop the job
+     being permanently red with a time-boxed acknowledgement.
+     THE ADVISORIES, analysed D-149-style (does it reach shipped output?):
+       - vite HIGH, GHSA-fx2h-pf6j-xcff ("server.fs.deny bypass on Windows
+         alternate paths"). This is the vite DEV SERVER's file-serving guard;
+         the bypass reads files off a RUNNING `vite dev`/`vite preview`. It is
+         not in the static bundle `vite build` emits. vite's other vias are all
+         moderate and also dev-server/build-time (GHSA-4w7w path-traversal in
+         optimized-deps .map, GHSA-v6wh launch-editor NTLM on Windows) plus
+         esbuild.
+       - esbuild MODERATE, GHSA-67mh-4wv8-2f99 ("any website can request the
+         DEV SERVER"). Dev-server only, and moderate, so it does not even fail
+         `--audit-level=high`.
+       - fast-uri HIGH, GHSA-v2hh-gcrm-f6hx ("host confusion"). Build-time
+         transitive: vite-plugin-pwa -> workbox-build -> ajv -> fast-uri, used to
+         validate our OWN workbox config during `vite build`. Not in the shipped
+         runtime; inputs are our config, not attacker data.
+       - react-router MODERATE, GHSA-wrjc-x8rr-h8h6 (open redirect via backslash
+         in <Link>/useNavigate) and GHSA-337j (constructor injection via
+         deserializeErrors in SSR hydration). These ARE shipped code, but they
+         are MODERATE (do not fail `--audit-level=high`). The SSR one does not
+         apply -- this is a client-only SPA, no SSR hydration. The open-redirect
+         is a real but moderate shipped concern; recorded as a separate
+         non-blocking follow-up (a react-router-dom patch bump), NOT part of the
+         high-severity gate.
+     SO NO HIGH ADVISORY IS IN THE SHIPPED USER-FACING BUNDLE. Does CI run any
+     affected surface? The playwright job runs `vite dev` (the affected server),
+     but on an ephemeral isolated runner serving only test content on localhost
+     -- unreachable by an attacker. The production build runs on Vercel, not in
+     GitHub Actions. So there is no real exposure in CI either.
+     RECOMMENDATION: DEFER the vite fix. It is vite@8 -- a breaking 5->8, three
+     major versions -- and the risk it closes is a developer-machine and
+     deploy-pipeline risk, not a production user risk. Rushing that migration in
+     front of the launch adds more risk than the dev-server advisories carry.
+     Schedule it POST-LAUNCH on its own branch with its own validation. (Do NOT
+     perform it here.)
+     BUT THE JOB MUST NOT STAY PERMANENTLY RED, because a permanently-red job is
+     precisely what let the 18-day-dead pytest job go unnoticed (D-152).
+     scripts/npm_audit_gate.py replaces `npm audit --audit-level=high`: it
+     tolerates ONLY the specific advisory IDs in scripts/npm_audit_allowlist.json
+     (GHSA-fx2h-pf6j-xcff, GHSA-v2hh-gcrm-f6hx), and ONLY until that file's
+     `expires` (2026-09-15). It goes RED on any high/critical advisory NOT on the
+     list (a NEW finding is never swallowed) AND the moment the list expires (the
+     deferral cannot be forgotten -- it turns red loudly and forces a fix or a
+     deliberate renewal). NOT a blanket suppression: the two IDs are named with
+     reasons, and moderates/new-highs are unaffected. Negative tests
+     (test_npm_audit_gate) prove it reddens on a new high and on expiry.
+     ITEM 3, min-tests floor decay (D-152's CODEREADER_MIN_TESTS): DECIDED to
+     LEAVE it a FIXED floor (600 vs ~664 passing). It exists to catch a
+     CATASTROPHIC collapse (a whole class silently skipped), not slow erosion --
+     consistent with the guard's deliberate under-catch-never-false-fail design.
+     Auto-ratcheting against a committed baseline was considered and rejected:
+     more machinery and false-fail risk than the guard warrants, and it can be
+     gamed by the same commit that removes tests. Maintenance is a documented
+     chore in ci.yml (keep it ~50-60 below the passing count; raise when the
+     suite grows; it already fails if the suite shrinks below it).

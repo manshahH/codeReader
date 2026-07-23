@@ -47,10 +47,17 @@ jobs:
       GITHUB_CLIENT_SECRET: test-github-client-secret
       TOKEN_ENC_KEY: test-token-encryption-key-32b
       ANTHROPIC_API_KEY: test-anthropic-key
-      # D-152: refuse a vacuous green. The full suite is ~649 passing; this floor
+      # D-152: refuse a vacuous green. The full suite is ~664 passing; this floor
       # is well below that (so it survives ordinary churn) and far above any
-      # partial or all-skipped run, which would otherwise pass with exit 0. Bump
-      # it if the suite legitimately shrinks below the floor.
+      # partial or all-skipped run, which would otherwise pass with exit 0.
+      # DECAY NOTE (D-154 item 3): this is a FIXED floor by choice. It catches a
+      # catastrophic collapse (a whole class silently skipped), not slow erosion
+      # -- that is consistent with the guard's deliberate "under-catch, never
+      # false-fail" design. Auto-ratcheting against a committed baseline was
+      # considered and rejected: more machinery and false-fail risk than the
+      # guard warrants. Maintenance is a documented CHORE: keep this ~50-60 below
+      # the passing count, so raise it when the suite grows substantially (and it
+      # already fails loudly if the suite shrinks below it).
       CODEREADER_MIN_TESTS: '600'
       # HEALTHZ_TEST_IN_PROCESS removed (D-146): in-process is now the default
       # healthz path, so CI needs no special-casing to keep test_healthz green.
@@ -107,8 +114,11 @@ jobs:
           node-version: '20'
       - working-directory: frontend
         run: npm install
-      - working-directory: frontend
-        run: npm audit --audit-level=high
+      # D-154: was `npm audit --audit-level=high`, which failed permanently on
+      # two build-tool advisories that never reach shipped output. The gate
+      # tolerates ONLY the specific advisory IDs in scripts/npm_audit_allowlist
+      # .json, and only until its expiry date; a NEW advisory, or expiry, is red.
+      - run: python scripts/npm_audit_gate.py
 
   schema:
     runs-on: ubuntu-latest
