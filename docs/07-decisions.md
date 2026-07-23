@@ -5741,3 +5741,18 @@ D-148 THE NOTIFICATION-JOBS CRON IS GATED OFF UNTIL LAUNCH, so it stops failing
      the job runs, and a deliberately-off pre-launch cron is the correct state
      for a system whose target does not exist yet. It is off because it CANNOT
      succeed, not to hide a failure that matters.
+
+D-149 cryptography floor raised past 7 security advisories. The dependency-audit
+     CI job (D-128) has been red on a REAL finding, not a false one: pip-audit
+     reports 7 known vulnerabilities in cryptography <=45.x (PYSEC-2026-35,
+     PYSEC-2026-36, PYSEC-2026-2141, GHSA-537c-gmf6-5ccf and duplicates), and the
+     pin was `cryptography>=43.0,<46.0`, whose `<46.0` CEILING was itself
+     blocking every fix (they land in 46.0.5/46.0.6/46.0.7 and 48.0.1). Raised
+     to `>=48.0.1,<49.0`, which clears all seven.
+     LOW RISK, verified: the app's ONLY use of cryptography is the AESGCM
+     primitive in core/security.py (sealing GitHub access tokens at rest), and
+     that API is unchanged across 43..48. Validated by running
+     the security and auth suites against the bumped version (see the report),
+     plus the full suite that already exercises token sealing. This is a
+     dependency-security bump, recorded because it moves a deliberate ceiling;
+     it is not a design change.

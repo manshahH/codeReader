@@ -19,7 +19,11 @@ dependencies = [
     'redis>=5.2,<6.0',
     'pydantic-settings>=2.7,<3.0',
     'httpx>=0.28,<1.0',
-    'cryptography>=43.0,<46.0',
+    # Floor raised past the 7 advisories in <=45.x (PYSEC-2026-35/36/2141,
+    # GHSA-537c-gmf6-5ccf), all fixed by 48.0.1; the old <46.0 ceiling was
+    # itself blocking the fix (D-149). Only use is the stable AESGCM primitive
+    # (core/security.py), unchanged across these versions.
+    'cryptography>=48.0.1,<49.0',
     'anthropic>=0.40,<1.0',
     'openai>=1.50,<2.0',
     'sentry-sdk[fastapi]>=2.0,<3.0',
