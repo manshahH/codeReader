@@ -6057,3 +6057,17 @@ D-136 AMENDMENT 3: the `[pageerror] ... 'explanation' in 1` is NOT the flake. It
      locally (the flake will not reproduce), and validating it needs CI runs, not
      assertion. D-136 STAYS OPEN; the tolerance stays until that hardening lands
      and runs clean without it.
+     CORRECTION TO THE SCOPE, from the very next CI run: it is NOT just two specs.
+     On a commit that changed ONLY a comment and docs (identical frontend),
+     narrow-two-state.spec.ts:152 "scroll position is preserved on BOTH sides of
+     a switch" flaked in `chromium` (retries 0) and reddened -- which is the
+     tolerance WORKING (a spec outside the tag set is never masked), but it means
+     the residual is a narrow-layout interaction/layout-timing FAMILY, not the
+     two assertions I named. narrow-two-state:152 is now tagged too (three known
+     specs). Honest risk: this edges toward whack-a-mole. The RIGHT fix is thus
+     not per-spec hardening but a shared "wait for the narrow layout to settle
+     before tapping/scrolling/measuring" helper across gotoSession/gotoAnswering,
+     addressing the family at the root -- campaign work (needs CI validation,
+     unreproducible locally). If a FOURTH spec flakes, that is the signal to do
+     the shared-helper fix rather than tag a fourth. D-136 STAYS OPEN, now
+     understood as a family, not two assertions.

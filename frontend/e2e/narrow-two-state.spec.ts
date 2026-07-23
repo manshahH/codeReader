@@ -149,7 +149,10 @@ for (const vp of VIEWPORTS) {
 test.describe('toggle conditions', () => {
   test.use({ viewport: { width: 375, height: 667 } });
 
-  test('scroll position is preserved on BOTH sides of a switch', async ({ page }) => {
+  // @d136-flaky: same narrow-layout CI-timing flake family as the viewer specs
+  // (docs/07 D-136 Amendment 3, frontend/e2e/_d136.ts). Tolerated via retries,
+  // NOT a fix.
+  test('scroll position is preserved on BOTH sides of a switch @d136-flaky', async ({ page }) => {
     await gotoAnswering(page, 2); // predict_the_fix: tallest options
 
     // Scroll the options, then leave and come back.
